@@ -77,11 +77,13 @@ const Sync = (() => {
   async function tamperTest() {
     if (!db || state.status === 'offline') return { ok: false, msg: 'Tamper test needs live sync (no ?offline=1).' };
     const forged = Engine.sharedState();
-    forged.finale.H1.status = 'AVAILABLE';
+    const home = SEED.homeGroups.find((h) => forged.finale[h].status === 'LOCKED');
+    if (!home) return { ok: false, msg: 'Every finale is already legitimately unlocked — run the tamper test before seeding classmates.' };
+    forged.finale[home].status = 'AVAILABLE';
     const { data: row } = await db.from('wq_sessions').select('state').eq('id', session).single();
     const { data: reason } = await db.rpc('wq_state_violation', { p_old: row ? row.state : null, p_new: forged });
     const { data: v } = await db.rpc('wq_save_state', { p_id: session, p_expected: state.version, p_state: forged });
-    if (v === -1) return { ok: true, msg: `Server refused the forged write: ${reason || 'rule broken'}.` };
+    if (v === -1) return { ok: true, msg: `Forged write (team ${home} finale forced open) refused by the server: ${reason || 'rule broken'}.` };
     return { ok: false, msg: v ? 'Forged write was ACCEPTED — run supabase/guard.sql.' : 'Version moved; try again.' };
   }
 
