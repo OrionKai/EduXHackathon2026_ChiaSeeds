@@ -122,6 +122,18 @@ Backup quest (mention only): "Journeys to the Afterlife" — Ramesses III sarcop
 3. **1:50–2:20 — Drawing class:** class unlocked, check-in QR, collectible evolves, students drawing (phones away).
 4. **2:20–2:45 — Close:** journal and next trip; tagline "the app is the bridge to the next real experience."
 
+## 9b. Revision 2 (Kai_Revision branch, 16 Nov)
+
+Changes after team feedback on v1:
+- **Teacher starts from empty** and builds everything during the demo.
+- **Unit plan** shows the workflow: add a WorldQuest trip → add an experience trip (choose a partner) → set the unlock rule → launch trip day → live class progress → automatic unlock (or teacher override with reason).
+- **Quest builder = AI chat + board.** Suggestion chips auto-type the teacher's prompt; the assistant "thinks", streams a reply, and drafts cards (task, roles, quests, quiz, collectibles). Every card: Accept / Edit / Ask AI. Ask AI opens a conversation about that card and offers a revision (e.g. "Navigator: less phone"). Typed messages are matched to the scripted steps; anything else gets a short reply (live Claude where the host allows, canned otherwise). Labelled "Simulated AI".
+- **Sources (RAG):** teacher adds documents (sample object record, floor plan, lesson notes) or pastes their own text; "Only use my sources" toggle; every AI card and quiz question carries source citations that open the passage.
+- **AI-written MCQ quiz** (knowledge badge), editable by the teacher (question, options, correct answer); students take it with feedback and a "From: source" line.
+- **Partners:** request → studio replies → booked. AI drafts the request, teacher edits and sends; a "studio's view" preview lets the presenter accept or propose a new date. Booking produces the check-in QR.
+- **Camera:** live viewfinder to scan the object (recognition simulated), live QR scanning for the pair code and studio check-in, with photo/typed fallbacks. **Look Up easter egg:** tilting the phone to point at the ceiling (device orientation); triple-tap the progress bar as a demo fallback.
+- **Hosting:** live camera and tilt need the page on its own HTTPS host (e.g. GitHub Pages). Inside a claude.ai artifact they fall back to photo capture.
+
 ## 10. Deck-only items (not built)
 
 Problem + persona, theory map (§3), risk register (minors contacting officials, cross-border pairing, business advertising, reward fairness, digital twin as alternative not default), pilot plan (5–9 university students, measure time looking up vs at the screen), differentiation vs Actionbound / Goosechase / Smartify, garden example, roadmap (partner review link, reuse, student-made quests).
