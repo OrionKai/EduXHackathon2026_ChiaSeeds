@@ -31,10 +31,18 @@ const REV=[
   apply(){const q=find("q3");q.done="teacher";q.tasks.B+=" Submit the card for approval."}},
  {id:"rev-m3",target:"m3",chip:"Q3: test observation",prompt:"Make Q3 test observation instead of recall.",reply:"Rewritten. Q3 now asks students to spot the observation.",
   apply(){Object.assign(find("m3"),{q:"Which of these is an observation, not an interpretation?",o:["The jaw opens on a hinge","The owner feared death","It was a gift","It was made to scare"],a:0})}},
+ {id:"rev-add",target:"q4",chip:"Add a sketch quest",prompt:"Add a quest where they sketch something in the entrance hall.",
+  reply:"Added Quest 5: Observe → Make a card, in the entrance hall. It also sets up the Look Up easter egg nearby.",
+  cards:()=>[find("qx")],
+  apply(){const q=newQuest(["observe","make"],"Sketch the entrance hall",{id:"qx",min:10,state:"ai",tasks:{A:"Name 3 shapes you see in the ceiling.",B:"Sketch the ceiling pattern."},done:"card",doneBy:"Pair"});
+    const pi=B.quests.findIndex(x=>x.blocks.includes("pair"));B.quests.splice(pi<0?B.quests.length:pi,0,q)}},
+ {id:"rev-swap",target:"q3",chip:"Swap roles in Quest 3",prompt:"In Quest 3, let the Navigator name the details and the Riddle Keeper sketch.",
+  reply:"Swapped. In Quest 3 the Navigator now leads and the Riddle Keeper sketches.",
+  apply(){const q=find("q3");q.swap=!q.swap;[q.tasks.A,q.tasks.B]=[q.tasks.B,q.tasks.A]}},
  {id:"rev-c3",target:"c3",chip:"Share the easter egg",prompt:"Make the easter egg shared — if one partner finds it, both get it.",reply:"Done. Look Up now goes to both partners.",
   apply(){find("c3").to="pair"}}
 ];
 const KW={task:["plan","trip"],roles:["role"],quests:["quest"],quiz:["quiz","question","mcq"],colls:["collectible","badge","reward","easter"],
-  "rev-task":["minute","shorter"],"rev-r2":["navigator","sketch","off-screen"],"rev-q2":["attendant","backup"],"rev-q3":["approve","mark"],"rev-m3":["q3","observation"],"rev-c3":["share","both"]};
+  "rev-task":["minute","shorter"],"rev-r2":["navigator","sketch","off-screen"],"rev-q2":["attendant","backup"],"rev-q3":["approve","mark"],"rev-m3":["q3","observation"],"rev-c3":["share","both"],"rev-add":["add","new quest","sketch quest"],"rev-swap":["swap"]};
 function matchItem(text){const t=text.toLowerCase();
   return [...REV.filter(r=>find(r.target)),...MAIN].find(x=>!B.done.has(x.id)&&KW[x.id].some(k=>t.includes(k)))}

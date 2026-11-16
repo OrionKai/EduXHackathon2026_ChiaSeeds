@@ -51,8 +51,8 @@ async function runPrompt(item,typed){
   B.msgs.push({who:"t",text:typed||item.prompt});renderChat();
   await aiSay(typeof item.reply==="function"?item.reply():item.reply);
   item.apply();B.done.add(item.id);
-  const cards=item.target?[find(item.target)]:{task:[B.task],roles:B.roles,quests:B.quests,quiz:B.quiz,colls:B.colls}[item.id];
-  cards.forEach(c=>{if(item.target&&c.state!=="accepted")c.state="revised";if(item.target&&c.state==="accepted")c.state="revised";c.flash=true});
+  const cards=item.cards?item.cards():item.target?[find(item.target)]:{task:[B.task],roles:B.roles,quests:B.quests,quiz:B.quiz,colls:B.colls}[item.id];
+  cards.forEach(c=>{if(item.target&&!item.cards)c.state="revised";c.flash=true});
   B.msgs[B.msgs.length-1].cites=[...new Set(cards.flatMap(c=>c.cites||[]))];
   B.focus=null;B.busy=false;renderChat();renderBoard();
   document.getElementById("card-"+cards[0].id)?.scrollIntoView({behavior:"smooth",block:"nearest"});
@@ -92,22 +92,37 @@ function roleHTML(c){
     <label class="small">On the phone<input data-f="device" value="${esc(c.device)}"></label>${saveActs(c)}</div>`;
   return `<div class="${wrapCls(c)}" id="card-${c.id}"><div class="row between">${STATE[c.state]}<span class="row" style="gap:3px">${citesHTML(c)}</span></div>
     <b class="row" style="gap:8px">${rdot(c.id)} ${esc(c.title)}</b>${kv([["Holds",esc(c.holds)],["On the phone",esc(c.device)]])}${actsHTML(c)}</div>`}
+const blockChips=q=>`<span class="row" style="gap:4px">${q.blocks.map((b,k)=>`${k?`<span class="muted">→</span>`:""}<span class="bchip">${ic(BLOCKS[b].icon,12)} ${BLOCKS[b].label}</span>`).join("")}</span>`;
 function questRow(c,i){
   const d=DONE_TYPES[c.done],rw=c.reward&&collById(c.reward);
-  if(c.editing)return `<div class="qc focus" id="card-${c.id}"><div class="row"><span class="qnum">${i+1}</span><b>Edit quest</b></div><div class="qedit">
+  if(c.editing)return `<div class="qc focus" id="card-${c.id}"><div class="row"><span class="qnum">${i+1}</span><b>Edit quest</b></div>
+    <div class="stack" style="gap:6px"><span class="small">Activity blocks, in order</span><div class="row" style="gap:6px">${Object.entries(BLOCKS).map(([k,v])=>`<label class="bpick"><input type="checkbox" data-block="${k}" ${c.blocks.includes(k)?"checked":""}> ${ic(v.icon,13)} ${v.label}</label>`).join("")}</div></div>
+    <div class="qedit">
     <label class="small">Quest<input data-f="title" value="${esc(c.title)}"></label><label class="small">Minutes<input data-f="min" type="number" min="1" value="${c.min}"></label>
     ${B.roles.map(r=>`<label class="small wide">${rdot(r.id)} ${esc(r.title)} does<textarea data-f="tasks.${r.id}">${esc(c.tasks[r.id])}</textarea></label>`).join("")}
     <label class="small">Finished by${sel("done",c.done,Object.entries(DONE_TYPES).map(([k,v])=>[k,v.label]))}</label>
     <label class="small">Who completes it${sel("doneBy",c.doneBy,[...B.roles.map(r=>[r.id,r.title]),["Pair","Either partner"],["Each","Each student"]])}</label>
     <label class="small">Reward${sel("reward",c.reward,[["","None"],...(B.colls.length?B.colls:COLL_DEFS).map(x=>[x.id,x.title])])}</label>
+    <label class="toggle" style="align-self:end"><input type="checkbox" data-f="swap" ${c.swap?"checked":""}> Swap who leads</label>
     </div>${saveActs(c)}</div>`;
   return `<div class="qc ${c.state==="accepted"?"accepted":""} ${B.focus===c.id?"focus":""} ${c.flash?"flash":""}" id="card-${c.id}">
     <div class="row between"><span class="row" style="gap:8px"><span class="qnum">${i+1}</span><b>${esc(c.title)}</b><span class="muted small">${c.min} min</span></span><span class="row" style="gap:4px">${citesHTML(c)}${STATE[c.state]}</span></div>
+    <div class="row between">${blockChips(c)}${c.swap?`<span class="chip lock">Roles swapped</span>`:""}</div>
     <div class="roles2">${B.roles.map(r=>`<div class="rbox"><span class="row small" style="gap:6px;font-weight:600">${rdot(r.id)} ${esc(r.title)}</span><p>${esc(c.tasks[r.id])}</p></div>`).join("")}</div>
     <div class="foot"><span class="row" style="gap:6px;flex-wrap:nowrap">${ic(d.icon,15)}<span><b>Finished when:</b> ${esc(doneText(c))}</span></span>
       <span class="chip ${d.check==="auto"?"lock":"edit"}">${d.check==="auto"?"App checks":"You check"}</span>
       ${rw?`<span class="row" style="gap:6px;flex-wrap:nowrap"><span class="mini xs">${artFor(rw.art,18)}</span>Reward: ${esc(rw.title)}</span>`:""}</div>
-    ${actsHTML(c)}</div>`}
+    <div class="row between">${actsHTML(c)}<span class="row" style="gap:4px"><button class="tiny ghost" data-move="${c.id}|-1" ${i===0?"disabled":""} aria-label="Move up">↑</button><button class="tiny ghost" data-move="${c.id}|1" ${i===B.quests.length-1?"disabled":""} aria-label="Move down">↓</button><button class="tiny ghost" data-del="${c.id}">Remove</button></span></div></div>`}
+function addPanel(){
+  if(!B.adding)return `<button class="tiny" id="addq" style="align-self:flex-start">${ic("plus",13)} Add quest</button>`;
+  return `<div class="addq stack"><div class="row between"><b>New quest: pick activity blocks</b><button class="tiny ghost" id="addqx">Cancel</button></div>
+   <div class="bgrid">${Object.entries(BLOCKS).map(([k,v])=>`<label class="bcard"><input type="checkbox" data-newblock="${k}"><span class="row" style="gap:6px">${ic(v.icon,15)} <b>${v.label}</b></span><span class="small muted">${v.desc}</span></label>`).join("")}</div>
+   <div class="row"><button class="tiny primary" id="addqgo">${ic("plus",13)} Add quest</button><span class="small muted">Blocks run in the order shown. You can edit everything after.</span></div></div>`}
+function newQuest(blocks,title,extra={}){
+  const q={id:"q"+Math.random().toString(36).slice(2,6),kind:"quest",title:title||blocks.map(b=>BLOCKS[b].label).join(" + "),min:10,blocks,swap:false,tasks:{},done:BLOCKS[blocks.at(-1)].done,doneBy:"Pair",reward:"",cites:[],data:{},state:"edited",flash:true,...extra};
+  B.roles.forEach(r=>{const parts=blocks.map(b=>BLOCKS[b].tasks[leadOf(q,b)===r.id?"lead":"support"]);q.tasks[r.id]=[...new Set(parts)].join(" ")});
+  if(blocks.at(-1)==="quiz")q.doneBy="Each";
+  return q}
 function quizHTML(c){
   if(c.editing)return `<div class="c focus" id="card-${c.id}"><input data-f="q" value="${esc(c.q)}">${c.o.map((o,i)=>`<label class="row" style="flex-wrap:nowrap"><input type="radio" name="a-${c.id}" data-f="a" value="${i}" ${i===c.a?"checked":""} style="width:auto" aria-label="Correct answer"><input data-f="o.${i}" value="${esc(o)}"></label>`).join("")}<span class="small muted">Tick the correct answer.</span>${saveActs(c)}</div>`;
   return `<div class="${wrapCls(c)}" id="card-${c.id}"><div class="row between">${STATE[c.state]}<span class="row" style="gap:3px">${citesHTML(c)}</span></div>
@@ -145,7 +160,7 @@ function renderBoard(){
    <section class="panel">${sectionHead("Trip task","map",B.task?[B.task]:[],"task")}${B.task?`<div class="cards">${taskHTML(B.task)}</div>`:emptyBox("Ask the assistant to plan the quest.")}</section>
    <section class="panel">${sectionHead("Roles","users",B.roles,"roles")}${B.roles.length?`<div class="cards">${B.roles.map(roleHTML).join("")}</div><p class="small muted">Each role gets its own task in every quest below.</p>`:emptyBox("Each partner gets a role with different information.")}</section>
    <section class="panel">${sectionHead("Quests","spark",B.quests,"quests")}
-    ${B.quests.length?`<div class="stack" style="gap:10px">${B.quests.map(questRow).join("")}</div>`:emptyBox(B.roles.length?"Quests appear here, with a task for each role.":"Suggest roles first, then quests.")}</section>
+    ${B.quests.length?`<div class="stack" style="gap:10px">${B.quests.map(questRow).join("")}${addPanel()}</div>`:emptyBox(B.roles.length?"Quests appear here, with a task for each role.":"Suggest roles first, then quests.")}</section>
    <section class="panel">${sectionHead("Knowledge quiz (Quest 4)","check",B.quiz,"quiz")}${B.quiz.length?`<div class="cards">${B.quiz.map(quizHTML).join("")}</div>`:emptyBox("Multiple-choice questions appear here.")}</section>
    <section class="panel">${sectionHead("Collectibles","cam",B.colls,"colls")}${B.colls.length?`<div class="cards">${B.colls.map(collHTML).join("")}</div>`:emptyBox("Collectibles appear here, each with the condition that awards it.")}</section>
    <section class="panel"><div class="panel-h"><h3>Publish</h3><span class="count">${acc}/${cards.length} accepted</span></div>
@@ -173,7 +188,17 @@ function bindBoard(){
       if(inp.type==="radio"){if(inp.checked)c.a=+inp.value;return}
       if(inp.type==="checkbox"){setPath(c,f,inp.checked);return}
       let v=inp.value;if(f==="min"||f==="trigger.min")v=+v;setPath(c,f,v)});
+    if(c.kind==="quest"){const bl=[...root.querySelectorAll("[data-block]")].filter(x=>x.checked).map(x=>x.dataset.block);if(!bl.length){toast("Pick at least one block");return}c.blocks=bl}
     c.editing=false;c.state="edited";renderBoard()});
+  $$("[data-move]").forEach(b=>b.onclick=()=>{const [id,d]=b.dataset.move.split("|"),i=B.quests.findIndex(q=>q.id===id),j=i+ +d;[B.quests[i],B.quests[j]]=[B.quests[j],B.quests[i]];B.quests[j].flash=true;renderBoard()});
+  $$("[data-del]").forEach(b=>b.onclick=()=>{const q=find(b.dataset.del);B.quests=B.quests.filter(x=>x!==q);B.colls.forEach(c=>{if(c.trigger.kind==="quest"&&c.trigger.quest===q.id)c.trigger.quest=B.quests[0]?.id});toast(`Removed “${q.title}”`);renderBoard()});
+  $("#addq")&&($("#addq").onclick=()=>{B.adding=true;renderBoard();$(".addq")?.scrollIntoView({behavior:"smooth",block:"center"})});
+  $("#addqx")&&($("#addqx").onclick=()=>{B.adding=false;renderBoard()});
+  $("#addqgo")&&($("#addqgo").onclick=()=>{const bl=Object.keys(BLOCKS).filter(k=>$(`[data-newblock="${k}"]`).checked);if(!bl.length){toast("Pick at least one block");return}
+    const q=newQuest(bl);const pi=B.quests.findIndex(x=>x.blocks.includes("pair"));B.quests.splice(pi<0?B.quests.length:pi,0,q);B.adding=false;renderBoard();document.getElementById("card-"+q.id)?.scrollIntoView({behavior:"smooth",block:"center"})});
   $$("[data-ask]").forEach(b=>b.onclick=()=>{B.focus=b.dataset.ask;const c=find(B.focus);renderBoard();renderChat();const i=$("#cin");i.value=`About “${c.title}”: `;i.focus()});
-  $("#publish").onclick=()=>{B.published=true;renderBoard();toast(`Published. Students join with ${CODES.session}`)};
+  $("#publish").onclick=()=>{B.published=true;savePublished();renderBoard();toast(`Published. Students join with ${CODES.session}`)};
 }
+
+/* Published content is also saved in this browser, so a student view opened on the same device uses the teacher's version. */
+function savePublished(){try{localStorage.setItem("wq-published",JSON.stringify({quests:B.quests,roles:B.roles,colls:B.colls,quiz:B.quiz.map(x=>({q:x.q,o:x.o,a:x.a,src:x.cites[0]||"S1"}))}))}catch{}}

@@ -211,3 +211,12 @@ table.pairs td{padding:7px 8px}
 .roles2{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
 .rbox{background:var(--sunk);border-radius:8px;padding:8px 10px;font-size:13px;display:flex;flex-direction:column;gap:4px}
 .qc .foot{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;border-top:1px solid var(--line);padding-top:10px;font-size:13px}
+.bchip{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;background:var(--accent-soft);color:var(--accent)}
+.bpick{display:inline-flex;align-items:center;gap:5px;font-size:13px;padding:5px 9px;border:1px solid var(--line);border-radius:8px;background:var(--sunk)}
+.bpick input,.bcard input{width:auto}
+.addq{border:1px dashed var(--accent);border-radius:10px;padding:12px;background:var(--accent-soft)}
+.bgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.bcard{display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);cursor:pointer}
+.bcard:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
+.bcard input{position:absolute;opacity:0;pointer-events:none}
+.bcard{position:relative}
