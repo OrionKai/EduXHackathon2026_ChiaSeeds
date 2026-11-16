@@ -10,14 +10,13 @@ import Anthropic from "@anthropic-ai/sdk";
 const client = new Anthropic(); // reads ANTHROPIC_API_KEY
 
 const TOPICS = ["A", "B", "C", "D"];
-const SOURCE_IDS = ["S1", "S2", "S3", "S4", "S5"];
 
 const SYSTEM = `You are the quest assistant inside WorldQuest, helping a secondary-school educator (students aged 13-16) refine a Jigsaw museum quest before it is published.
 
-The quest has four expert tracks (A-D). Each student investigates one track at a real gallery, then teaches their home team; an escape-room finale needs all four perspectives.
+The quest's expert tracks are listed under CURRENT TRACKS (one letter each). Each student investigates one track at a real gallery, then teaches their home team; an escape-room finale needs all four perspectives.
 
 Rules you must follow:
-- Use ONLY facts from the approved sources provided (S1-S4 are official gallery pages, S5 is the community partner's contribution). Never invent museum facts, dates, object details or cultural interpretations. If a request needs facts the sources don't contain, say so and suggest the educator ask the community partner.
+- Use ONLY facts from the APPROVED SOURCES provided. Each has an id (S1, S2, ...); they may be official pages, the community partner's contribution, or notes the educator added. Never invent museum facts, dates, object details or cultural interpretations. If a request needs facts the sources don't contain, say so and suggest the educator ask the community partner.
 - Hints must guide students back to observing the real object. A hint must never give the answer and must never contain another track's evidence.
 - Write for ages 13-16: short sentences, plain words.
 - Keep each track's evidence fields unchanged; you may revise its wording (observe, discuss, narrative, fallback, teachHeadline) or add hints.
@@ -36,7 +35,7 @@ const TOOLS = [
         topic: { type: "string", enum: TOPICS },
         field: { type: "string", enum: ["observe", "discuss", "narrative", "fallback", "teachHeadline"] },
         new_text: { type: "string", description: "The full replacement text for that field." },
-        source_ids: { type: "array", items: { type: "string", enum: SOURCE_IDS } },
+        source_ids: { type: "array", items: { type: "string" }, description: "Ids of the approved sources this change relies on, e.g. S2." },
         summary: { type: "string", description: "One sentence for the educator describing what changed and why." },
       },
       required: ["topic", "field", "new_text", "source_ids", "summary"],
@@ -52,7 +51,7 @@ const TOOLS = [
       properties: {
         topic: { type: "string", enum: TOPICS },
         hint: { type: "string" },
-        source_ids: { type: "array", items: { type: "string", enum: SOURCE_IDS } },
+        source_ids: { type: "array", items: { type: "string" } },
         summary: { type: "string" },
       },
       required: ["topic", "hint", "source_ids", "summary"],
@@ -84,6 +83,7 @@ export default async (req) => {
   while (past.length && past[0].role !== "user") past.shift();
   if (past.length && past[past.length - 1].role === "user") past.pop();
 
+  const knownIds = new Set((Array.isArray(sources) ? sources : []).map((x) => x && x.id).filter(Boolean));
   const context = `QUEST SETTINGS: ${JSON.stringify(quest || {})}
 CURRENT TRACKS (approved by the educator or awaiting approval): ${JSON.stringify(tracks || {})}
 APPROVED SOURCES: ${JSON.stringify(sources || [])}
@@ -110,7 +110,8 @@ EDUCATOR'S REQUEST: ${message.trim()}`;
     const edits = response.content
       .filter((b) => b.type === "tool_use")
       .map((b) => ({ tool: b.name, input: b.input }))
-      .filter((e) => TOPICS.includes(e.input?.topic));
+      .filter((e) => TOPICS.includes(e.input?.topic))
+      .map((e) => ({ ...e, input: { ...e.input, source_ids: (e.input.source_ids || []).filter((id) => knownIds.has(id)) } }));
     return json({
       reply: reply || (edits.length ? "I've proposed the changes below — please review them." : "Done."),
       edits,

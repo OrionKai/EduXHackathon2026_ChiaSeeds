@@ -60,19 +60,35 @@
 
   /* ================= shell ================= */
 
+  /* Routing: '#student', '#educator', '#partner'; no hash = landing page. Each device stays in one role. */
+  const ROUTES = { student: 'student', educator: 'teacher', partner: 'collaborator' };
+  const ROUTE_OF = { student: 'student', teacher: 'educator', collaborator: 'partner' };
+  const ROLE_LABEL = { student: 'Student', teacher: 'Educator', collaborator: 'Community partner' };
+  const DEFAULT_SCREEN = { student: 'adventure', teacher: 'dashboard', collaborator: 'review' };
+  const NAV = {
+    student: [['adventure', 'sparkle', 'My adventure'], ['map', 'map', 'Quest map'], ['album', 'trophy', 'Class album']],
+    teacher: [['dashboard', 'map', 'Overview'], ['builder', 'pencil', 'Quest builder'], ['teams', 'team', 'Teams'], ['live', 'eye', 'Live session'], ['album', 'trophy', 'Album'], ['report', 'book', 'Report']],
+    collaborator: [['review', 'pencil', 'Review contribution'], ['facilitate', 'voices', 'Facilitate'], ['work', 'book', 'Student work']],
+  };
+  const currentRole = () => ROUTES[location.hash.slice(1)] || null;
+
   function render() {
     const y = window.scrollY;
     const st = S();
-    const role = st.ui.role;
-    root.innerHTML = `
+    const role = currentRole();
+    if (!role) {
+      root.innerHTML = landingView(st) + overlays(st) + demoDrawer(st);
+    } else {
+      if (st.ui.role !== role) { st.ui.role = role; st.ui.screen = null; st.ui.lookUp = false; }
+      const screen = st.ui.screen || DEFAULT_SCREEN[role];
+      const badge = (id) => (id === 'facilitate' && sel.pendingInteractions().length ? ` <span class="pill peach">${sel.pendingInteractions().length}</span>` : id === 'live' && st.help.some((h) => h.open) ? ` <span class="pill peach">help</span>` : '');
+      root.innerHTML = `
       <div class="shell">
         <aside class="sidebar">
-          <div class="brand">${Art.logo(42)}<h1>WorldQuest</h1></div>
-          <div class="side-label">Adventure base</div>
-          <nav class="side-nav" aria-label="Choose a role view">
-            ${sideBtn('student', 'sparkle', 'Student adventure')}
-            ${sideBtn('teacher', 'map', 'Educator studio')}
-            ${sideBtn('collaborator', 'handshake', 'Community partner')}
+          <a class="brand" href="#" aria-label="WorldQuest home">${Art.logo(42)}<h1>WorldQuest</h1></a>
+          <div class="side-label">${ROLE_LABEL[role]}</div>
+          <nav class="side-nav" aria-label="${ROLE_LABEL[role]} screens">
+            ${NAV[role].map(([id, ic, lb]) => `<button data-a="screen" data-screen="${id}" aria-current="${screen === id}">${Art.icon(ic, 19)}${lb}${badge(id)}</button>`).join('')}
           </nav>
           <div class="side-tip"><strong>${Art.icon('leaf', 16)} Look up, not down</strong>
           The best clues are in the real world.</div>
@@ -80,26 +96,20 @@
         <main class="main" id="main">
           <a class="skip-link" href="#main-content">Skip to content</a>
           <div class="topbar">
-            <span class="crumb">WorldQuest · Interactive prototype</span>
-            <div class="role-tabs" role="group" aria-label="Demo role">
-              ${roleTab('student', '🧭', 'Student')}
-              ${roleTab('teacher', '✏️', 'Educator')}
-              ${roleTab('collaborator', '🤝', 'Collaborator')}
-            </div>
+            <span class="crumb">${esc(st.quest.title)} · ${ROLE_LABEL[role]}</span>
             ${syncPill()}
-            <button class="btn btn-ghost btn-sm" data-a="reset">${Art.icon('back', 16)} Reset demo</button>
           </div>
           <div id="main-content">
             ${role === 'student' ? studentView(st) : role === 'teacher' ? teacherView(st) : collaboratorView(st)}
           </div>
           <p class="fiction-note">${esc(SEED.fictionDisclaimer)} Gallery anchors come from official Fitzwilliam Museum pages
           (<a href="https://fitzmuseum.cam.ac.uk/plan-your-visit/galleries" target="_blank" rel="noopener">galleries</a>) and must be
-          re-checked before a real visit. This prototype runs entirely in your browser: a local demo adapter stands in for the
-          production server described in the PRD.</p>
+          re-checked before a real visit.</p>
         </main>
       </div>
       ${overlays(st)}
-      <div class="demo-float">Working prototype · seeded demo state</div>`;
+      ${demoDrawer(st)}`;
+    }
     bind();
     window.scrollTo(0, y);
     lastReveal = null; // the one-time card flip plays only on the render right after its claim
@@ -109,6 +119,54 @@
     const s = typeof Sync !== 'undefined' ? Sync.state : { status: 'offline', session: '' };
     const txt = { live: `● Live · class ${s.session}`, connecting: 'Connecting…', offline: 'This device only', error: 'Sync error · this device only' }[s.status];
     return `<span class="pill sync-pill ${s.status}" title="Shared session code: ${esc(s.session)}">${txt}</span>`;
+  }
+
+  function landingView(st) {
+    return `
+      <div class="landing">
+        <header class="landing-top"><span class="brand">${Art.logo(40)}<h1>WorldQuest</h1></span>${syncPill()}</header>
+        <section class="hero">
+          <div>
+            <div class="eyebrow">Learning beyond the screen</div>
+            <h1>The real world is <span class="accent">your classroom.</span></h1>
+            <p class="lede">Teachers and community partners design quests in real places. Students explore, teach each other and solve one shared mystery.</p>
+          </div>
+          <div class="hero-art">${Art.arch()}</div>
+        </section>
+        <div class="grid-3 landing-roles">
+          <a class="card role-card" href="#student"><div class="eyebrow">Student</div><h3>Join a quest</h3><p>Use the class code from your teacher. No account, just a nickname.</p><span class="btn btn-primary btn-sm">Join ${Art.icon('arrow', 15)}</span></a>
+          <a class="card role-card" href="#educator"><div class="eyebrow teal">Educator</div><h3>Design and run a quest</h3><p>Plan with the AI assistant, approve every step, run the live session.</p><span class="btn btn-teal btn-sm">Open studio ${Art.icon('arrow', 15)}</span></a>
+          <a class="card role-card" href="#partner"><div class="eyebrow coral">Community partner</div><h3>Share your knowledge</h3><p>Review how your community is represented and talk with students.</p><span class="btn btn-secondary btn-sm">Contribute ${Art.icon('arrow', 15)}</span></a>
+        </div>
+        <p class="fiction-note">${esc(SEED.fictionDisclaimer)}</p>
+      </div>`;
+  }
+
+  /* Demo controls: everything a presenter needs that is NOT part of the product, in one drawer. */
+  function demoDrawer(st) {
+    const sync = typeof Sync !== 'undefined' ? Sync.state : { session: 'FITZ-DEMO', status: 'offline' };
+    const me = SEED.byId[st.ui.student];
+    return `<div class="demo-drawer">
+      ${st.ui.demoOpen ? `<div class="demo-panel" role="dialog" aria-label="Demo controls">
+        <div class="spread"><strong>Demo controls</strong><button class="btn btn-ghost btn-sm" data-a="demo-toggle">Close</button></div>
+        <p class="hint-note" style="margin:0">Presenter tools, not part of the product. Shortcuts are logged as SIMULATED.</p>
+        <div class="demo-sec"><span class="eyebrow">Open this device as</span>
+          <div class="row"><a class="btn btn-secondary btn-sm" href="#student">Student</a><a class="btn btn-secondary btn-sm" href="#educator">Educator</a><a class="btn btn-secondary btn-sm" href="#partner">Partner</a><a class="btn btn-ghost btn-sm" href="#">Home</a></div></div>
+        <div class="demo-sec"><span class="eyebrow">Class session</span>
+          <p style="margin:0">Code <strong>${esc(sync.session)}</strong> · ${sync.status === 'live' ? 'live across devices' : 'this device only'}</p>
+          <form class="row" data-form="session"><label class="sr-only" for="demo-session">New session code</label><input class="input" id="demo-session" placeholder="New code, e.g. ARENA1" style="flex:1;min-width:120px"><button class="btn btn-secondary btn-sm" type="submit">Switch</button></form></div>
+        <div class="demo-sec"><span class="eyebrow">Play as explorer (student view)</span>
+          <select id="student-sel" class="input" data-a="student-sel">
+            ${SEED.homeGroups.map((h) => `<optgroup label="Home team ${h}">${SEED.homeMembers(h).map((p) => `<option value="${p.id}" ${p.id === me.id ? 'selected' : ''}>${esc(who(p))} · ${p.topic}</option>`).join('')}</optgroup>`).join('')}
+          </select></div>
+        <div class="demo-sec"><span class="eyebrow">Shortcuts</span>
+          <div class="row"><button class="btn btn-secondary btn-sm" data-a="sim-class">Seed classmates</button><button class="btn btn-secondary btn-sm" data-a="sim-bonus">Seed discoveries</button><button class="btn btn-secondary btn-sm" data-a="tamper">Tamper test</button></div></div>
+        <div class="demo-sec"><span class="eyebrow">Running order</span>
+          <ol class="hint-note" style="margin:0;padding-left:18px"><li>Partner approves their contribution</li><li>Educator drafts, approves tracks, publishes</li><li>Live session → advance phases; students join with the class code</li></ol></div>
+        <button class="btn btn-danger-ghost btn-sm" data-a="reset">Reset this session for everyone</button>
+      </div>` : ''}
+      <button class="demo-fab" data-a="demo-toggle" aria-expanded="${!!st.ui.demoOpen}">${Art.icon('sparkle', 15)} Demo</button>
+    </div>`;
   }
 
   const sideBtn = (role, icon, label) =>
@@ -136,16 +194,6 @@
               ? `<span class="pill peach">${Art.icon('clock', 14)} Teacher is on the way</span>`
               : `<button class="btn btn-sm help-btn" data-a="help">${Art.icon('alert', 15)} Call teacher</button>`}
           </div>
-          <div class="row">
-            <label class="sr-only" for="student-sel">Play as explorer</label>
-            <select id="student-sel" class="input" style="width:auto;padding:8px 12px" data-a="student-sel">
-              ${SEED.homeGroups.map((h) => `<optgroup label="Home team ${h}">${SEED.homeMembers(h).map((p) => `<option value="${p.id}" ${p.id === me.id ? 'selected' : ''}>${p.name} · ${p.topic}</option>`).join('')}</optgroup>`).join('')}
-            </select>
-            <span class="pill plain">demo: play as any explorer</span>
-          </div>
-        </div>
-        <div class="stage-tabs" role="group" aria-label="Student screens">
-          ${tabs.map(([id, ic, lb]) => `<button data-a="screen" data-screen="${id}" aria-pressed="${screen === id}">${Art.icon(ic, 16)}${lb}</button>`).join('')}
         </div>
         <div class="stage-wrap stack">
           ${screen === 'map' ? questMap(st, me) : screen === 'album' ? albumScreen(st, 'student') : adventureScreen(st, me)}
@@ -212,8 +260,8 @@
       <div class="card">
         <div class="spread"><h3>Waiting in the lobby</h3>${statusChip(st.quest.status === 'PUBLISHED' ? 'AVAILABLE' : 'LOCKED')}</div>
         <p>${st.quest.status === 'PUBLISHED'
-          ? 'You’re in! Your educator will begin the briefing shortly. (In this demo, switch to the Educator view and advance the session.)'
-          : 'The quest hasn’t been published yet. In this demo: the Collaborator approves their contribution, then the Educator publishes and starts the session.'}</p>
+          ? 'You’re in! Your educator will start the briefing soon.'
+          : 'Your educator hasn’t opened this quest yet. Hang tight.'}</p>
         ${st.ui.joined ? `<p class="hint-note">You are ${esc(who(me))} in home team ${me.home}, expert track ${me.topic} · ${esc(SEED.topicMeta[me.topic].name)}.</p>` : ''}
       </div>`;
   }
@@ -287,7 +335,7 @@
             ${st.interactions[me.id] ? statusChip('VERIFIED') : statusChip('SUBMITTED')}</div>
             <p style="margin:8px 0 0">${st.interactions[me.id]
               ? 'Your conversation with the approved contributor is verified — record their perspective in step 3.'
-              : `Meet the approved adult contributor (<em>${esc(SEED.contributor.label)}</em>). They confirm the conversation from their own device — in this demo, switch to the Collaborator view to verify it.`}</p>
+              : `Meet the approved adult contributor (<em>${esc(SEED.contributor.label)}</em>). They confirm it from their own device.`}</p>
           </div>` : ''}` : ''}
       ${tab === 'record' ? (st.checkins[me.id] ? recordForm(st, me, m, ev) : checkinCard(st, me, m, true)) : ''}`;
   }
@@ -304,7 +352,7 @@
   function recordForm(st, me, m, ev) {
     if (ev.status === 'SUBMITTED') {
       return `<div class="card"><div class="spread"><h3>Evidence submitted</h3>${statusChip('SUBMITTED')}</div>
-        <p style="margin:0">Your educator is reviewing your evidence. Look up and keep exploring with your group — you’ll feel a tap when it’s verified. (Demo: review it from the Educator studio.)</p></div>`;
+        <p style="margin:0">Your educator is reviewing your evidence. Look up and keep exploring with your group — you’ll feel a tap when it’s verified.</p></div>`;
     }
     const hintsOpen = st.ui.hintsOpen;
     return `
@@ -572,9 +620,6 @@
     ];
     return `
       <div class="stack">
-        <div class="stage-tabs" role="group" aria-label="Educator screens">
-          ${tabs.map(([id, ic, lb]) => `<button data-a="screen" data-screen="${id}" aria-pressed="${screen === id}">${Art.icon(ic, 16)}${lb}</button>`).join('')}
-        </div>
         ${screen === 'builder' ? teacherBuilder(st)
           : screen === 'teams' ? teacherTeams(st)
           : screen === 'live' ? teacherLive(st)
@@ -607,7 +652,7 @@
         </div>
         <div class="card">
           <div class="spread"><h3>${Art.icon('handshake', 19)} Your community collaborator</h3>${statusChip(st.contributor.status)}</div>
-          <p style="margin:0">${esc(SEED.contributor.name)} — <em>${esc(SEED.contributor.label)}</em>. ${st.contributor.status === 'APPROVED' ? 'Contribution approved; the quest can be published.' : 'Awaiting their review of the learning contribution (switch to the Collaborator view to act).'}</p>
+          <p style="margin:0">${esc(SEED.contributor.name)} — <em>${esc(SEED.contributor.label)}</em>. ${st.contributor.status === 'APPROVED' ? 'Contribution approved; the quest can be published.' : 'Awaiting their review of the learning contribution.'}</p>
         </div>
       </div>`;
   }
@@ -642,8 +687,8 @@
           <div class="card">
             <div class="spread"><h3>Publish checklist</h3>${statusChip(q.status === 'PUBLISHED' ? 'APPROVED' : st.contributor.status === 'APPROVED' ? 'AVAILABLE' : 'PENDING')}</div>
             <ul style="margin:0 0 12px;padding-left:20px">
-              <li>Safety &amp; supervision reviewed (demo checklist) ✓</li>
-              <li>Sources verified against official gallery pages ✓</li>
+              <li><label><input type="checkbox" data-a="safety" ${q.safety ? 'checked' : ''} ${q.status === 'PUBLISHED' ? 'disabled' : ''}> Safety, supervision and venue booking confirmed by me</label></li>
+              <li>Approved sources in the library: <strong>${st.sources.length}</strong></li>
               <li>AI-drafted tracks approved by you: <strong>${SEED.topics.filter((t) => st.tracks[t] === 'APPROVED').length}/4</strong></li>
               <li>Community contribution approved: <strong>${st.contributor.status === 'APPROVED' ? 'yes' : 'not yet — collaborator must approve'}</strong></li>
               <li>Published as <strong>DEMO_ONLY</strong> — no real venue permission implied</li>
@@ -775,15 +820,6 @@
                 <div class="evidence-quote">${esc(st.bonus[c.id].answer)}</div></div>
                 <button class="btn btn-sun btn-sm" data-a="approve-bonus" data-card="${c.id}">${Art.icon('sparkle', 15)} Approve &amp; claim</button></div>`).join('')}
             </div>
-            <div class="card wash-peach">
-              <h3>${Art.icon('sparkle', 18)} Demo shortcuts <span class="pill peach">simulated</span></h3>
-              <p class="hint-note">For a solo walkthrough: seed the other 19 explorers’ steps. Everything seeded is labelled SIMULATED in the audit log.</p>
-              <div class="row">
-                <button class="btn btn-secondary btn-sm" data-a="sim-class">Seed classmate progress</button>
-                <button class="btn btn-secondary btn-sm" data-a="sim-bonus">Seed team discoveries</button>
-                <button class="btn btn-secondary btn-sm" data-a="tamper">Tamper test: force a finale open</button>
-              </div>
-            </div>
           </div>
         </div>
         <div class="card">
@@ -839,11 +875,6 @@
             <span class="pill">${esc(SEED.contributor.label)}</span>
           </div>
           <div class="hero-art">${Art.arch({ door: '#6B5CE7', face: '#F6C5CF' })}${Art.sticker('A story to share', '💬')}</div>
-        </div>
-        <div class="stage-tabs" role="group" aria-label="Collaborator screens">
-          <button data-a="screen" data-screen="review" aria-pressed="${screen === 'review'}">${Art.icon('pencil', 16)}Review contribution</button>
-          <button data-a="screen" data-screen="facilitate" aria-pressed="${screen === 'facilitate'}">${Art.icon('voices', 16)}Facilitate · Expert D ${pendD.length ? `(${pendD.length})` : ''}</button>
-          <button data-a="screen" data-screen="work" aria-pressed="${screen === 'work'}">${Art.icon('book', 16)}Student work</button>
         </div>
         ${screen === 'facilitate' ? facilitateScreen(st, pendD) : screen === 'work' ? partnerWork(st) : reviewScreen(st)}
       </div>`;
@@ -962,7 +993,7 @@
       }
       el.addEventListener('click', (e) => {
         switch (a) {
-          case 'role': return act('setRole', { role: el.dataset.role }) && act('setScreen', { screen: null });
+          case 'role': location.hash = ROUTE_OF[el.dataset.role] || ''; return;
           case 'screen': return act('setScreen', { screen: el.dataset.screen });
           case 'reset': if (confirmReset()) act('resetDemo'); return;
           case 'mtab': S().ui.missionTab = el.dataset.tab; render(); return;
@@ -971,6 +1002,8 @@
           case 'help': return act('requestHelp', { participantId: S().ui.student });
           case 'resolve-help': return act('resolveHelp', { id: el.dataset.id });
           case 'qr-cards': return StationCards.open();
+          case 'demo-toggle': S().ui.demoOpen = !S().ui.demoOpen; render(); return;
+          case 'safety': return act('updateQuest', { field: 'safety', value: el.checked }), render();
           case 'tamper': return typeof Sync !== 'undefined' && Sync.tamperTest().then((r) => toast(r.msg, r.ok ? 'success' : 'error'));
           case 'scan-station': {
             const me = SEED.byId[S().ui.student], m = SEED.missions[me.topic];
@@ -1039,6 +1072,11 @@
         const kind = form.dataset.form;
         if (kind === 'partner-q') { const r = act('addPartnerPrompt', { text: form.querySelector('#pq').value }); return; }
         if (kind === 'partner-fb') { act('partnerFeedback', { home: form.dataset.home, text: form.querySelector('input').value }); return; }
+        if (kind === 'session') {
+          const code = form.querySelector('#demo-session').value.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+          if (code) location.href = location.pathname + '?session=' + encodeURIComponent(code) + location.hash;
+          return;
+        }
         if (kind === 'join') {
           const code = form.querySelector('#join-code').value.trim().toUpperCase();
           const expected = typeof Sync !== 'undefined' && Sync.state.status !== 'offline' ? Sync.state.session : 'FITZ-DEMO';
@@ -1120,7 +1158,7 @@
         if (fast === 'album5') d('markMasterSeen');
       }
     }
-    if (q.get('role')) Engine.dispatch('setRole', { role: q.get('role') });
+    if (q.get('role') && !location.hash) location.hash = ROUTE_OF[q.get('role')] || q.get('role');
     if (q.get('screen')) Engine.dispatch('setScreen', { screen: q.get('screen') });
   }
 
@@ -1136,6 +1174,7 @@
     render();
   });
   window.WQ = { act, toast, render };
+  addEventListener('hashchange', () => { window.scrollTo(0, 0); render(); });
   document.addEventListener('wq-sync', () => render());
   document.addEventListener('wq-sync-msg', (e) => toast(e.detail, 'error'));
 

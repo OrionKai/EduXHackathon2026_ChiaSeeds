@@ -7,7 +7,8 @@
 'use strict';
 
 const Assistant = (() => {
-  const msgs = [{ who: 'ai', text: 'Hi! I only draft from approved sources: the four official gallery pages and your community partner’s contribution. Tell me what the quest is for.' }];
+  const msgs = [{ who: 'ai', text: 'Hi! I draft only from the approved sources in your library. Add anything else I should use, then tell me what the quest is for.' }];
+  let editingTrack = null;
   let busy = false, speed = 1; // speed 0 = no animation (tests)
   // AI mode: 'live' calls the server function (/api/assistant); 'simulated' uses the scripted replies.
   let mode = (() => { try { return localStorage.getItem('wq-ai-mode') || 'live'; } catch { return 'live'; } })();
@@ -16,18 +17,16 @@ const Assistant = (() => {
   const sleep = (ms) => (speed ? new Promise((r) => setTimeout(r, ms * speed)) : Promise.resolve());
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  const SRC = () => [
-    ...SEED.topics.map((t, i) => ({ id: 'S' + (i + 1), title: SEED.missions[t].gallery + ' · official page', url: SEED.missions[t].sourceUrl, fact: SEED.missions[t].sourceFact })),
-    { id: 'S5', title: 'Community partner contribution', url: '', fact: Engine.state.contributor.text, partner: true },
-  ];
-  const srcFor = (t) => 'S' + (SEED.topics.indexOf(t) + 1);
+  const SRC = () => Engine.state.sources.map((s) => (s.kind === 'partner' ? { ...s, fact: Engine.state.contributor.text, partner: true } : { ...s, fact: s.text }));
+  const srcFor = (t) => (Engine.state.sources.find((s) => s.kind === 'official' && s.url === SEED.missions[t].sourceUrl) || { id: '' }).id;
+  const partnerSrc = () => (Engine.state.sources.find((s) => s.kind === 'partner') || { id: '' }).id;
 
   /* scripted steps: draft first, then revisions the teacher can request */
   const DRAFT = {
     id: 'draft', chip: 'Draft the jigsaw quest',
     prompt: (q) => `Draft a ${q.duration || 60}-minute jigsaw quest for ${q.classSize || 20} students at ${q.venue}. Goal: ${q.objective}. Use only approved sources.`,
-    reply: 'Drafted 4 expert tracks (one per gallery), a locked escape-room finale that needs all four, and 5 optional class cards. Each track cites its approved source. Please review and approve each track below — nothing reaches students until you do.',
-    cites: ['S1', 'S2', 'S3', 'S4', 'S5'],
+    reply: 'Drafted 4 expert tracks, a locked escape-room finale that needs all four, and 5 optional class cards, from the approved template and your sources. Please review and approve each track below — nothing reaches students until you do.',
+    cites: null,
     run: () => Engine.dispatch('generateDraft'),
   };
   const REVS = [
@@ -78,7 +77,7 @@ const Assistant = (() => {
   }
 
   function reviewCard(st) {
-    const label = { AI: ['st-submitted', 'AI draft'], REVISED: ['st-submitted', 'AI revised'], APPROVED: ['st-verified', 'Approved'] };
+    const label = { AI: ['st-submitted', 'AI draft'], REVISED: ['st-submitted', 'AI revised'], EDITED: ['st-submitted', 'Edited by you'], APPROVED: ['st-verified', 'Approved'] };
     const n = SEED.topics.filter((t) => st.tracks[t] === 'APPROVED').length;
     const locked = st.quest.status === 'PUBLISHED';
     return `
@@ -94,7 +93,9 @@ const Assistant = (() => {
               ${st.revisions[t] ? `<p class="as-note">${Art.icon('pencil', 14)} ${esc(st.revisions[t])}</p>` : ''}
               ${st.trackEdits && st.trackEdits[t] ? `<details><summary class="hint-note" style="cursor:pointer">What students will see</summary><dl class="evidence-quote" style="margin-top:6px">${Object.entries(st.trackEdits[t]).map(([k, v]) => `<dt>${esc(k === 'hintsExtra' ? 'extra hints' : k)}</dt><dd>${esc(Array.isArray(v) ? v.join(' · ') : v)}</dd>`).join('')}</dl></details>` : ''}
               ${locked ? '' : `<div class="row" style="gap:6px">${st.tracks[t] === 'APPROVED' ? '' : `<button class="btn btn-teal btn-sm" type="button" data-as-approve="${t}">${Art.icon('check', 14)} Approve</button>`}
+                <button class="btn btn-ghost btn-sm" type="button" data-as-edit="${t}">Edit</button>
                 <button class="btn btn-ghost btn-sm" type="button" data-as-ask="${t}">Ask AI to change</button></div>`}
+              ${editingTrack === t && !locked ? editorHTML(t) : ''}
             </div>`;
           }).join('')}
           <div class="as-track"><div class="spread"><strong>${Art.icon('puzzle', 15)} Finale: Restore the Exhibition Story</strong><span class="pill plain">locked until all 4 tracks are verified and taught</span></div></div>
@@ -102,11 +103,32 @@ const Assistant = (() => {
       </div>`;
   }
 
+  function editorHTML(t) {
+    const m = Engine.sel.mission(t);
+    const f = (k, label) => `<label class="fld" for="ed-${k}">${label}</label><textarea class="input" id="ed-${k}" rows="2">${esc(m[k])}</textarea>`;
+    return `<form class="stack as-editor" style="gap:6px;margin-top:10px" data-as-editform="${t}">
+      ${f('observe', 'What students do at the object')}${f('discuss', 'Discussion question')}${f('fallback', 'Accessible or backup route')}
+      <label class="fld" for="ed-hint">Add a hint (optional)</label><input class="input" id="ed-hint" placeholder="Points back to the object, never the answer">
+      <div class="row"><button class="btn btn-primary btn-sm" type="submit">Save changes</button><button class="btn btn-ghost btn-sm" type="button" data-as-edit-cancel>Cancel</button></div></form>`;
+  }
+
   function sourcesCard() {
-    return `<details class="card as-sources" id="as-sources"><summary><strong>${Art.icon('book', 16)} Approved sources</strong> <span class="hint-note">the only material the AI may use</span></summary>
-      <div class="stack" style="gap:8px;margin-top:10px">${SRC().map((s) => `<div class="as-src" id="as-src-${s.id}"><span class="as-cite">${s.id}</span>
-        <div><strong>${esc(s.title)}</strong>${s.partner ? ` <span class="pill ${Engine.state.contributor.status === 'APPROVED' ? 'mint' : 'peach'}">${Engine.state.contributor.status === 'APPROVED' ? 'partner-approved' : 'awaiting partner'}</span>` : ''}
-        <p class="hint-note" style="margin:2px 0 0">${esc(s.fact)} ${s.url ? `<a href="${s.url}" target="_blank" rel="noopener">open</a>` : ''}</p></div></div>`).join('')}</div></details>`;
+    const st = Engine.state, locked = st.quest.status === 'PUBLISHED';
+    return `<div class="card as-sources" id="as-sources">
+      <div class="spread"><h3 style="margin:0">${Art.icon('book', 18)} Approved sources</h3><span class="pill lavender">${st.sources.length} in library</span></div>
+      <p class="hint-note" style="margin:6px 0 10px">The assistant may only use these. Add your own notes, object records or links.</p>
+      <div class="stack" style="gap:8px">${SRC().map((s) => `<div class="as-src" id="as-src-${s.id}"><span class="as-cite">${s.id}</span>
+        <div style="min-width:0"><div class="spread"><strong>${esc(s.title)}</strong>
+          ${s.partner ? `<span class="pill ${st.contributor.status === 'APPROVED' ? 'mint' : 'peach'}">${st.contributor.status === 'APPROVED' ? 'partner-approved' : 'awaiting partner'}</span>`
+            : s.kind === 'educator' ? `<span class="row" style="gap:6px"><span class="pill plain">added by you</span>${locked ? '' : `<button class="btn btn-ghost btn-sm" type="button" data-as-rmsrc="${s.id}" aria-label="Remove ${s.id}">Remove</button>`}</span>` : '<span class="pill plain">official page</span>'}</div>
+        <p class="hint-note" style="margin:2px 0 0">${esc(s.fact)} ${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">open</a>` : ''}</p></div></div>`).join('')}</div>
+      ${locked ? '' : `<details style="margin-top:10px"><summary class="as-chip" style="display:inline-flex">${Art.icon('plus', 14)} Add a source</summary>
+        <form class="stack" style="gap:6px;margin-top:10px" data-as-src>
+          <label class="fld" for="src-title">Title</label><input class="input" id="src-title" placeholder="e.g. Museum learning team notes">
+          <label class="fld" for="src-url">Link (optional)</label><input class="input" id="src-url" placeholder="https://…">
+          <label class="fld" for="src-text">Relevant text</label><textarea class="input" id="src-text" rows="3" placeholder="Paste the facts the assistant may use"></textarea>
+          <button class="btn btn-primary btn-sm" type="submit" style="align-self:flex-start">Add to library</button></form></details>`}
+    </div>`;
   }
 
   /* streaming helpers: update only the message list so the rest of the page stays put */
@@ -138,9 +160,17 @@ const Assistant = (() => {
     const st = Engine.state;
     const prompt = typed || (typeof step.prompt === 'function' ? step.prompt(st.quest) : step.prompt);
     if (!typed) await typeInto(prompt);
+    if (step === DRAFT && mode === 'live') {
+      Engine.dispatch('generateDraft');
+      busy = false;
+      return liveTurn(prompt + ' Start from the template tracks already loaded and adapt their wording to these settings.', {
+        display: prompt,
+        onFail: async () => { busy = true; msgs.push({ who: 'you', text: prompt }); paintMsgs(); await say(DRAFT.reply, SRC().map((x) => x.id)); busy = false; window.WQ.render(); },
+      });
+    }
     msgs.push({ who: 'you', text: prompt }); paintMsgs();
     document.querySelectorAll('[data-as-chip]').forEach((b) => (b.disabled = true));
-    await say(step.reply, step.cites || [srcFor(step.topic)]);
+    await say(step.reply, step === DRAFT ? SRC().map((x) => x.id) : step.topic === 'D' ? [srcFor('D'), partnerSrc()] : [srcFor(step.topic)]);
     busy = false;
     const r = step.run ? step.run() : Engine.dispatch('reviseTrack', { topic: step.topic, note: step.note, patch: step.patch });
     if (r && !r.ok && r.msg) window.WQ?.toast(r.msg, 'error');
@@ -169,9 +199,9 @@ const Assistant = (() => {
       tracks, sources: SRC().map((s) => ({ id: s.id, title: s.title, text: s.fact })) };
   }
 
-  async function liveTurn(text) {
+  async function liveTurn(text, opts = {}) {
     busy = true;
-    msgs.push({ who: 'you', text }); paintMsgs();
+    msgs.push({ who: 'you', text: opts.display || text }); paintMsgs();
     const m = { who: 'ai', text: '', thinking: true }; msgs.push(m); paintMsgs();
     let data = null, status = 0;
     try {
@@ -186,12 +216,13 @@ const Assistant = (() => {
       if (status === 401) { needPass = true; lastNotice = 'Live AI needs the demo passcode.'; }
       else { mode = 'simulated'; lastNotice = 'Live AI is unavailable here, so the scripted assistant is answering.'; }
       busy = false;
-      msgs.pop(); // drop the echoed request; freeText re-adds it
-      return status === 401 ? window.WQ.render() : freeText(text);
+      msgs.pop(); // drop the echoed request; the fallback re-adds it
+      if (status === 401) return window.WQ.render();
+      return opts.onFail ? opts.onFail() : freeText(text);
     }
     const cites = [...new Set((data.edits || []).flatMap((e) => e.input.source_ids || []))];
     await say(data.reply, cites);
-    history.push({ role: 'user', content: text }, { role: 'assistant', content: data.reply });
+    history.push({ role: 'user', content: opts.display || text }, { role: 'assistant', content: data.reply });
     for (const e of data.edits || []) {
       const i = e.input;
       const patch = e.tool === 'add_hint' ? { hint: i.hint } : { [i.field]: i.new_text };
@@ -213,8 +244,6 @@ const Assistant = (() => {
       if (inp) { inp.value = `Track ${b.dataset.asAsk}: `; inp.focus(); inp.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
     }));
     root.querySelectorAll('[data-as-cite]').forEach((b) => b.addEventListener('click', () => {
-      const d = document.getElementById('as-sources');
-      if (d) d.open = true;
       const row = document.getElementById('as-src-' + b.dataset.asCite);
       if (row) { row.classList.add('flash'); row.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => row.classList.remove('flash'), 1400); }
     }));
@@ -223,6 +252,20 @@ const Assistant = (() => {
       try { localStorage.setItem('wq-ai-mode', mode); } catch {}
       window.WQ.render();
     }));
+    root.querySelectorAll('[data-as-edit]').forEach((b) => b.addEventListener('click', () => { editingTrack = editingTrack === b.dataset.asEdit ? null : b.dataset.asEdit; window.WQ.render(); }));
+    root.querySelectorAll('[data-as-edit-cancel]').forEach((b) => b.addEventListener('click', () => { editingTrack = null; window.WQ.render(); }));
+    root.querySelectorAll('[data-as-editform]').forEach((f) => f.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const t = f.dataset.asEditform, m = Engine.sel.mission(t), patch = {};
+      ['observe', 'discuss', 'fallback'].forEach((k) => { const v = f.querySelector('#ed-' + k).value.trim(); if (v && v !== m[k]) patch[k] = v; });
+      const h = f.querySelector('#ed-hint').value.trim(); if (h) patch.hint = h;
+      editingTrack = null;
+      if (!Object.keys(patch).length) return window.WQ.render();
+      window.WQ.act('reviseTrack', { topic: t, note: 'Edited by you', patch, by: 'educator' });
+    }));
+    root.querySelectorAll('[data-as-rmsrc]').forEach((b) => b.addEventListener('click', () => window.WQ.act('removeSource', { id: b.dataset.asRmsrc })));
+    const sf = root.querySelector('[data-as-src]');
+    if (sf) sf.addEventListener('submit', (e) => { e.preventDefault(); window.WQ.act('addSource', { title: sf.querySelector('#src-title').value, url: sf.querySelector('#src-url').value, text: sf.querySelector('#src-text').value }); });
     const pf = root.querySelector('[data-as-pass]');
     if (pf) pf.addEventListener('submit', (e) => { e.preventDefault(); try { localStorage.setItem('wq-ai-pass', document.getElementById('as-pass').value); } catch {} needPass = false; window.WQ.render(); });
     const f = root.querySelector('[data-as-form]');

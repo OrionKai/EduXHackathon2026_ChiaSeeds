@@ -70,6 +70,7 @@ const Engine = (() => {
       master: null, // { at } — exactly once
       masterSeen: false,
       reflections: {}, // participantId -> [a1, a2]
+      sources: seedSources(), // the educator's approved-source library the assistant may draft from
       seats: {}, // participantId -> { nick, at } once a real student joins with the class code
       partnerFeedback: {}, // home -> { text, at } from the community collaborator on the team's finale
       checkins: {}, // participantId -> { at, via: 'QR' | 'CODE' | 'SIMULATED' }
@@ -100,7 +101,13 @@ const Engine = (() => {
     return freshState();
   }
 
+  function seedSources() {
+    return SEED.topics.map((t, i) => ({ id: 'S' + (i + 1), kind: 'official', title: SEED.missions[t].gallery + ' · official page', url: SEED.missions[t].sourceUrl, text: SEED.missions[t].sourceFact }))
+      .concat([{ id: 'S' + (SEED.topics.length + 1), kind: 'partner', title: 'Community partner contribution', url: '', text: '' }]);
+  }
+
   function upgrade(s) {
+    s.sources = s.sources || seedSources();
     s.checkins = s.checkins || {};
     s.help = s.help || [];
     s.tracks = s.tracks || { A: 'AI', B: 'AI', C: 'AI', D: 'AI' };
@@ -226,7 +233,8 @@ const Engine = (() => {
 
     /* ----- quest authoring (educator) ----- */
     updateQuest(s, { field, value }) {
-      if (!['title', 'objective', 'venue', 'duration', 'classSize'].includes(field)) return { ok: false };
+      if (!['title', 'objective', 'venue', 'duration', 'classSize', 'safety'].includes(field)) return { ok: false };
+      if (field === 'safety') { s.quest.safety = !!value; return { ok: true, silent: true }; }
       s.quest[field] = ['duration', 'classSize'].includes(field) ? Number(value) : value;
       return { ok: true, silent: true };
     },
@@ -243,6 +251,7 @@ const Engine = (() => {
         return { ok: false, msg: 'The community contribution has not been approved yet.' };
       if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Already published.' };
       if (!s.quest.draftGenerated) return { ok: false, msg: 'Draft the quest first.' };
+      if (!s.quest.safety) return { ok: false, msg: 'Confirm the safety and supervision plan first.' };
       if (SEED.topics.some((t) => s.tracks[t] !== 'APPROVED'))
         return { ok: false, msg: 'Approve all four AI-drafted expert tracks first — nothing reaches students unapproved.' };
       s.quest.status = 'PUBLISHED';
@@ -534,14 +543,14 @@ const Engine = (() => {
     },
 
     /* ----- AI draft review (educator approves each track) ----- */
-    reviseTrack(s, { topic, note, patch }) {
+    reviseTrack(s, { topic, note, patch, by }) {
       if (!s.quest.draftGenerated) return { ok: false, msg: 'Draft the quest first.' };
       if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Already published — edits would disrupt a live session.' };
       if (!SEED.topics.includes(topic)) return { ok: false };
       const e = (s.trackEdits[topic] = s.trackEdits[topic] || {});
       for (const k of ['observe', 'discuss', 'narrative', 'fallback', 'teachHeadline']) if (patch && typeof patch[k] === 'string' && patch[k].trim()) e[k] = patch[k].trim().slice(0, 600);
       if (patch && typeof patch.hint === 'string' && patch.hint.trim()) e.hintsExtra = [...(e.hintsExtra || []), patch.hint.trim().slice(0, 300)].slice(-3);
-      s.tracks[topic] = 'REVISED';
+      s.tracks[topic] = by === 'educator' ? 'EDITED' : 'REVISED';
       s.revisions[topic] = [s.revisions[topic], note].filter(Boolean).join(' · ').slice(-500);
       audit('teacher', `AI revised track ${topic} on request (simulated AI) — needs approval again.`);
       return { ok: true, silent: true };
@@ -552,6 +561,27 @@ const Engine = (() => {
       s.tracks[topic] = 'APPROVED';
       audit('teacher', `Approved AI-drafted track ${topic} (${SEED.topicMeta[topic].name}).`);
       return { ok: true, msg: `Track ${topic} approved.` };
+    },
+
+    /* ----- approved-source library (educator) ----- */
+    addSource(s, { title, url, text }) {
+      if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'The quest is published — sources are frozen for this version.' };
+      const t = String(title || '').trim(), x = String(text || '').trim(), u = String(url || '').trim();
+      if (t.length < 3) return { ok: false, msg: 'Give the source a short title.' };
+      if (x.length < 20) return { ok: false, msg: 'Paste the relevant text (at least a sentence) so the assistant can cite it.' };
+      if (u && !/^https?:\/\//.test(u)) return { ok: false, msg: 'Links must start with http:// or https://' };
+      const n = Math.max(0, ...s.sources.map((x2) => parseInt(String(x2.id).slice(1), 10) || 0)) + 1;
+      s.sources.push({ id: 'S' + n, kind: 'educator', title: t.slice(0, 80), url: u.slice(0, 300), text: x.slice(0, 2000) });
+      audit('teacher', `Added approved source S${n}: ${t.slice(0, 60)}.`);
+      return { ok: true, msg: `Added S${n} to your approved sources.` };
+    },
+    removeSource(s, { id }) {
+      const i = s.sources.findIndex((x) => x.id === id);
+      if (i < 0 || s.sources[i].kind !== 'educator') return { ok: false, msg: 'Only sources you added can be removed.' };
+      if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'The quest is published — sources are frozen for this version.' };
+      const [x] = s.sources.splice(i, 1);
+      audit('teacher', `Removed source ${x.id}.`);
+      return { ok: true, msg: `Removed ${x.id}.` };
     },
 
     /* ----- real-world checkpoint: QR clue card or facilitator code ----- */
