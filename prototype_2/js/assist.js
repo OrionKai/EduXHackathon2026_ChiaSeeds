@@ -11,6 +11,7 @@
 const Assistant = (() => {
   const msgs = [{ who: 'ai', text: 'Hi! I draft only from the approved sources in your library. Add anything else I should use, then tell me what the quest is for.' }];
   let editing = null; // 'A'..'D' | 'finale' | 'extras'
+  let refDraft = null; // reference photo being edited for the open track
   let busy = false, speed = 1, confirmGen = false;
   let mode = (() => { try { return localStorage.getItem('wq-ai-mode') || 'live'; } catch { return 'live'; } })();
   let needPass = false, lastNotice = '';
@@ -155,6 +156,10 @@ const Assistant = (() => {
       <div class="grid-3" style="gap:8px"><div><label class="fld" for="as-ci">Check-in at the place</label>${opt('as-ci', a.checkin, T.checkin)}</div>
         <div><label class="fld" for="as-ev">Evidence students submit</label>${opt('as-ev', a.evidence, T.evidence)}</div>
         <div><label class="fld" for="as-ver">Verified by</label>${opt('as-ver', a.verify, T.verify)}</div></div>
+      <div class="stack" style="gap:4px"><span class="fld">Reference photo for the AI check (optional)</span>
+        ${refDraft ? `<img class="ev-photo" src="${refDraft}" alt="Reference photo">` : '<span class="hint-note">Without one, the AI matches the photo against the key object’s name.</span>'}
+        <label class="btn btn-ghost btn-sm" for="as-ref" style="align-self:flex-start">${refDraft ? 'Replace photo' : 'Add a photo'}</label><input id="as-ref" type="file" accept="image/*" hidden>
+        ${refDraft ? '<button class="btn btn-ghost btn-sm" type="button" data-as-ref-clear style="align-self:flex-start">Remove photo</button>' : ''}</div>
       <label class="toggle"><input type="checkbox" id="as-qz" ${quiz.length ? 'checked' : ''}> Add a multiple-choice check</label>
       <div class="stack" style="gap:8px" id="as-qz-box" ${quiz.length ? '' : 'hidden'}>${[0, 1, 2].map(slot).join('')}
         <label class="fld" for="as-pass">Pass mark (questions right)</label><select class="input" id="as-pass" style="width:auto">${[1, 2, 3].map((n) => `<option value="${n}" ${a.pass === n ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
@@ -402,7 +407,16 @@ const Assistant = (() => {
     on('[data-as-ask]', 'click', (b) => { const i = document.getElementById('as-in'); if (i) { i.value = `Track ${b.dataset.asAsk}: `; i.focus(); i.scrollIntoView({ behavior: 'smooth', block: 'center' }); } });
     on('[data-as-cite]', 'click', (b) => { const row = document.getElementById('as-src-' + b.dataset.asCite); if (row) { row.classList.add('flash'); row.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => row.classList.remove('flash'), 1400); } });
     on('[data-as-mode]', 'click', () => { mode = mode === 'live' ? 'simulated' : 'live'; lastNotice = ''; try { localStorage.setItem('wq-ai-mode', mode); } catch {} window.WQ.render(); });
-    on('[data-as-edit]', 'click', (b) => { editing = editing === b.dataset.asEdit ? null : b.dataset.asEdit; window.WQ.render(); });
+    on('[data-as-edit]', 'click', (b) => { editing = editing === b.dataset.asEdit ? null : b.dataset.asEdit; refDraft = editing && SEED.missions[editing] ? SEED.missions[editing].refPhoto || null : null; window.WQ.render(); });
+    on('[data-as-ref-clear]', 'click', () => { refDraft = null; window.WQ.render(); });
+    on('#as-ref', 'change', (input) => {
+      const file = input.files[0]; if (!file) return;
+      const img = new Image();
+      img.onload = () => { const k = Math.min(1, 480 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        refDraft = cv.toDataURL('image/jpeg', 0.6); window.WQ.render(); };
+      img.src = URL.createObjectURL(file);
+    });
     on('[data-as-edit-cancel]', 'click', () => { editing = null; window.WQ.render(); });
     on('#as-qz', 'change', (c) => { const box = document.getElementById('as-qz-box'); if (box) box.hidden = !c.checked; });
     on('[data-as-trackform]', 'submit', (f, e) => {
@@ -411,7 +425,8 @@ const Assistant = (() => {
       editing = null;
       window.WQ.act('editTrack', { topic: t, fields: { name: v('ed-name'), location: v('ed-loc'), keyObject: v('ed-key'), narrative: v('ed-narr'), observe: v('ed-obs'), discuss: v('ed-disc'),
         evidence: lines(v('ed-ev')), hints: lines(v('ed-hints')), fallback: v('ed-fb'), teachHeadline: v('ed-teach'), checkCorrect: v('ed-ok'), checkIncorrect: v('ed-no'),
-        needsContributor: f.querySelector('#ed-partner').checked, sourceFact: old.sourceFact, sourceUrl: old.sourceUrl, assess: readAssess(f) } });
+        needsContributor: f.querySelector('#ed-partner').checked, sourceFact: old.sourceFact, sourceUrl: old.sourceUrl, assess: readAssess(f), refPhoto: refDraft } });
+      refDraft = null;
     });
     on('[data-as-finaleform]', 'submit', (f, e) => {
       e.preventDefault();

@@ -105,7 +105,7 @@
           <a class="skip-link" href="#main-content">Skip to content</a>
           <div class="topbar">
             <span class="crumb">${esc(st.quest.title)} · ${ROLE_LABEL[role]}</span>
-            ${syncPill()}
+            <span class="row" style="gap:8px">${syncPill()}<button class="demo-fab" data-a="demo-toggle" aria-expanded="${!!st.ui.demoOpen}">${Art.icon('sparkle', 15)} Demo</button></span>
           </div>
           <div id="main-content">
             ${role === 'student' ? studentView(st) : role === 'teacher' ? teacherView(st) : collaboratorView(st)}
@@ -130,7 +130,7 @@
   function landingView(st) {
     return `
       <div class="landing">
-        <header class="landing-top"><span class="brand">${Art.logo(40)}<h1>WorldQuest</h1></span>${syncPill()}</header>
+        <header class="landing-top"><span class="brand">${Art.logo(40)}<h1>WorldQuest</h1></span><span class="row" style="gap:8px">${syncPill()}<button class="demo-fab" data-a="demo-toggle" aria-expanded="${!!st.ui.demoOpen}">${Art.icon('sparkle', 15)} Demo</button></span></header>
         <section class="hero">
           <div>
             <div class="eyebrow">Learning beyond the screen</div>
@@ -171,7 +171,6 @@
           <ol class="hint-note" style="margin:0;padding-left:18px"><li>Partner approves their contribution</li><li>Educator drafts, approves tracks, publishes</li><li>Live session → advance phases; students join with the class code</li></ol></div>
         <button class="btn btn-danger-ghost btn-sm" data-a="reset">Reset demo data (everyone on this class code)</button>
       </div>` : ''}
-      <button class="demo-fab" data-a="demo-toggle" aria-expanded="${!!st.ui.demoOpen}">${Art.icon('sparkle', 15)} Demo</button>
     </div>`;
   }
 
@@ -222,13 +221,15 @@
       case 'EXPERT': {
         const at = a.checkin === 'none' || !!st.checkins[me.id];
         const submitted = ev.status === 'SUBMITTED' || ev.status === 'VERIFIED';
-        const list = [[at, !at, `Go to <strong>${place}</strong> with your expert group${a.checkin === 'qr' ? ' and scan the clue card' : ''}`],
+        const how = a.checkin === 'qr' ? ' and scan the clue card' : String(a.checkin).startsWith('photo') ? ` and photograph <strong>${esc(SEED.keyObjectOf(me.topic))}</strong>` : '';
+        const list = [[at, !at, st.checkinPhotos[me.id] ? 'Wait for your teacher to confirm your photo' : `Go to <strong>${place}</strong> with your expert group${how}`],
           [at && (st.ui.missionTab === 'record' || submitted), at && !submitted, 'Look closely and talk it through — phone away'],
           [submitted, at && !submitted, `Submit your evidence (${esc(SEED.ASSESS_TEXT.evidence[a.evidence]).toLowerCase()}${a.quiz && a.quiz.length ? ' + quick check' : ''})`],
           [ev.status === 'VERIFIED', ev.status === 'SUBMITTED', ev.status === 'NEEDS_REVISION' ? 'Fix what your reviewer asked for, then submit again' : `Get it verified (${esc(SEED.ASSESS_TEXT.verify[a.verify]).toLowerCase()})`]];
         title = ev.status === 'VERIFIED' ? 'Done! Wait for peer teaching' : 'Your expert mission';
         body = steps(list);
         if (!at && a.checkin === 'qr') action = `<button class="btn btn-primary btn-sm" data-a="scan-station">${Art.icon('eye', 15)} Scan clue card</button>`;
+        else if (!at && String(a.checkin).startsWith('photo') && !st.checkinPhotos[me.id]) action = `<button class="btn btn-primary btn-sm" data-a="mtab" data-tab="observe">${Art.icon('eye', 15)} Photograph the object</button>`;
         else if (!submitted || ev.status === 'NEEDS_REVISION') action = `<button class="btn btn-primary btn-sm" data-a="mtab" data-tab="record">${Art.icon('pencil', 15)} Open my field notes</button>`;
         break;
       }
@@ -378,7 +379,6 @@
         <div class="gallery-note"><h4>${Art.icon('map', 18)} ${esc(m.gallery)}</h4><p style="margin:0">${esc(m.observe)}</p></div>
         <div class="card"><p class="hint-note" style="margin:0"><strong>Verified anchor:</strong> ${esc(m.sourceFact)}
           <a href="${m.sourceUrl}" target="_blank" rel="noopener">official source</a> · re-check on the day. ${esc(m.fallback)}</p></div>
-        <button class="btn btn-secondary" data-a="lookup">${Art.icon('eye', 18)} Look Up Mode</button>
         <p class="hint-note">Observe in person with your group. Never touch or place anything on objects or exhibits.</p>` : ''}
       ${tab === 'discuss' ? `
         <div class="card wash-lavender"><h4>${Art.icon('voices', 18)} Talk it through</h4><p style="margin:0">${esc(m.discuss)}</p></div>
@@ -395,14 +395,26 @@
   }
 
   function checkinCard(st, me, m, locked) {
-    if (m.assess && m.assess.checkin === 'none') return '';
+    const a = m.assess || SEED.defaultAssess();
+    if (a.checkin === 'none') return '';
     const c = st.checkins[me.id];
-    if (c) return `<div class="card wash-mint" style="padding:12px 16px"><strong>${Art.icon('check', 16)} Checked in at ${esc(m.gallery)}</strong> <small>${c.via === 'QR' ? 'QR clue card' : c.via === 'CODE' ? 'facilitator code' : 'simulated'}</small></div>`;
-    return `<div class="card checkin-card">
+    const via = { QR: 'QR clue card', CODE: 'facilitator code', PHOTO_AI: 'photo checked by AI', PHOTO_TEACHER: 'photo approved by your teacher', SIMULATED: 'simulated' };
+    if (c) return `<div class="card wash-mint" style="padding:12px 16px"><strong>${Art.icon('check', 16)} Checked in at ${esc(m.gallery)}</strong> <small>${via[c.via] || ''}</small></div>`;
+    if (a.checkin === 'qr') return `<div class="card checkin-card">
       <h4 style="margin:0 0 6px">${Art.icon('map', 18)} ${locked ? 'Field notes unlock at your station' : 'Find your station'}</h4>
       <p style="margin:0 0 10px">Go to <strong>${esc(m.gallery)}</strong> and scan the <strong>${esc(m.name)}</strong> clue card.</p>
       <button class="btn btn-primary" data-a="scan-station">${Art.icon('eye', 17)} Scan clue card</button></div>`;
+    const pending = st.checkinPhotos[me.id];
+    return `<div class="card checkin-card">
+      <h4 style="margin:0 0 6px">${Art.icon('eye', 18)} ${locked ? 'Field notes unlock when you find the object' : 'Find the object'}</h4>
+      <p style="margin:0 0 10px">Go to <strong>${esc(m.gallery)}</strong>, find <strong>${esc(SEED.keyObjectOf(me.topic))}</strong> and take a photo of it — the object only, no people.</p>
+      ${pending ? `<img class="ev-photo" src="${pending.photo}" alt="Your check-in photo"><p class="hint-note" style="margin:0">${Art.icon('clock', 14)} Waiting for your teacher to confirm.${pending.reason ? ' ' + esc(pending.reason) : ''}</p>`
+        : st.ui.photoCheck === me.id ? `<p class="hint-note" style="margin:0">${Art.icon('sparkle', 14)} Checking your photo…</p>`
+        : `<label class="btn btn-primary" for="ci-photo">${Art.icon('eye', 17)} Photograph the object</label><input id="ci-photo" type="file" accept="image/*" capture="environment" hidden>
+           <p class="hint-note" style="margin:8px 0 0">${a.checkin === 'photo_ai' ? 'An AI checks it matches the object; if it’s unsure, your teacher decides. The photo isn’t kept after the check.' : 'Your teacher confirms the photo.'}</p>`}
+    </div>`;
   }
+
 
   function recordForm(st, me, m, ev) {
     if (ev.status === 'SUBMITTED') {
@@ -854,6 +866,10 @@
           <p class="hint-note" style="margin:10px 0 0">${esc(SEED.phaseMeta[st.phase].desc)} ${st.phase === 'LOBBY' && st.quest.status !== 'PUBLISHED' ? '· Publish the quest first (Quest builder).' : ''}</p>
         </div>
 
+        ${Object.keys(st.checkinPhotos).length ? `<div class="card"><div class="spread"><h3>${Art.icon('eye', 18)} Check-in photos</h3><span class="pill lavender">${Object.keys(st.checkinPhotos).length} to confirm</span></div>
+          <div class="grid-3">${Object.entries(st.checkinPhotos).map(([pid, c]) => { const p = SEED.byId[pid]; return `<div class="queue-row" style="display:block"><strong>${esc(who(p))}</strong> · ${esc(SEED.missions[p.topic].name)}
+            <p class="hint-note" style="margin:2px 0">Should show: ${esc(SEED.keyObjectOf(p.topic))}</p><img class="ev-photo" src="${c.photo}" alt="Check-in photo from ${esc(who(p))}">${c.reason ? `<p class="hint-note" style="margin:0">AI: ${esc(c.reason)}</p>` : ''}
+            <div class="row" style="margin-top:6px"><button class="btn btn-teal btn-sm" data-a="ok-checkin" data-pid="${pid}">${Art.icon('check', 15)} That’s it</button><button class="btn btn-danger-ghost btn-sm" data-a="no-checkin" data-pid="${pid}">Retake</button></div></div>`; }).join('')}</div></div>` : ''}
         ${st.help.some((h) => h.open) ? `<div class="card"><div class="spread"><h3>${Art.icon('alert', 18)} Help requests</h3><span class="pill peach">${st.help.filter((h) => h.open).length} open</span></div>
           <div class="stack" style="gap:8px">${st.help.filter((h) => h.open).map((h) => { const p = SEED.byId[h.pid]; return `<div class="help-row"><span><strong>${esc(who(p))}</strong> · Home ${p.home} · ${esc(SEED.missions[p.topic].gallery)}</span><button class="btn btn-teal btn-sm" data-a="resolve-help" data-id="${h.id}">${Art.icon('check', 15)} I’m with them</button></div>`; }).join('')}</div></div>` : ''}
         <div class="grid-2">
@@ -1050,18 +1066,6 @@
 
   function overlays(st) {
     let html = '<div class="toast-zone" id="toasts"></div>';
-    if (st.ui.lookUp) {
-      const me = SEED.byId[st.ui.student];
-      const m = SEED.missions[me.topic];
-      html += `<div class="overlay" role="dialog" aria-modal="true" aria-label="Look up mode">
-        <div class="overlay-panel lookup-panel">
-          <div class="eyebrow teal">Look Up Mode</div>
-          <h2>Eyes on the real world 👀</h2>
-          <p class="big-instruction">${esc(m.observe)}</p>
-          <p class="hint-note">Stay with your group · ask an approved adult if unsure · nothing touches the exhibits.</p>
-          <button class="btn btn-primary" data-a="lookup-off">${Art.icon('back', 17)} Back to quest</button>
-        </div></div>`;
-    }
     if (st.master && !st.ui.masterSeen) {
       html += `<div class="overlay" role="dialog" aria-modal="true" aria-label="Master award unlocked">
         <div class="overlay-panel master-panel">
@@ -1134,6 +1138,8 @@
           case 'advance': return act('advancePhase');
           case 'rewind': return act('rewindPhase');
           case 'verify-ev': return act('reviewEvidence', { participantId: el.dataset.pid, verdict: 'VERIFIED', reviewer: 'teacher' });
+          case 'ok-checkin': return act('reviewCheckin', { participantId: el.dataset.pid, approve: true });
+          case 'no-checkin': return act('reviewCheckin', { participantId: el.dataset.pid, approve: false });
           case 'pverify-ev': return act('reviewEvidence', { participantId: el.dataset.pid, verdict: 'VERIFIED', reviewer: 'collaborator' });
           case 'preturn-ev': return act('reviewEvidence', { participantId: el.dataset.pid, verdict: 'NEEDS_REVISION', reviewer: 'collaborator' });
           case 'return-ev': return act('reviewEvidence', { participantId: el.dataset.pid, verdict: 'NEEDS_REVISION', reviewer: 'teacher' });
@@ -1166,6 +1172,29 @@
     // keep unsent typing in this device's drafts so re-renders (hints, other devices) never wipe it
     root.querySelectorAll('form[data-form="evidence"] textarea, form[data-form="reflection"] textarea').forEach((t) => {
       t.addEventListener('input', () => { const id = S().ui.student; const d = (S().ui.drafts[id] = S().ui.drafts[id] || {}); d[t.name] = t.value; });
+    });
+    const cp = root.querySelector('#ci-photo');
+    if (cp) cp.addEventListener('change', async () => {
+      const file = cp.files[0]; if (!file) return;
+      const me = SEED.byId[S().ui.student], m = SEED.missions[me.topic], a = m.assess || SEED.defaultAssess();
+      const shrink = (max, q) => new Promise((res) => { const img = new Image(); img.onload = () => { const k = Math.min(1, max / Math.max(img.width, img.height)), cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height); res(cv.toDataURL('image/jpeg', q)); }; img.onerror = () => res(null); img.src = URL.createObjectURL(file); });
+      const thumb = await shrink(240, 0.6);
+      let ai = null;
+      if (a.checkin === 'photo_ai') {
+        S().ui.photoCheck = me.id; render();
+        try {
+          const big = await shrink(640, 0.7);
+          let pass = ''; try { pass = localStorage.getItem('wq-ai-pass') || ''; } catch {}
+          const res = await fetch('/api/assistant', { method: 'POST', headers: { 'content-type': 'application/json', 'x-demo-passcode': pass },
+            body: JSON.stringify({ mode: 'photo', photo: big, reference: m.refPhoto || null, object: SEED.keyObjectOf(me.topic), location: m.gallery }) });
+          const d = res.ok ? await res.json() : null;
+          ai = d && d.result ? d.result : null;
+        } catch { ai = null; }
+        S().ui.photoCheck = null;
+      }
+      act('checkInPhoto', { participantId: me.id, photo: thumb, ai });
+      render();
     });
     const ph = root.querySelector('#ev-photo-in');
     if (ph) ph.addEventListener('change', () => {

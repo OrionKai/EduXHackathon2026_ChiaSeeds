@@ -305,10 +305,13 @@ const TEMPLATES = {
 TEMPLATES.lost_museum.meta = { id: 'lost_museum', name: 'The Lost Museum', blurb: 'Fitzwilliam Museum, Cambridge · four galleries · ancient world' };
 /* How each track is assessed: check-in at the place, what evidence students submit, an optional
    multiple-choice check with a pass mark, and who verifies it. */
-SEED.defaultAssess = () => ({ checkin: 'qr', evidence: 'notes', quiz: [], pass: 0, verify: 'teacher' });
+SEED.defaultAssess = () => ({ checkin: 'photo_ai', evidence: 'notes', quiz: [], pass: 0, verify: 'teacher' });
 SEED.topics.forEach((t) => { TEMPLATES.lost_museum.missions[t].assess = SEED.defaultAssess(); });
+/* Something students can actually photograph at each station of the example quest. */
+Object.entries({ A: 'Nespawershefyt’s coffin set', B: 'the sarcophagus lid of Ramesses III', C: 'a piece of painted pottery', D: 'a grave relief from Palmyra' })
+  .forEach(([t, k]) => { TEMPLATES.lost_museum.missions[t].keyObject = k; });
 SEED.ASSESS_TEXT = {
-  checkin: { qr: 'QR clue card or facilitator code', none: 'No check-in' },
+  checkin: { photo_ai: 'Photo of the object, checked by AI', photo_teacher: 'Photo of the object, checked by the educator', qr: 'QR clue card or facilitator code', none: 'No check-in' },
   evidence: { notes: 'Written field notes', photo: 'A photo of the object', notes_photo: 'Field notes and a photo' },
   verify: { teacher: 'Educator verifies', partner: 'Community partner verifies', auto: 'Automatic when the quiz is passed' },
 };
@@ -328,6 +331,7 @@ SEED.buildTrack = (t, f) => {
       needsFacilitator: !!f.needsContributor,
       stationCode: STATION[t][0], backupCode: STATION[t][1],
       assess: { ...SEED.defaultAssess(), ...(f.assess || {}) },
+      refPhoto: typeof f.refPhoto === 'string' && f.refPhoto.startsWith('data:image/') && f.refPhoto.length < 120000 ? f.refPhoto : null,
     },
     label: (f.name || 'Track ' + t).split(/\s+/)[0].replace(/[^\w’'-]/g, '').slice(0, 14) || 'Track ' + t,
     check: [
@@ -345,7 +349,7 @@ SEED.trackFields = (c, t) => {
     evidence: m.evidenceFields.map((e) => e.label), hints: m.hints, fallback: m.fallback, teachHeadline: m.teachHeadline,
     checkCorrect: (opts.find((o) => o.correct) || {}).text || '', checkIncorrect: (opts.find((o) => !o.correct) || {}).text || '',
     needsContributor: !!m.needsFacilitator, sourceFact: m.sourceFact, sourceUrl: m.sourceUrl,
-    assess: JSON.parse(JSON.stringify(m.assess || SEED.defaultAssess())),
+    assess: JSON.parse(JSON.stringify(m.assess || SEED.defaultAssess())), refPhoto: m.refPhoto || null,
   };
 };
 /* Finale objects always follow the tracks: one key object per perspective. */
@@ -426,3 +430,9 @@ CONTENT_KEYS.forEach((k) => Object.defineProperty(SEED, k, {
 
 SEED.genericDisclaimer = 'Story elements, characters and awards are fiction created for learning. No partnership with any venue is claimed unless one has been agreed. Real school visits must be booked with the venue.';
 SEED.partnerDefaults = { name: 'WorldQuest Demo Collaborator', org: 'Simulated community contributor' };
+
+/* The object students photograph to check in: the track's key object, or its finale object. */
+SEED.keyObjectOf = (t) => {
+  const m = SEED.missions[t];
+  return m.keyObject || (SEED.finale.objects.find((o) => o.answer === SEED.topicMeta[t].tag) || {}).label || m.name || 'the object';
+};

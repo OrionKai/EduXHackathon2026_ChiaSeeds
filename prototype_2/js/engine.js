@@ -14,7 +14,7 @@
 const Engine = (() => {
   const STORAGE_KEY = 'worldquest-prototype2-v1';
   const QUEST_KEYS = ['quest', 'content', 'tracks', 'revisions', 'sources', 'contributor'];
-  const PLAY_KEYS = ['phase', 'evidence', 'peerTeach', 'finale', 'bonus', 'claims', 'master', 'reflections', 'seats', 'checkins', 'help', 'partnerFeedback', 'interactions'];
+  const PLAY_KEYS = ['phase', 'evidence', 'peerTeach', 'finale', 'bonus', 'claims', 'master', 'reflections', 'seats', 'checkins', 'checkinPhotos', 'help', 'partnerFeedback', 'interactions'];
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
   /* ---------- initial state ---------- */
@@ -60,7 +60,7 @@ const Engine = (() => {
         id: 'q_lm',
         templateId: 'lost_museum',
         partner: { ...SEED.partnerDefaults },
-        draftGenerated: false,
+        draftGenerated: true,
       },
       contributor: {
         text: SEED.contributor.defaultContribution,
@@ -82,9 +82,10 @@ const Engine = (() => {
       activeQuest: 'q_lm', // the quest this class session is running
       seats: {}, // participantId -> { nick, at } once a real student joins with the class code
       partnerFeedback: {}, // home -> { text, at } from the community collaborator on the team's finale
-      checkins: {}, // participantId -> { at, via: 'QR' | 'CODE' | 'SIMULATED' }
+      checkins: {}, // participantId -> { at, via: 'QR' | 'CODE' | 'PHOTO_AI' | 'PHOTO_TEACHER' | 'SIMULATED' }
+      checkinPhotos: {}, // participantId -> { photo, at, reason } waiting for the educator
       help: [], // { id, pid, at, open }
-      tracks: { A: 'AI', B: 'AI', C: 'AI', D: 'AI' }, // AI | REVISED | APPROVED (educator review of AI-drafted tracks)
+      tracks: { A: 'TEMPLATE', B: 'TEMPLATE', C: 'TEMPLATE', D: 'TEMPLATE' }, // TEMPLATE | EMPTY | AI | REVISED | EDITED | APPROVED
       revisions: {}, // topic -> note from an AI revision
       trackEdits: {}, // topic -> { observe?, discuss?, narrative?, fallback?, teachHeadline?, hintsExtra?: [] } shown to students
       ui: { role: 'student', student: 'S06', screen: null, lookUp: false, joined: false, masterSeen: false, drafts: {} },
@@ -133,6 +134,7 @@ const Engine = (() => {
     s.revisions = s.revisions || {};
     s.trackEdits = s.trackEdits || {};
     s.seats = s.seats || {};
+    s.checkinPhotos = s.checkinPhotos || {};
     s.contributor.extraPrompts = s.contributor.extraPrompts || [];
     s.partnerFeedback = s.partnerFeedback || {};
     s.quest.duration = s.quest.duration || 60;
@@ -765,6 +767,40 @@ const Engine = (() => {
       s.seats[p.id] = { nick: n, at: Date.now() };
       audit('student', `${n} joined as ${p.name} (home ${p.home}, expert ${p.topic}).`);
       return { ok: true, msg: `Welcome, ${n}! You’re in home team ${p.home}, expert track ${p.topic}.`, pid: p.id };
+    },
+
+    /* ----- photo check-in: AI match, or the educator approves the photo ----- */
+    checkInPhoto(s, { participantId, photo, ai }) {
+      const p = SEED.byId[participantId];
+      if (!p) return { ok: false };
+      if (!['EXPERT', 'PEER_TEACH', 'FINALE'].includes(s.phase)) return { ok: false, msg: 'Check-in opens when the educator starts the expert phase.' };
+      if (s.checkins[participantId]) return { ok: true, silent: true };
+      const a = SEED.missions[p.topic].assess || SEED.defaultAssess();
+      if (!String(a.checkin).startsWith('photo')) return { ok: false, msg: 'This track doesn’t use a photo check-in.' };
+      if (ai && ai.people_visible) return { ok: false, msg: 'Please photograph just the object, with no people in the picture.' };
+      if (a.checkin === 'photo_ai' && ai && ai.match) {
+        s.checkins[participantId] = { at: Date.now(), via: 'PHOTO_AI' };
+        delete s.checkinPhotos[participantId];
+        audit('student', `${p.name} checked in with a photo (AI match, ${ai.confidence || 'n/a'} confidence).`);
+        return { ok: true, msg: 'Found it! Now look closely — phone away.' };
+      }
+      if (a.checkin === 'photo_ai' && ai && !ai.match) return { ok: false, msg: ai.reason || 'That doesn’t look like the object. Try again, or ask your teacher.' };
+      if (!(typeof photo === 'string' && photo.startsWith('data:image/')) || photo.length > 90000) return { ok: false, msg: 'Take the photo again.' };
+      s.checkinPhotos[participantId] = { photo, at: Date.now(), reason: ai ? ai.reason || '' : '' };
+      audit('student', `${p.name} sent a check-in photo for the educator to approve.`);
+      return { ok: true, msg: 'Photo sent — your teacher will confirm it.' };
+    },
+    reviewCheckin(s, { participantId, approve }) {
+      const p = SEED.byId[participantId];
+      if (!p || !s.checkinPhotos[participantId]) return { ok: false, msg: 'Nothing to review.' };
+      delete s.checkinPhotos[participantId];
+      if (approve) {
+        s.checkins[participantId] = { at: Date.now(), via: 'PHOTO_TEACHER' };
+        audit('teacher', `Approved ${p.name}’s check-in photo.`);
+        return { ok: true, msg: `${p.name} checked in.` };
+      }
+      audit('teacher', `Asked ${p.name} to retake their check-in photo.`);
+      return { ok: true, msg: `${p.name} will retake the photo.` };
     },
 
     /* ----- help: always one tap away ----- */

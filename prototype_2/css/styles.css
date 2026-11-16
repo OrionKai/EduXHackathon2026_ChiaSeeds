@@ -579,3 +579,5 @@ a.brand { text-decoration: none; color: inherit; }
 .ns-steps li.done { color: var(--success); text-decoration: line-through; text-decoration-color: rgba(22,110,96,.4); }
 .join-panel { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .join-code { font-size: clamp(40px, 9vw, 72px); font-weight: 700; letter-spacing: .08em; color: var(--violet-deep); }
+.topbar .demo-fab { box-shadow: none; padding: 7px 12px; }
+.demo-drawer { top: calc(64px + env(safe-area-inset-top, 0px)); bottom: auto; }
