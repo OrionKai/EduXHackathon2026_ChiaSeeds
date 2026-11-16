@@ -1,0 +1,674 @@
+{
+  "schema_version": "1.0.0",
+  "quest_id": "fitz-lost-museum",
+  "quest_version_id": "fitz-lost-museum-v1",
+  "title": "The Lost Museum: A Mystery of Four Perspectives",
+  "subtitle": "Junior Curators of Cambridge",
+  "fiction_disclaimer": "All curator requests, mystery clues, awards and character dialogue are fiction. This is not an official Fitzwilliam Museum programme or a confirmed partnership.",
+  "location": {
+    "name": "The Fitzwilliam Museum",
+    "address": "Trumpington Street, Cambridge CB2 1RB, United Kingdom",
+    "public_gallery_plan_source": "https://fitzmuseum.cam.ac.uk/plan-your-visit/galleries",
+    "book_school_visit": "https://fitzmuseum.cam.ac.uk/learn-with-us/plan-your-school-visit",
+    "operational_caution": "All school groups must pre-book. Do not place codes/stickers in galleries. Check galleries, adult supervision, access and museum conditions in advance."
+  },
+  "education": {
+    "age_range": "13-16",
+    "subjects": [
+      "History",
+      "Art & Museum Literacy",
+      "Citizenship"
+    ],
+    "duration_minutes": 70,
+    "class_size": 20,
+    "home_group_count": 5,
+    "expert_topics": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "learning_outcomes": [
+      "Distinguish observation from inference",
+      "Cite an observed object or museum label as evidence",
+      "Explain the perspectives offered and omitted by differing object types",
+      "Teach one area of expertise to peers",
+      "Draft a cautious inclusive exhibition interpretation"
+    ]
+  },
+  "roles": {
+    "teacher": "Demo Teacher",
+    "collaborator": "WorldQuest Demo Collaborator — simulated, not museum staff"
+  },
+  "story": {
+    "opening": "The museum has a fictional challenge for our Junior Curators: a draft introduction treats very different objects as one single story. Investigate real exhibits, share your expertise, and propose a better evidence-based introduction.",
+    "caveat": "There is no claim that the real museum has written such a draft."
+  },
+  "schedule_minutes": [
+    [
+      0,
+      7,
+      "Briefing and baseline"
+    ],
+    [
+      7,
+      10,
+      "Expert assignment"
+    ],
+    [
+      10,
+      28,
+      "Expert investigations"
+    ],
+    [
+      28,
+      41,
+      "Peer teaching"
+    ],
+    [
+      41,
+      55,
+      "Finale"
+    ],
+    [
+      55,
+      62,
+      "Optional collectibles"
+    ],
+    [
+      62,
+      70,
+      "Reflection and debrief"
+    ]
+  ],
+  "sources": [
+    {
+      "id": "g19",
+      "source_url": "https://fitzmuseum.cam.ac.uk/plan-your-visit/galleries/gallery-19",
+      "verified_as_of": "2026-11-16",
+      "subject_to_on_site_recheck": true
+    },
+    {
+      "id": "g20",
+      "source_url": "https://fitzmuseum.cam.ac.uk/plan-your-visit/galleries/gallery-20",
+      "verified_as_of": "2026-11-16",
+      "subject_to_on_site_recheck": true
+    },
+    {
+      "id": "g21",
+      "source_url": "https://fitzmuseum.cam.ac.uk/plan-your-visit/galleries/gallery-21",
+      "verified_as_of": "2026-11-16",
+      "subject_to_on_site_recheck": true
+    },
+    {
+      "id": "g24",
+      "source_url": "https://fitzmuseum.cam.ac.uk/plan-your-visit/galleries/gallery-24",
+      "verified_as_of": "2026-11-16",
+      "subject_to_on_site_recheck": true
+    },
+    {
+      "id": "school",
+      "source_url": "https://fitzmuseum.cam.ac.uk/learn-with-us/plan-your-school-visit",
+      "verified_as_of": "2026-11-16",
+      "subject_to_on_site_recheck": true
+    }
+  ],
+  "participants": [
+    {
+      "id": "S01",
+      "display_name": "Explorer 01",
+      "home_group": "H1",
+      "expert_topic": "A"
+    },
+    {
+      "id": "S02",
+      "display_name": "Explorer 02",
+      "home_group": "H1",
+      "expert_topic": "B"
+    },
+    {
+      "id": "S03",
+      "display_name": "Explorer 03",
+      "home_group": "H1",
+      "expert_topic": "C"
+    },
+    {
+      "id": "S04",
+      "display_name": "Explorer 04",
+      "home_group": "H1",
+      "expert_topic": "D"
+    },
+    {
+      "id": "S05",
+      "display_name": "Explorer 05",
+      "home_group": "H2",
+      "expert_topic": "A"
+    },
+    {
+      "id": "S06",
+      "display_name": "Explorer 06",
+      "home_group": "H2",
+      "expert_topic": "B"
+    },
+    {
+      "id": "S07",
+      "display_name": "Explorer 07",
+      "home_group": "H2",
+      "expert_topic": "C"
+    },
+    {
+      "id": "S08",
+      "display_name": "Explorer 08",
+      "home_group": "H2",
+      "expert_topic": "D"
+    },
+    {
+      "id": "S09",
+      "display_name": "Explorer 09",
+      "home_group": "H3",
+      "expert_topic": "A"
+    },
+    {
+      "id": "S10",
+      "display_name": "Explorer 10",
+      "home_group": "H3",
+      "expert_topic": "B"
+    },
+    {
+      "id": "S11",
+      "display_name": "Explorer 11",
+      "home_group": "H3",
+      "expert_topic": "C"
+    },
+    {
+      "id": "S12",
+      "display_name": "Explorer 12",
+      "home_group": "H3",
+      "expert_topic": "D"
+    },
+    {
+      "id": "S13",
+      "display_name": "Explorer 13",
+      "home_group": "H4",
+      "expert_topic": "A"
+    },
+    {
+      "id": "S14",
+      "display_name": "Explorer 14",
+      "home_group": "H4",
+      "expert_topic": "B"
+    },
+    {
+      "id": "S15",
+      "display_name": "Explorer 15",
+      "home_group": "H4",
+      "expert_topic": "C"
+    },
+    {
+      "id": "S16",
+      "display_name": "Explorer 16",
+      "home_group": "H4",
+      "expert_topic": "D"
+    },
+    {
+      "id": "S17",
+      "display_name": "Explorer 17",
+      "home_group": "H5",
+      "expert_topic": "A"
+    },
+    {
+      "id": "S18",
+      "display_name": "Explorer 18",
+      "home_group": "H5",
+      "expert_topic": "B"
+    },
+    {
+      "id": "S19",
+      "display_name": "Explorer 19",
+      "home_group": "H5",
+      "expert_topic": "C"
+    },
+    {
+      "id": "S20",
+      "display_name": "Explorer 20",
+      "home_group": "H5",
+      "expert_topic": "D"
+    }
+  ],
+  "expert_groups": [
+    {
+      "id": "A",
+      "participant_ids": [
+        "S01",
+        "S05",
+        "S09",
+        "S13",
+        "S17"
+      ],
+      "capacity": 5
+    },
+    {
+      "id": "B",
+      "participant_ids": [
+        "S02",
+        "S06",
+        "S10",
+        "S14",
+        "S18"
+      ],
+      "capacity": 5
+    },
+    {
+      "id": "C",
+      "participant_ids": [
+        "S03",
+        "S07",
+        "S11",
+        "S15",
+        "S19"
+      ],
+      "capacity": 5
+    },
+    {
+      "id": "D",
+      "participant_ids": [
+        "S04",
+        "S08",
+        "S12",
+        "S16",
+        "S20"
+      ],
+      "capacity": 5
+    }
+  ],
+  "home_groups": [
+    {
+      "id": "H1",
+      "participant_ids": [
+        "S01",
+        "S02",
+        "S03",
+        "S04"
+      ]
+    },
+    {
+      "id": "H2",
+      "participant_ids": [
+        "S05",
+        "S06",
+        "S07",
+        "S08"
+      ]
+    },
+    {
+      "id": "H3",
+      "participant_ids": [
+        "S09",
+        "S10",
+        "S11",
+        "S12"
+      ]
+    },
+    {
+      "id": "H4",
+      "participant_ids": [
+        "S13",
+        "S14",
+        "S15",
+        "S16"
+      ]
+    },
+    {
+      "id": "H5",
+      "participant_ids": [
+        "S17",
+        "S18",
+        "S19",
+        "S20"
+      ]
+    }
+  ],
+  "missions": [
+    {
+      "id": "expert_a",
+      "kind": "expert_investigation",
+      "requires": [],
+      "topic": "A",
+      "name": "Evidence Detectives",
+      "gallery": "Gallery 19 — Ancient Egypt",
+      "station_id": "G19",
+      "location_hint": "Find Nespawershefyt’s coffin set; check gallery/object availability with the teacher.",
+      "official_source": "https://fitzmuseum.cam.ac.uk/plan-your-visit/galleries/gallery-19",
+      "source_fact": "The official gallery page identifies the coffin set of Nespawershefyt, given in 1822, and other funerary objects.",
+      "narrative": "What can the object itself tell us?",
+      "physical_instruction": "Look up and inspect an approved coffin exhibit. Record two details you can actually see. Then find its museum label.",
+      "question": "Which claim is observation and which is inference?",
+      "examples": [
+        "Observation example (only if actually seen): I can see painted decoration.",
+        "Unsupported inference: Everyone in ancient Egypt had a decorated coffin."
+      ],
+      "expected_learning": "Distinguish what is observed from what is inferred; single artifacts are not universal evidence.",
+      "evidence_tag": "OBJECT_EVIDENCE",
+      "evidence_fields": [
+        "observation_1",
+        "observation_2",
+        "object_reference",
+        "uncertainty"
+      ],
+      "hints": [
+        "Start with a material, shape, or decoration.",
+        "Separate words on the label from your own observations."
+      ],
+      "validation": "teacher_or_facilitator",
+      "accessible_alternative": "Use approved official museum object gallery images and accompanying descriptive text."
+    },
+    {
+      "id": "expert_b",
+      "kind": "expert_investigation",
+      "requires": [],
+      "topic": "B",
+      "name": "Power and Memory",
+      "gallery": "Gallery 20 — Ancient Egypt",
+      "station_id": "G20",
+      "location_hint": "Find the large sarcophagus lid of Ramesses III; check display with the teacher.",
+      "official_source": "https://fitzmuseum.cam.ac.uk/plan-your-visit/galleries/gallery-20",
+      "source_fact": "The Fitzwilliam notes the seven-ton sarcophagus lid of Ramesses III, given by G. B. Belzoni in 1823.",
+      "narrative": "Whose stories become monumental?",
+      "physical_instruction": "Observe the sarcophagus lid and choose two visible features that make it prominent.",
+      "question": "How might a monumental royal object affect which stories survive or appear prominently? Cite your observations and acknowledge what you do not know.",
+      "examples": [
+        "This suggests the person was memorialised prominently, because the object is monumental.",
+        "Do not infer that all ancient Egyptians were similarly represented."
+      ],
+      "expected_learning": "Understand objects as evidence for power and commemoration and recognise limits of representation.",
+      "evidence_tag": "POWER_MEMORY",
+      "evidence_fields": [
+        "visible_feature_1",
+        "visible_feature_2",
+        "reasoning",
+        "uncertainty"
+      ],
+      "hints": [
+        "Ask who the object relates to.",
+        "What might this object not tell you about ordinary experiences?"
+      ],
+      "validation": "teacher_or_facilitator",
+      "accessible_alternative": "Use the museum’s official Gallery 20 page and audio description where available."
+    },
+    {
+      "id": "expert_c",
+      "kind": "expert_investigation",
+      "requires": [],
+      "topic": "C",
+      "name": "Multiple Lives",
+      "gallery": "Gallery 21 — Greece & Rome",
+      "station_id": "G21",
+      "location_hint": "Find two DIFFERENT categories among gallery pottery, jewellery, coins, sculpture, or funerary monuments.",
+      "official_source": "https://fitzmuseum.cam.ac.uk/plan-your-visit/galleries/gallery-21",
+      "source_fact": "Gallery 21 features Greek/Roman pottery, sculpture, jewellery, coins and funerary monuments in a chronological display.",
+      "narrative": "Can two kinds of objects tell different stories?",
+      "physical_instruction": "Pick two different categories of object and record what you see.",
+      "question": "What different historical questions might these object types help us answer?",
+      "examples": [
+        "Coins may help us investigate trade, authority or imagery, depending on the specific coin.",
+        "Funerary monuments can tell us about remembrance but cannot represent everyone."
+      ],
+      "expected_learning": "Compare types of evidence used to understand different aspects of historical lives.",
+      "evidence_tag": "MULTIPLE_LIVES",
+      "evidence_fields": [
+        "artifact_type_1",
+        "artifact_type_2",
+        "comparison",
+        "limitation"
+      ],
+      "hints": [
+        "Look for different object types, not two of the same thing.",
+        "Ask what each helps historians know, and what it cannot prove."
+      ],
+      "validation": "teacher_or_facilitator",
+      "accessible_alternative": "Use approved gallery descriptions and image examples."
+    },
+    {
+      "id": "expert_d",
+      "kind": "expert_investigation",
+      "requires": [],
+      "topic": "D",
+      "name": "Connections and Voices",
+      "gallery": "Gallery 24 — Rome & Ancient Sudan",
+      "station_id": "G24",
+      "location_hint": "Look for Rome / Ancient Sudan context and arrange the facilitator discussion; no unsupervised stranger interviews.",
+      "official_source": "https://fitzmuseum.cam.ac.uk/plan-your-visit/galleries/gallery-24",
+      "source_fact": "Official Gallery 24 describes Rome and Ancient Sudan objects and grave reliefs from Palmyra; a facsimile of the Dendera Zodiac is mentioned.",
+      "narrative": "Whose perspective is present, and whose is missing?",
+      "physical_instruction": "Identify two geographical or cultural terms represented in the approved gallery context and note one question the display leaves you with.",
+      "question": "Ask a PRE-ARRANGED WorldQuest contributor how to make an interpretation fair to people whose views may not appear on a museum label.",
+      "examples": [
+        "Question: What additional evidence or community perspectives would help?",
+        "Record the adult response as a perspective, not a museum quotation or uncontested fact."
+      ],
+      "expected_learning": "Recognise the role of human knowledge, multiple perspectives and uncertainty in interpretation.",
+      "evidence_tag": "CONNECTIONS_VOICES",
+      "evidence_fields": [
+        "context_1",
+        "context_2",
+        "question_to_contributor",
+        "paraphrased_reply",
+        "remaining_uncertainty"
+      ],
+      "hints": [
+        "Start with the gallery title and signs.",
+        "What is a question that only new evidence or human perspectives could help answer?"
+      ],
+      "validation": "approved_collaborator_or_teacher",
+      "accessible_alternative": "Teacher-guided conversation with a clearly labelled simulated contributor transcript."
+    }
+  ],
+  "partner_interaction": {
+    "id": "human_voice_check",
+    "mode": "prearranged_facilitator",
+    "demo_actor_label": "SIMULATED WorldQuest contributor — not Fitzwilliam staff",
+    "questions": [
+      "What is evidence, and what is interpretation?",
+      "Whose perspective might be absent, and what would help us know?",
+      "How can we honestly show uncertainty in a short label?"
+    ],
+    "requires_adult_verification": true,
+    "fallback": "Teacher guided conversation; sample transcript explicitly fictional and marked demo."
+  },
+  "peer_teaching": {
+    "required_topics": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "minutes_per_presenter": 2,
+    "peer_comprehension_prompt": "Name one thing another expert observed and why it matters.",
+    "completion_rule": "Each perspective verified for the home group; group participants complete teach-back check; teacher can audit/override."
+  },
+  "finale": {
+    "id": "restore_intro",
+    "required_evidence_tags": [
+      "OBJECT_EVIDENCE",
+      "POWER_MEMORY",
+      "MULTIPLE_LIVES",
+      "CONNECTIONS_VOICES"
+    ],
+    "requires_peer_teaching": true,
+    "steps": [
+      {
+        "id": "match",
+        "kind": "four_way_match",
+        "title": "Match each object to the perspective it helps investigate",
+        "correct_pairs": {
+          "coffin_nespawershefyt": "OBJECT_EVIDENCE",
+          "lid_ramesses_iii": "POWER_MEMORY",
+          "gallery_21_object_types": "MULTIPLE_LIVES",
+          "gallery_24_and_contributor": "CONNECTIONS_VOICES"
+        }
+      },
+      {
+        "id": "overclaim",
+        "kind": "choose_one",
+        "question": "Which exhibition principle is appropriately cautious?",
+        "options": [
+          {
+            "id": "absolute",
+            "text": "Every object tells us everything about every person who used it."
+          },
+          {
+            "id": "cautious",
+            "text": "Objects provide different evidence; historical interpretations require context and multiple perspectives."
+          }
+        ],
+        "correct_option": "cautious"
+      },
+      {
+        "id": "compose",
+        "kind": "free_text_teacher_review",
+        "prompt": "In 2–3 sentences cite at least two objects, describe multiple perspectives, note an uncertainty and invite a visitor question.",
+        "rubric": [
+          "Evidence",
+          "Multiple perspectives",
+          "Appropriate uncertainty",
+          "Collaboration"
+        ]
+      }
+    ],
+    "teacher_approval_required": true,
+    "completion_independent_from_collectibles": true
+  },
+  "bonus_collectibles": [
+    {
+      "id": "detail_lens",
+      "title": "The Detail Lens",
+      "home_group": "H1",
+      "activity": "Locate an approved visual detail and explain what it reveals.",
+      "learning_tag": "Observation",
+      "kind": "optional_class_card",
+      "validation": "teacher_approved_or_demo_review",
+      "image_path": "/collectibles/detail_lens.svg",
+      "art_prompt": "Original fictional storybook museum fantasy collectible, symbolising observation, isolated object illustration with deep navy, muted teal, gold, no text, no real archaeological replica, transparent background.",
+      "alternate_unlock": "Teacher-approved accessible equivalent of same educational intent"
+    },
+    {
+      "id": "memory_stone",
+      "title": "The Memory Stone",
+      "home_group": "H2",
+      "activity": "Find a sign of remembrance and formulate one respectful historical question.",
+      "learning_tag": "Commemoration",
+      "kind": "optional_class_card",
+      "validation": "teacher_approved_or_demo_review",
+      "image_path": "/collectibles/memory_stone.svg",
+      "art_prompt": "Original fictional storybook museum fantasy collectible, symbolising commemoration, isolated object illustration with deep navy, muted teal, gold, no text, no real archaeological replica, transparent background.",
+      "alternate_unlock": "Teacher-approved accessible equivalent of same educational intent"
+    },
+    {
+      "id": "twin_tokens",
+      "title": "The Twin Tokens",
+      "home_group": "H3",
+      "activity": "Identify two different artifact types and what questions they answer.",
+      "learning_tag": "Multiple evidence types",
+      "kind": "optional_class_card",
+      "validation": "teacher_approved_or_demo_review",
+      "image_path": "/collectibles/twin_tokens.svg",
+      "art_prompt": "Original fictional storybook museum fantasy collectible, symbolising multiple evidence types, isolated object illustration with deep navy, muted teal, gold, no text, no real archaeological replica, transparent background.",
+      "alternate_unlock": "Teacher-approved accessible equivalent of same educational intent"
+    },
+    {
+      "id": "listening_shell",
+      "title": "The Listening Shell",
+      "home_group": "H4",
+      "activity": "Compose a meaningful question for an approved community contributor.",
+      "learning_tag": "Human dialogue",
+      "kind": "optional_class_card",
+      "validation": "teacher_approved_or_demo_review",
+      "image_path": "/collectibles/listening_shell.svg",
+      "art_prompt": "Original fictional storybook museum fantasy collectible, symbolising human dialogue, isolated object illustration with deep navy, muted teal, gold, no text, no real archaeological replica, transparent background.",
+      "alternate_unlock": "Teacher-approved accessible equivalent of same educational intent"
+    },
+    {
+      "id": "curator_lantern",
+      "title": "The Curator's Lantern",
+      "home_group": "H5",
+      "activity": "Write a 12-word exhibition description that avoids making unsupported universal claims.",
+      "learning_tag": "Responsible interpretation",
+      "kind": "optional_class_card",
+      "validation": "teacher_approved_or_demo_review",
+      "image_path": "/collectibles/curator_lantern.svg",
+      "art_prompt": "Original fictional storybook museum fantasy collectible, symbolising responsible interpretation, isolated object illustration with deep navy, muted teal, gold, no text, no real archaeological replica, transparent background.",
+      "alternate_unlock": "Teacher-approved accessible equivalent of same educational intent"
+    }
+  ],
+  "album": {
+    "master_id": "guardian_of_stories",
+    "master_title": "Guardian of Stories",
+    "master_artwork_path": "/collectibles/guardian_of_stories.svg",
+    "required_unique_card_ids": [
+      "detail_lens",
+      "memory_stone",
+      "twin_tokens",
+      "listening_shell",
+      "curator_lantern"
+    ],
+    "mechanic": "single shared class album; cards can be claimed once per session; master awarded atomically",
+    "optional": true
+  },
+  "quiz": {
+    "before": [
+      {
+        "id": "obs_inf",
+        "question": "Which is an observation?",
+        "options": [
+          "The object has painted decoration.",
+          "Every person owned an object like this."
+        ],
+        "correct_index": 0
+      },
+      {
+        "id": "history",
+        "question": "Can one museum object tell us everything about a whole society?",
+        "options": [
+          "Yes",
+          "No"
+        ],
+        "correct_index": 1
+      }
+    ],
+    "after": [
+      {
+        "id": "obs_inf_after",
+        "question": "Select the claim that can be directly observed from a painted artifact.",
+        "options": [
+          "It is decorated with paint.",
+          "All members of its society owned one."
+        ],
+        "correct_index": 0
+      },
+      {
+        "id": "perspectives",
+        "question": "Why might two artifact types lead historians to ask different questions?",
+        "kind": "short_text"
+      }
+    ]
+  },
+  "reflection": [
+    "What did someone from another expert group teach you?",
+    "What question about the objects would you still like to ask?"
+  ],
+  "safety": {
+    "no_default_location_tracking": true,
+    "no_stranger_interviews": true,
+    "no_photo_requirement": true,
+    "no_venue_stickers": true,
+    "teacher_supervision_required": true,
+    "accessibility_fallbacks_required": true,
+    "school_booking_required": true
+  },
+  "feature_flags": {
+    "demo_only": true,
+    "ai_live_generation_optional": true,
+    "image_generation_optional": true,
+    "maniengine_mvp": false
+  }
+}
