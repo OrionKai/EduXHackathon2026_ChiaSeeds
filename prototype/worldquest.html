@@ -1,0 +1,565 @@
+<title>WorldQuest</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<style>
+/* Layout: one app, three views chosen by #hash. Teacher = wide workspace with side tabs; students = single phone column. */
+:root{
+  --bg:#f3f5f9; --surface:#ffffff; --sunk:#e8ecf3; --line:#d5dbe6;
+  --ink:#141b2b; --muted:#5a6478;
+  --accent:#2d55e0; --accent-ink:#ffffff; --accent-soft:#e3e9fd;
+  --ok:#11826f; --ok-soft:#dcf2ed; --warn:#a8650a; --warn-soft:#fbefd9;
+  --ai:#7a3fd1; --ai-soft:#efe6fb; --gold:#c08a12; --gold-soft:#fbf1d6;
+  --f-display:"Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --f-body:"Inter", system-ui, -apple-system, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, Menlo, monospace;
+  --r:12px;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0e1320; --surface:#171e2e; --sunk:#111827; --line:#2a3448;
+  --ink:#e9edf6; --muted:#9aa5bb;
+  --accent:#6f8dff; --accent-ink:#0b1020; --accent-soft:#1d2a52;
+  --ok:#3fc7ac; --ok-soft:#123a34; --warn:#f0b04a; --warn-soft:#3a2c12;
+  --ai:#b88cff; --ai-soft:#2c1f45; --gold:#f0c24c; --gold-soft:#3a3013; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0e1320; --surface:#171e2e; --sunk:#111827; --line:#2a3448;
+  --ink:#e9edf6; --muted:#9aa5bb;
+  --accent:#6f8dff; --accent-ink:#0b1020; --accent-soft:#1d2a52;
+  --ok:#3fc7ac; --ok-soft:#123a34; --warn:#f0b04a; --warn-soft:#3a2c12;
+  --ai:#b88cff; --ai-soft:#2c1f45; --gold:#f0c24c; --gold-soft:#3a3013; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 40px}
+h1,h2,h3{font-family:var(--f-display);line-height:1.15;margin:0;text-wrap:balance}
+h1{font-size:clamp(28px,6vw,44px);font-weight:800;letter-spacing:-.02em}
+h2{font-size:22px;font-weight:800}
+h3{font-size:16px;font-weight:600}
+p{margin:0}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.label{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--f-mono)}
+.stack{display:flex;flex-direction:column;gap:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;min-width:0}
+button,.btn{font:600 14px var(--f-body);border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:10px 14px;cursor:pointer}
+.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.big{display:block;width:100%;padding:14px;font-size:16px}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+input,textarea,select{font:15px var(--f-body);color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%}
+textarea{min-height:90px;resize:vertical}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.chip.ai{background:var(--ai-soft);color:var(--ai)}
+.chip.edit{background:var(--warn-soft);color:var(--warn)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}
+.chip.sim{background:var(--sunk);color:var(--muted);border:1px dashed var(--line)}
+.chip.lock{background:var(--sunk);color:var(--muted)}
+.wrap{max-width:1100px;margin:0 auto}
+.phone{max-width:430px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--f-display);font-weight:800;font-size:18px}
+.brand svg{flex:none}
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+a{color:var(--accent)}
+/* home */
+.choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:24px}
+.choice{text-align:left;padding:18px;display:flex;flex-direction:column;gap:6px}
+.choice:hover{border-color:var(--accent)}
+/* teacher */
+.tlayout{display:grid;grid-template-columns:200px 1fr;gap:20px;align-items:start}
+.tnav{display:flex;flex-direction:column;gap:6px;position:sticky;top:env(safe-area-inset-top,0px)}
+.tnav button{text-align:left;border-color:transparent;background:transparent}
+.tnav button[aria-current="true"]{background:var(--accent-soft);color:var(--accent)}
+@media (max-width:760px){.tlayout{grid-template-columns:1fr}.tnav{flex-direction:row;overflow-x:auto;position:static}}
+.timeline{display:grid;gap:0}
+.trip{display:grid;grid-template-columns:36px 1fr;gap:14px}
+.trip .dot{width:36px;display:flex;flex-direction:column;align-items:center}
+.trip .dot span{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font:700 13px var(--f-mono);background:var(--accent);color:var(--accent-ink)}
+.trip .dot i{flex:1;width:2px;background:var(--line);margin:4px 0}
+.trip .card{margin-bottom:14px}
+.bar{height:8px;border-radius:99px;background:var(--sunk);overflow:hidden}
+.bar b{display:block;height:100%;background:var(--ok);border-radius:99px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.item{border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--surface);min-width:0}
+.item.approved{border-color:var(--ok)}
+.item .acts{display:flex;gap:6px;flex-wrap:wrap}
+.item .acts button{padding:6px 10px;font-size:13px}
+.kv{display:grid;grid-template-columns:140px 1fr;gap:8px 12px;font-size:14px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0}
+@media (max-width:500px){.kv{grid-template-columns:1fr}.kv dd{margin-bottom:6px}}
+.section-h{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.thinking{display:flex;gap:10px;align-items:center;color:var(--ai);font-weight:600}
+.spin{width:16px;height:16px;border:2px solid var(--ai-soft);border-top-color:var(--ai);border-radius:50%;animation:sp 0.8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+/* student */
+.steps{display:flex;gap:4px;margin:4px 0 16px}
+.steps i{flex:1;height:4px;border-radius:9px;background:var(--line)}
+.steps i.on{background:var(--accent)}
+.role-badge{display:inline-flex;gap:8px;align-items:center;padding:6px 12px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-weight:600;font-size:13px}
+.riddle{font-family:var(--f-display);font-size:24px;font-weight:600;line-height:1.3}
+.phone-away{display:flex;gap:10px;align-items:center;padding:12px;border-radius:10px;background:var(--ok-soft);color:var(--ok);font-weight:600;font-size:14px}
+.map svg{width:100%;height:auto;display:block}
+.map .case{cursor:pointer}
+.map .case rect{fill:var(--surface);stroke:var(--line);stroke-width:2}
+.map .case.sel rect{stroke:var(--accent);stroke-width:3;fill:var(--accent-soft)}
+.map .case.bad rect{stroke:var(--warn);fill:var(--warn-soft)}
+.map text{fill:var(--ink);font:600 13px var(--f-body)}
+.map .wall{fill:none;stroke:var(--muted);stroke-width:3}
+.map .faint{fill:var(--muted);font-weight:500;font-size:11px}
+.photo{width:100%;border-radius:10px;aspect-ratio:4/3;object-fit:cover;background:var(--sunk)}
+.scanbox{position:relative;border-radius:12px;overflow:hidden;background:var(--sunk);aspect-ratio:4/3;display:grid;place-items:center;text-align:center;color:var(--muted)}
+.scanbox img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.scanline{position:absolute;left:0;right:0;height:3px;background:var(--accent);box-shadow:0 0 18px var(--accent);animation:scan 1.4s ease-in-out infinite alternate}
+@keyframes scan{from{top:8%}to{top:90%}}
+.qr{display:grid;place-items:center;padding:16px;background:#fff;border-radius:12px}
+.collectible{perspective:800px;display:grid;place-items:center;padding:12px 0}
+.coll-card{width:220px;aspect-ratio:3/4;border-radius:18px;background:linear-gradient(160deg,var(--gold-soft),var(--surface));border:2px solid var(--gold);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;animation:spin3d 6s ease-in-out infinite;transform-style:preserve-3d}
+.coll-card.evolved{border-width:3px;box-shadow:0 0 0 6px var(--gold-soft),0 0 40px var(--gold)}
+@keyframes spin3d{0%,100%{transform:rotateY(-18deg)}50%{transform:rotateY(18deg)}}
+@keyframes pop{0%{transform:scale(.6);opacity:0}70%{transform:scale(1.06)}100%{transform:scale(1);opacity:1}}
+.pop{animation:pop .6s ease-out both}
+.journal-item{display:grid;grid-template-columns:56px 1fr;gap:12px;align-items:center}
+.mini{width:56px;height:56px;border-radius:12px;background:var(--gold-soft);border:1px solid var(--gold);display:grid;place-items:center}
+.locked{opacity:.7}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;font-size:14px;z-index:20;max-width:calc(100% - 32px)}
+.hint{border-left:3px solid var(--accent);padding:8px 12px;background:var(--accent-soft);border-radius:0 8px 8px 0;font-size:14px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+
+<div id="app"></div>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+/* ---------- shared data ---------- */
+const QUEST = {
+  title:"The Case of the Missing Label",
+  venue:"Fitzwilliam Museum, Cambridge",
+  goal:"Look closely at an object, tell observations apart from interpretations, and explain ideas using evidence.",
+  riddle:"I tell the time, yet I'm shaped to remind my owner that their time will run out. Find me.",
+  question:"Which object in this gallery is the oldest, and how can you tell?",
+  pairCode:"WQ-PAIR-7F3K",
+  providerCode:"WQ-CHECKIN-DRAW26"
+};
+const FALLBACK_QUESTS = [
+  {title:"The Case of the Missing Label", roleA:"Riddle Keeper reads a riddle describing the object, with no picture.", roleB:"Navigator holds a gallery map with three possible cases, with no descriptions.", community:"Ask a gallery attendant one prepared question; their answer unlocks the next step.", evidence:"Photo of one detail of the object, then a discovery card: one observation, one interpretation, one question.", theory:"Jigsaw (interdependence)"},
+  {title:"Journeys to the Afterlife", roleA:"Belief Reader has notes on what Egyptians and Romans believed about death.", roleB:"Clue Spotter has close-up photo clues of two objects, with no explanations.", community:"Compare your answer with a museum-provided prompt card at the end of the gallery.", evidence:"Joint answer: what did both cultures think the dead needed?", theory:"Retrieval practice"},
+  {title:"Look Up", roleA:"Observer sketches three details of the entrance hall.", roleB:"Questioner writes one question the architect might answer.", community:"Optional: ask a volunteer guide about the building's history.", evidence:"Sketch and question added to the class journal.", theory:"Place-based learning"}
+];
+const ROLES = [
+  {name:"Riddle Keeper", text:"Holds the riddle. Reads clues aloud and checks the object matches every part."},
+  {name:"Navigator", text:"Holds the gallery map. Leads the search and photographs one detail of the object."}
+];
+
+/* ---------- utilities ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let toastTimer;
+function toast(msg){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.hidden=true,2600)}
+const logo = `<svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13" fill="none" stroke="var(--accent)" stroke-width="3"/><path d="M15 6 L18 15 L15 24 L12 15 Z" fill="var(--accent)"/><circle cx="15" cy="15" r="2.5" fill="var(--surface)"/></svg>`;
+function watchArt(size=120, evolved=false){
+  const c = evolved ? "var(--gold)" : "var(--ink)";
+  return `<svg width="${size}" height="${size}" viewBox="0 0 120 120" aria-label="Skull watch collectible">
+    ${evolved?`<circle cx="60" cy="66" r="52" fill="none" stroke="var(--gold)" stroke-width="2" stroke-dasharray="4 6"/>`:""}
+    <circle cx="60" cy="14" r="7" fill="none" stroke="${c}" stroke-width="4"/>
+    <rect x="55" y="19" width="10" height="8" rx="2" fill="${c}"/>
+    <ellipse cx="60" cy="66" rx="36" ry="40" fill="var(--surface)" stroke="${c}" stroke-width="5"/>
+    <circle cx="46" cy="60" r="8" fill="${c}"/><circle cx="74" cy="60" r="8" fill="${c}"/>
+    <path d="M60 70 l-5 9 h10 z" fill="${c}"/>
+    <path d="M44 90 h32 M50 86 v8 M56 86 v8 M62 86 v8 M68 86 v8" stroke="${c}" stroke-width="3" fill="none"/>
+    ${evolved?`<path d="M96 30 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3z" fill="var(--gold)"/>`:""}
+  </svg>`;
+}
+function readQRFromFile(file){
+  return new Promise(res=>{
+    const img=new Image();img.onload=()=>{
+      const max=1000,s=Math.min(1,max/Math.max(img.width,img.height));
+      const cv=document.createElement("canvas");cv.width=img.width*s;cv.height=img.height*s;
+      const cx=cv.getContext("2d");cx.drawImage(img,0,0,cv.width,cv.height);
+      try{const d=cx.getImageData(0,0,cv.width,cv.height);const r=window.jsQR?jsQR(d.data,cv.width,cv.height):null;res(r?r.data:null)}catch{res(null)}
+    };img.onerror=()=>res(null);img.src=URL.createObjectURL(file);
+  });
+}
+function makeQR(el,text){el.innerHTML="";if(window.QRCode){new QRCode(el,{text,width:200,height:200,colorDark:"#141b2b",colorLight:"#ffffff"})}else{el.innerHTML=`<p class="mono">${esc(text)}</p>`}}
+
+/* ---------- router ---------- */
+function route(){
+  const h=location.hash.slice(1);
+  if(h==="teacher") return renderTeacher();
+  if(h==="student-a") return renderStudent("A");
+  if(h==="student-b") return renderStudent("B");
+  renderHome();
+}
+addEventListener("hashchange",route);
+
+/* ---------- home ---------- */
+function renderHome(){
+  $("#app").innerHTML=`<div class="wrap">
+    <div class="brand">${logo} WorldQuest</div>
+    <div class="stack" style="margin-top:32px;max-width:640px">
+      <h1>Trips that send students into the world, then on to the next real experience.</h1>
+      <p class="muted">Prototype for EduX 2026, Challenge 3. Open the teacher view on a laptop and one student role on each phone.</p>
+    </div>
+    <div class="choices">
+      <a class="card choice btn" href="#teacher"><span class="label">Laptop</span><h3>Teacher</h3><span class="muted small">Build the Fitzwilliam trip with AI suggestions, review and approve, then unlock the drawing class.</span></a>
+      <a class="card choice btn" href="#student-a"><span class="label">Phone 1</span><h3>Student A: Riddle Keeper</h3><span class="muted small">Holds the riddle. Shows the pair QR code.</span></a>
+      <a class="card choice btn" href="#student-b"><span class="label">Phone 2</span><h3>Student B: Navigator</h3><span class="muted small">Holds the map. Photographs the object and scans the pair QR code.</span></a>
+    </div>
+    <p class="small muted" style="margin-top:20px">Parts marked <span class="chip sim">Simulated</span> stand in for features not built yet: object recognition, Manifest 3D models and syncing between devices.</p>
+  </div>`;
+  document.querySelectorAll(".choice").forEach(a=>a.style.textDecoration="none");
+}
+
+/* ---------- teacher ---------- */
+const T = {
+  tab:"sequence", audience:"secondary",
+  completed:24, total:28, unlocked:false, overrideReason:"", showOverride:false,
+  roles:ROLES.map(r=>({...r,state:"ai"})),
+  collectible:{name:"Memento Mori Watch", text:"Unlocked when the pair confirms the object. Evolves when students apply the idea at the drawing class.", state:"ai"},
+  quests:[], aiStatus:"idle", aiNote:"",
+  notes:"Skull-shaped watch (17th century). Watches like this were memento mori objects, reminders that life is short. Look for: the hinged jaw, engraved scenes, the dial inside the skull. Gallery attendants can talk about how old the objects in the room are.",
+  provider:{name:"Still-life drawing class (local art studio)", date:"Thu 3 Dec, 2:00–3:30 pm", activity:"Draw a memento mori still life (skull model, candle, timepiece).", bring:"Discovery cards from the museum trip", fallback:"In-class session with the art department", status:"pending"},
+  published:false
+};
+const AUD = {
+  secondary:{label:"Secondary (age 14–16)", rules:["All outside contact goes through the teacher","Arranged encounters only, no approaching strangers","Reading level: age 14"]},
+  university:{label:"University", rules:["Students may contact partners directly","Open-ended encounters allowed","Longer, research-style tasks"]},
+  adult:{label:"Adult / community learners", rules:["Self-directed pace","Partners contacted directly","Optional roles"]}
+};
+function renderTeacher(){
+  const tabs=[["sequence","Trip sequence"],["builder","Trip builder"],["provider","Provider"]];
+  $("#app").innerHTML=`<div class="wrap">
+    <div class="topbar"><a class="brand" href="#" style="text-decoration:none;color:inherit">${logo} WorldQuest <span class="muted small" style="font-family:var(--f-body);font-weight:500">Teacher</span></a>
+    <span class="small muted">Year 10 History · Ms Rahman</span></div>
+    <div class="tlayout">
+      <nav class="tnav" aria-label="Teacher sections">${tabs.map(([k,v])=>`<button data-tab="${k}" aria-current="${T.tab===k}">${v}</button>`).join("")}</nav>
+      <main id="tmain" class="stack" style="min-width:0"></main>
+    </div></div>`;
+  document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{T.tab=b.dataset.tab;renderTeacher()});
+  ({sequence:tSequence,builder:tBuilder,provider:tProvider})[T.tab]();
+}
+function tSequence(){
+  const pct=Math.round(T.completed/T.total*100);
+  $("#tmain").innerHTML=`
+    <div><span class="label">Autumn term</span><h2>Memento mori: time, death and art</h2></div>
+    <div class="timeline">
+      <div class="trip"><div class="dot"><span>1</span><i></i></div>
+        <div class="card stack">
+          <div class="row" style="justify-content:space-between"><span class="label">WorldQuest trip · knowledge</span><span class="chip ok">Live</span></div>
+          <h3>${QUEST.title}</h3><p class="muted small">${QUEST.venue} · Thu 26 Nov · pairs with roles</p>
+          <div class="row" style="justify-content:space-between"><span class="small">${T.completed} of ${T.total} students complete</span><span class="small mono">${pct}%</span></div>
+          <div class="bar"><b style="width:${pct}%"></b></div>
+          <div class="row"><button id="simDone">Demo: 4 more students finish</button><button data-goto="builder">Open in builder</button></div>
+        </div></div>
+      <div class="trip"><div class="dot"><span style="background:${T.unlocked?"var(--ok)":"var(--line)"};color:${T.unlocked?"var(--accent-ink)":"var(--muted)"}">2</span></div>
+        <div class="card stack">
+          <div class="row" style="justify-content:space-between"><span class="label">Experience trip · apply the idea</span>${T.unlocked?`<span class="chip ok">Unlocked</span>`:`<span class="chip lock">Locked</span>`}</div>
+          <h3>${T.provider.name}</h3><p class="muted small">${T.provider.date} · no in-app activity, just check-in and a reflection</p>
+          <p class="small">Unlock rule: opens when the <b>whole class</b> has finished trip 1. No unlocks for individual badge counts.</p>
+          ${T.unlocked&&T.overrideReason?`<p class="small hint">Unlocked early by teacher. Reason recorded: "${esc(T.overrideReason)}"</p>`:""}
+          ${!T.unlocked?(T.showOverride?`<div class="stack"><label class="small" for="reason">Reason for unlocking early (saved to the trip log)</label><input id="reason" placeholder="e.g. 4 students absent, will do the digital-twin version"><div class="row"><button class="primary" id="confirmUnlock">Unlock for the class</button><button id="cancelUnlock">Cancel</button></div></div>`:`<div class="row"><button id="override">Unlock anyway…</button></div>`):""}
+        </div></div>
+    </div>`;
+  $("#simDone").onclick=()=>{T.completed=T.total;T.unlocked=true;T.overrideReason="";toast("Whole class finished. Drawing class unlocked.");renderTeacher()};
+  document.querySelector("[data-goto]").onclick=()=>{T.tab="builder";renderTeacher()};
+  if($("#override")) $("#override").onclick=()=>{T.showOverride=true;renderTeacher()};
+  if($("#cancelUnlock")) $("#cancelUnlock").onclick=()=>{T.showOverride=false;renderTeacher()};
+  if($("#confirmUnlock")) $("#confirmUnlock").onclick=()=>{const r=$("#reason").value.trim();if(!r){toast("Add a short reason first.");return}T.overrideReason=r;T.unlocked=true;T.showOverride=false;toast("Unlocked. Reason saved.");renderTeacher()};
+}
+function stateChip(s){return s==="ai"?`<span class="chip ai">AI suggested</span>`:s==="edited"?`<span class="chip edit">Teacher edited</span>`:`<span class="chip ok">Approved</span>`}
+function tBuilder(){
+  const a=AUD[T.audience];
+  const allApproved=T.roles.every(r=>r.state==="approved")&&T.collectible.state==="approved"&&T.quests.length>0&&T.quests.every(q=>q.state==="approved");
+  $("#tmain").innerHTML=`
+    <div class="section-h"><div><span class="label">WorldQuest trip</span><h2>${QUEST.title}</h2></div>${T.published?`<span class="chip ok">Published</span>`:`<span class="chip lock">Draft</span>`}</div>
+    <section class="card stack">
+      <h3>1 · Trip task and learning goal</h3>
+      <div class="grid2">
+        <div class="stack"><label class="small" for="aud">Audience</label><select id="aud">${Object.entries(AUD).map(([k,v])=>`<option value="${k}" ${k===T.audience?"selected":""}>${v.label}</option>`).join("")}</select>
+          <ul class="small muted" style="margin:0;padding-left:18px">${a.rules.map(r=>`<li>${r}</li>`).join("")}</ul></div>
+        <div class="stack"><span class="small">Learning goal</span><p class="small">${QUEST.goal}</p><span class="small">Location</span><p class="small">${QUEST.venue} (visit agreed with the museum learning team)</p></div>
+      </div>
+    </section>
+    <section class="card stack">
+      <h3>2 · Roles</h3>
+      <div class="grid2">${T.roles.map((r,i)=>`<div class="item ${r.state==="approved"?"approved":""}">
+        <div class="row" style="justify-content:space-between"><b>${esc(r.name)}</b>${stateChip(r.state)}</div>
+        <p class="small" ${r.editing?"hidden":""}>${esc(r.text)}</p>
+        ${r.editing?`<textarea id="role-${i}">${esc(r.text)}</textarea>`:""}
+        <div class="acts">${r.editing?`<button class="primary" data-saverole="${i}">Save</button>`:`<button data-approverole="${i}" ${r.state==="approved"?"disabled":""}>Approve</button><button data-editrole="${i}">Edit</button>`}</div>
+      </div>`).join("")}</div>
+    </section>
+    <section class="card stack">
+      <h3>3 · Collectible</h3>
+      <div class="item ${T.collectible.state==="approved"?"approved":""}" style="flex-direction:row;gap:14px;align-items:center">
+        <div class="mini" style="width:72px;height:72px">${watchArt(60)}</div>
+        <div class="stack" style="gap:6px;min-width:0;flex:1">
+          <div class="row" style="justify-content:space-between"><b>${T.collectible.name}</b>${stateChip(T.collectible.state)}</div>
+          <p class="small">${T.collectible.text}</p>
+          <div class="row"><span class="chip sim">Simulated: 3D model from Manifest, exported by hand</span><button data-approvecoll ${T.collectible.state==="approved"?"disabled":""}>Approve</button></div>
+        </div>
+      </div>
+    </section>
+    <section class="card stack">
+      <div class="section-h"><h3>4 · Quests</h3><span class="chip ai">Live AI</span></div>
+      <label class="small" for="notes">Your notes about the objects (the AI drafts quests from these)</label>
+      <textarea id="notes">${esc(T.notes)}</textarea>
+      <div class="row"><button class="primary" id="suggest" ${T.aiStatus==="loading"?"disabled":""}>${T.quests.length?"Suggest again":"Suggest quests"}</button>
+        ${T.aiStatus==="loading"?`<span class="thinking"><span class="spin"></span>Drafting quests…</span>`:""}
+        ${T.aiNote?`<span class="small muted">${esc(T.aiNote)}</span>`:""}</div>
+      <div class="stack">${T.quests.map((q,i)=>`<div class="item ${q.state==="approved"?"approved":""}">
+        <div class="row" style="justify-content:space-between"><b>${esc(q.title)}</b><span class="row">${q.sim?`<span class="chip sim">Simulated AI</span>`:""}${stateChip(q.state)}</span></div>
+        ${q.editing?`<textarea id="q-${i}">${esc(q.community)}</textarea>`:`
+        <dl class="kv"><dt>Role A</dt><dd>${esc(q.roleA)}</dd><dt>Role B</dt><dd>${esc(q.roleB)}</dd><dt>Community</dt><dd>${esc(q.community)}</dd><dt>Evidence</dt><dd>${esc(q.evidence)}</dd><dt>Learning idea</dt><dd>${esc(q.theory)}</dd></dl>`}
+        <div class="acts">${q.editing?`<button class="primary" data-saveq="${i}">Save community step</button>`:`<button data-approveq="${i}" ${q.state==="approved"?"disabled":""}>Approve</button><button data-editq="${i}">Edit community step</button><button data-removeq="${i}">Remove</button>`}</div>
+      </div>`).join("")}</div>
+    </section>
+    <section class="card stack">
+      <h3>Review and publish</h3>
+      <ul class="small" style="margin:0;padding-left:18px">
+        <li>${T.roles.every(r=>r.state==="approved")?"✓":"○"} Roles approved</li>
+        <li>${T.collectible.state==="approved"?"✓":"○"} Collectible approved</li>
+        <li>${T.quests.length&&T.quests.every(q=>q.state==="approved")?"✓":"○"} Every quest approved by you</li>
+        <li>✓ Museum visit confirmed by you (AI never marks a partner as confirmed)</li>
+      </ul>
+      <div class="row"><button class="primary" id="publish" ${allApproved&&!T.published?"":"disabled"}>${T.published?"Published to session FITZ-26":"Publish to students"}</button>${allApproved?"":`<span class="small muted">Approve every item to publish.</span>`}</div>
+    </section>`;
+  $("#aud").onchange=e=>{T.audience=e.target.value;renderTeacher()};
+  $("#notes").oninput=e=>T.notes=e.target.value;
+  $("#suggest").onclick=suggestQuests;
+  document.querySelectorAll("[data-approverole]").forEach(b=>b.onclick=()=>{T.roles[b.dataset.approverole].state="approved";renderTeacher()});
+  document.querySelectorAll("[data-editrole]").forEach(b=>b.onclick=()=>{T.roles[b.dataset.editrole].editing=true;renderTeacher()});
+  document.querySelectorAll("[data-saverole]").forEach(b=>b.onclick=()=>{const r=T.roles[b.dataset.saverole];r.text=$("#role-"+b.dataset.saverole).value;r.editing=false;r.state="edited";renderTeacher()});
+  document.querySelectorAll("[data-approvecoll]").forEach(b=>b.onclick=()=>{T.collectible.state="approved";renderTeacher()});
+  document.querySelectorAll("[data-approveq]").forEach(b=>b.onclick=()=>{T.quests[b.dataset.approveq].state="approved";renderTeacher()});
+  document.querySelectorAll("[data-editq]").forEach(b=>b.onclick=()=>{T.quests[b.dataset.editq].editing=true;renderTeacher()});
+  document.querySelectorAll("[data-saveq]").forEach(b=>b.onclick=()=>{const q=T.quests[b.dataset.saveq];q.community=$("#q-"+b.dataset.saveq).value;q.editing=false;q.state="edited";renderTeacher()});
+  document.querySelectorAll("[data-removeq]").forEach(b=>b.onclick=()=>{T.quests.splice(b.dataset.removeq,1);renderTeacher()});
+  $("#publish").onclick=()=>{T.published=true;toast("Published. Students join with code FITZ-26.");renderTeacher()};
+}
+let samplePromise=null;
+async function suggestQuests(){
+  T.aiStatus="loading";T.aiNote="";renderTeacher();
+  const a=AUD[T.audience];
+  const prompt=`You are helping a teacher plan a museum trip in an app called WorldQuest. Students work in pairs with two roles that hold DIFFERENT information, so they must talk to each other. Every quest includes one arranged community step (e.g. asking a gallery attendant a prepared question) and keeps students looking at the real object, not the screen. Never claim a partner, location or booking is confirmed.
+
+Audience: ${a.label}. Rules for this audience: ${a.rules.join("; ")}.
+Venue: ${QUEST.venue}.
+Learning goal: ${QUEST.goal}
+Teacher's notes about the objects:
+${T.notes}
+
+Reply with only a JSON array of exactly 3 quests, each an object with string fields:
+"title" (max 6 words), "roleA" (what Role A holds/does, 1 sentence), "roleB" (what Role B holds/does, 1 sentence), "community" (the arranged community step, 1 sentence), "evidence" (what the pair records, 1 sentence), "theory" (the learning idea in 2-4 words, e.g. "Jigsaw (interdependence)").`;
+  let result=null, note="";
+  try{
+    const sample = await (samplePromise ??= (window.claude?.use ? window.claude.use("sample") : Promise.resolve(null)));
+    if(!sample) throw {code:"unavailable"};
+    result = await sample.json(prompt,{modelTier:"quick",cache:false});
+    if(!Array.isArray(result)||!result.length) throw {code:"invalid_json"};
+    result=result.slice(0,3).map(q=>({title:String(q.title||"Untitled quest"),roleA:String(q.roleA||""),roleB:String(q.roleB||""),community:String(q.community||""),evidence:String(q.evidence||""),theory:String(q.theory||""),state:"ai"}));
+    note="Drafted by Claude from your notes. Check every quest before approving.";
+  }catch(e){
+    result=FALLBACK_QUESTS.map(q=>({...q,state:"ai",sim:true}));
+    note = e?.code==="not_granted" ? "AI not allowed in this view, so pre-written suggestions are shown." :
+           e?.code==="rate_limited" ? "AI is busy right now, so pre-written suggestions are shown. Try again later." :
+           "Live AI isn't available here, so pre-written suggestions are shown.";
+  }
+  T.quests=result;T.aiStatus="idle";T.aiNote=note;renderTeacher();
+}
+function tProvider(){
+  const p=T.provider;
+  $("#tmain").innerHTML=`
+    <div><span class="label">Experience trip</span><h2>Provider</h2></div>
+    <section class="card stack">
+      <div class="row" style="justify-content:space-between"><h3>${esc(p.name)}</h3>${p.status==="confirmed"?`<span class="chip ok">Confirmed by you</span>`:`<span class="chip edit">Pending</span>`}</div>
+      <dl class="kv"><dt>When</dt><dd>${esc(p.date)}</dd><dt>Agreed activity</dt><dd>${esc(p.activity)}</dd><dt>Students bring</dt><dd>${esc(p.bring)}</dd><dt>If they cancel</dt><dd>${esc(p.fallback)}</dd><dt>Check-in</dt><dd>Printed QR code at the studio door. Teacher can mark attendance instead.</dd></dl>
+      <div class="row"><button class="${p.status==="confirmed"?"":"primary"}" id="toggleStatus">${p.status==="confirmed"?"Mark as pending":"Mark as confirmed"}</button></div>
+      <p class="small muted">Emails, booking and payment happen outside WorldQuest. Only you can mark a provider as confirmed; the AI never does.</p>
+    </section>
+    <section class="card stack">
+      <h3>Check-in QR for the studio door</h3>
+      <p class="small muted">Print this and give it to the provider. Students scan it on arrival and their collectible evolves.</p>
+      <div class="qr" id="provQR" style="max-width:240px"></div>
+      <p class="small mono">${QUEST.providerCode}</p>
+    </section>`;
+  $("#toggleStatus").onclick=()=>{p.status=p.status==="confirmed"?"pending":"confirmed";renderTeacher()};
+  makeQR($("#provQR"),QUEST.providerCode);
+}
+
+/* ---------- student ---------- */
+const S = {A:{step:0,alias:"",answer:"",card:{obs:"",int:"",q:""}}, B:{step:0,alias:"",answer:"",card:{obs:"",int:"",q:""},pick:null,photo:null}};
+const STEPS=["join","mission","encounter","scan","pair","collect","card","journal","checkin"];
+function renderStudent(role){
+  const s=S[role]; const name=role==="A"?"Riddle Keeper":"Navigator";
+  const stepName=STEPS[s.step];
+  $("#app").innerHTML=`<div class="phone">
+    <div class="topbar" style="margin-bottom:8px"><a class="brand" href="#" style="text-decoration:none;color:inherit">${logo} WorldQuest</a>
+    ${s.step>0?`<span class="role-badge">${role} · ${name}</span>`:""}</div>
+    <div class="steps" aria-hidden="true">${STEPS.map((_,i)=>`<i class="${i<=s.step?"on":""}"></i>`).join("")}</div>
+    <div id="smain" class="stack"></div>
+    <p class="small muted" style="margin-top:24px;text-align:center"><a href="#" id="restart">Restart demo</a></p>
+  </div>`;
+  $("#restart").onclick=e=>{e.preventDefault();S[role]={step:0,alias:"",answer:"",card:{obs:"",int:"",q:""},pick:null,photo:null};renderStudent(role)};
+  STUDENT[stepName](role,s);
+}
+const next=(role)=>{S[role].step++;renderStudent(role);scrollTo(0,0)};
+const STUDENT={
+  join(role,s){
+    $("#smain").innerHTML=`
+      <h1 style="font-size:30px">Join your trip</h1>
+      <div class="card stack">
+        <label class="small" for="code">Session code</label><input id="code" class="mono" value="FITZ-26">
+        <label class="small" for="alias">Team alias (no real names)</label><input id="alias" placeholder="e.g. Clockwatchers" value="${esc(s.alias)}">
+      </div>
+      <button class="primary big" id="go">Join</button>`;
+    $("#go").onclick=()=>{s.alias=$("#alias").value.trim()||"Clockwatchers";next(role)};
+  },
+  mission(role,s){
+    const intro=`<div class="card stack"><span class="label">${QUEST.venue}</span><h2>${QUEST.title}</h2>
+      <p class="small muted">Team ${esc(s.alias)} · Your partner has information you don't. Talk it through.</p></div>`;
+    if(role==="A"){
+      $("#smain").innerHTML=intro+`
+        <div class="card stack"><span class="label">Your riddle</span><p class="riddle">"${QUEST.riddle}"</p></div>
+        <div class="phone-away">Read it aloud to your partner, then put your phone away and look.</div>
+        <details class="card"><summary class="small" style="cursor:pointer">Need a hint?</summary><p class="small" style="margin-top:8px">Think about what people once carried to remind them life is short. Ask your Navigator which case holds small personal objects.</p></details>
+        <button class="primary big" id="found">We've found it</button>`;
+      $("#found").onclick=()=>next(role);
+    }else{
+      $("#smain").innerHTML=intro+`
+        <div class="card stack map"><span class="label">Your map · tap the case you think it's in</span>
+        <svg viewBox="0 0 340 240" role="group" aria-label="Gallery map with three display cases">
+          <rect class="wall" x="6" y="6" width="328" height="228" rx="8"/>
+          <text class="faint" x="20" y="226">Entrance</text>
+          ${[[30,40,"1"],[130,120,"2"],[235,40,"3"]].map(([x,y,n])=>`<g class="case ${s.pick===n?(n==="2"?"sel":"bad"):""}" data-case="${n}" tabindex="0" role="button" aria-label="Case ${n}"><rect x="${x}" y="${y}" width="80" height="60" rx="6"/><text x="${x+40}" y="${y+36}" text-anchor="middle">Case ${n}</text></g>`).join("")}
+        </svg>
+        <p class="small muted">No descriptions on purpose. Ask your Riddle Keeper what you're looking for.</p></div>
+        ${s.pick&&s.pick!=="2"?`<div class="hint">Not quite. Ask your partner to read the riddle again.</div>`:""}
+        <button class="primary big" id="found" ${s.pick==="2"?"":"disabled"}>This is the one</button>`;
+      document.querySelectorAll("[data-case]").forEach(g=>{const f=()=>{s.pick=g.dataset.case;renderStudent(role)};g.onclick=f;g.onkeydown=e=>{if(e.key==="Enter"||e.key===" ")f()}});
+      $("#found").onclick=()=>next(role);
+    }
+  },
+  encounter(role,s){
+    $("#smain").innerHTML=`
+      <div class="card stack"><span class="label">Community encounter</span><h2>Ask a gallery attendant</h2>
+        <dl class="kv"><dt>Who</dt><dd>The attendant in this gallery (arranged with the museum's learning team)</dd><dt>Your question</dt><dd><b>"${QUEST.question}"</b></dd></dl>
+        <p class="small muted">Listen for one fact you didn't know. Paraphrase it back to check you understood.</p></div>
+      <div class="card stack"><label class="small" for="ans">What did you learn? (a few words)</label><input id="ans" placeholder="e.g. the watch is about 400 years old" value="${esc(s.answer)}"></div>
+      <button class="primary big" id="go">Save and continue</button>
+      <p class="small muted">Saved as completed, not marked right or wrong. Your teacher reviews it later.</p>`;
+    $("#go").onclick=()=>{s.answer=$("#ans").value.trim();if(!s.answer){toast("Write a few words first.");return}next(role)};
+  },
+  scan(role,s){
+    if(role==="A"){
+      $("#smain").innerHTML=`
+        <div class="card stack"><span class="label">While your Navigator photographs it</span><h2>Look closely</h2>
+        <p>Find three details on the object. Say them out loud to your partner.</p></div>
+        <div class="phone-away">Phone away. Eyes on the object.</div>
+        <button class="primary big" id="go">Done, show our pair code</button>`;
+      $("#go").onclick=()=>next(role);
+      return;
+    }
+    $("#smain").innerHTML=`
+      <div class="card stack"><span class="label">Discovery</span><h2>Photograph one detail</h2>
+        <p class="small muted">The object or a detail of it, never people. Photos stay on this phone.</p>
+        <div class="scanbox" id="sbox">${s.photo?`<img src="${s.photo}" alt="Your photo of the object"><div class="scanline"></div>`:`<span>No photo yet</span>`}</div>
+        <div id="scanStatus"></div>
+        <label class="btn primary big" style="text-align:center" for="cam">Open camera</label>
+        <input id="cam" type="file" accept="image/*" capture="environment" hidden>
+        <button id="skip">Can't take a photo? Continue without one</button>
+      </div>`;
+    $("#cam").onchange=e=>{const f=e.target.files[0];if(!f)return;s.photo=URL.createObjectURL(f);renderStudent(role);matchFake(role)};
+    $("#skip").onclick=()=>next(role);
+  },
+  pair(role,s){
+    if(role==="A"){
+      $("#smain").innerHTML=`
+        <div class="card stack"><span class="label">Confirm together</span><h2>Show this to your Navigator</h2>
+        <p class="small muted">The talking did the work. This just confirms you found it together.</p>
+        <div class="qr" id="pqr"></div><p class="small mono" style="text-align:center">${QUEST.pairCode}</p></div>
+        <button class="primary big" id="go">My partner scanned it</button>`;
+      makeQR($("#pqr"),QUEST.pairCode);
+      $("#go").onclick=()=>next(role);
+    }else{
+      $("#smain").innerHTML=`
+        <div class="card stack"><span class="label">Confirm together</span><h2>Scan your Riddle Keeper's code</h2>
+        <label class="btn primary big" style="text-align:center" for="qrcam">Scan pair code</label>
+        <input id="qrcam" type="file" accept="image/*" capture="environment" hidden>
+        <div id="qrStatus"></div>
+        <details><summary class="small" style="cursor:pointer">Type the code instead</summary><div class="row" style="margin-top:8px"><input id="typed" class="mono" placeholder="WQ-PAIR-…"><button id="typedGo">Confirm</button></div></details></div>`;
+      $("#qrcam").onchange=async e=>{const f=e.target.files[0];if(!f)return;$("#qrStatus").innerHTML=`<p class="small muted">Reading code…</p>`;const d=await readQRFromFile(f);
+        if(d===QUEST.pairCode){toast("Pair confirmed!");next(role)}else{$("#qrStatus").innerHTML=`<p class="hint">Couldn't read the code. Try again closer, or type it.</p>`}};
+      $("#typedGo").onclick=()=>{if($("#typed").value.trim().toUpperCase()===QUEST.pairCode){toast("Pair confirmed!");next(role)}else toast("That code doesn't match. Check with your partner.")};
+    }
+  },
+  collect(role,s){
+    $("#smain").innerHTML=`
+      <div style="text-align:center" class="stack"><span class="label">Collectible unlocked</span><h1 style="font-size:30px">Memento Mori Watch</h1></div>
+      <div class="collectible pop"><div class="coll-card">${watchArt(130)}<span class="label">Level 1</span></div></div>
+      <div style="text-align:center"><span class="chip sim">Simulated: 3D model from Manifest</span></div>
+      <div class="card stack"><h3>Why a skull on a watch?</h3>
+        <p class="small">"Memento mori" is Latin for "remember you must die". Owners carried objects like this to remind themselves to use their time well.</p>
+        <p class="small muted">It evolves when you use the idea yourself at the drawing class.</p></div>
+      <button class="primary big" id="go">Write your discovery card</button>`;
+    $("#go").onclick=()=>next(role);
+  },
+  card(role,s){
+    const c=s.card;
+    $("#smain").innerHTML=`
+      <div class="card stack"><span class="label">Your contribution</span><h2>Discovery card</h2>
+        <p class="small muted">Approved cards become quests for next year's class.</p>
+        <label class="small" for="obs">I observed… (what you could see)</label><textarea id="obs" placeholder="The jaw opens on a hinge to show the dial">${esc(c.obs)}</textarea>
+        <label class="small" for="int">I think this means… (your interpretation)</label><textarea id="int" placeholder="The owner had to face death every time they checked the time">${esc(c.int)}</textarea>
+        <label class="small" for="cq">A question for the next class</label><input id="cq" placeholder="Why would someone want this reminder?" value="${esc(c.q)}"></div>
+      <button class="primary big" id="go">Submit for teacher review</button>`;
+    $("#go").onclick=()=>{c.obs=$("#obs").value;c.int=$("#int").value;c.q=$("#cq").value;toast("Submitted. Waiting for teacher review.");next(role)};
+  },
+  journal(role,s){
+    $("#smain").innerHTML=`
+      <h1 style="font-size:30px">Journal</h1>
+      <div class="card stack">
+        <div class="journal-item"><div class="mini">${watchArt(44)}</div><div><b>Memento Mori Watch</b><p class="small muted">Level 1 · Fitzwilliam Museum</p></div></div>
+        <div class="journal-item"><div class="mini" style="background:var(--accent-soft);border-color:var(--accent)">✎</div><div><b>Discovery card</b><p class="small"><span class="chip edit">Waiting for teacher review</span></p></div></div>
+      </div>
+      <div class="card stack locked"><span class="label">Next real experience</span><h3>Still-life drawing class</h3>
+        <p class="small">Thu 3 Dec · local art studio · bring your discovery card</p>
+        <p class="small"><span class="chip lock">Unlocks when your whole class finishes (24 of 28)</span></p></div>
+      <button class="big" id="go">Demo: jump to drawing class day</button>`;
+    $("#go").onclick=()=>next(role);
+  },
+  checkin(role,s){
+    if(s.evolved){
+      $("#smain").innerHTML=`
+        <div style="text-align:center" class="stack"><span class="label">Collectible evolved</span><h1 style="font-size:30px">Memento Mori Watch</h1></div>
+        <div class="collectible pop"><div class="coll-card evolved">${watchArt(130,true)}<span class="label" style="color:var(--gold)">Level 2 · Applied</span></div></div>
+        <div class="card stack"><span class="label">Reflection</span><label for="refl">What did the watch help you notice in your own drawing?</label><textarea id="refl" placeholder="A sentence or two"></textarea><button class="primary" id="done">Save reflection</button></div>`;
+      $("#done").onclick=()=>toast("Saved. Put your phone away and enjoy the class.");
+      return;
+    }
+    $("#smain").innerHTML=`
+      <div class="card stack"><span class="label">Drawing class · unlocked for your class</span><h2>Check in at the studio</h2>
+        <p class="small muted">Scan the code at the door. Then phones away: this part happens on paper.</p>
+        <label class="btn primary big" style="text-align:center" for="ci">Scan check-in code</label>
+        <input id="ci" type="file" accept="image/*" capture="environment" hidden>
+        <div id="ciStatus"></div>
+        <button id="ciSkip">No phone? Your teacher can check you in</button></div>`;
+    const done=()=>{s.evolved=true;toast("Checked in. Your collectible evolved!");renderStudent(role)};
+    $("#ci").onchange=async e=>{const f=e.target.files[0];if(!f)return;$("#ciStatus").innerHTML=`<p class="small muted">Reading code…</p>`;const d=await readQRFromFile(f);
+      if(d===QUEST.providerCode)done();else $("#ciStatus").innerHTML=`<p class="hint">Couldn't read the code. Try again, or ask your teacher.</p>`};
+    $("#ciSkip").onclick=done;
+  }
+};
+function matchFake(role){
+  const st=$("#scanStatus");
+  st.innerHTML=`<p class="thinking" style="color:var(--accent)"><span class="spin" style="border-top-color:var(--accent)"></span>Matching against approved objects…</p>`;
+  setTimeout(()=>{
+    st.innerHTML=`<div class="stack"><p class="chip ok" style="align-self:flex-start">Match: skull-shaped watch</p><span class="chip sim" style="align-self:flex-start">Simulated recognition</span><button class="primary big" id="cont">Continue</button></div>`;
+    $("#cont").onclick=()=>next(role);
+  },1800);
+}
+
+route();
+</script>
