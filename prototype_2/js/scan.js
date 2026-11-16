@@ -79,7 +79,7 @@ const StationCards = (() => {
       <div class="overlay-panel print-panel">
         <div class="spread no-print"><h2 style="margin:0">Station clue cards</h2>
           <div class="row"><button class="btn btn-primary btn-sm" data-print>Print</button><button class="btn btn-ghost btn-sm" data-x>Close</button></div></div>
-        <p class="hint-note no-print">Place one card at each expert station (with museum permission). Students scan it to unlock their field notes. The facilitator can read out the backup code instead.</p>
+        <p class="hint-note no-print">Place one card at each expert station (with the venue’s permission). Students scan it to unlock their field notes. The facilitator can read out the backup code instead.</p>
         <div class="station-grid">
           ${SEED.topics.map((t) => {
             const m = SEED.missions[t];
@@ -95,6 +95,29 @@ const StationCards = (() => {
     });
     el.querySelector('[data-x]').onclick = () => el.remove();
     el.querySelector('[data-print]').onclick = () => window.print();
+  }
+  return { open };
+})();
+
+/* Show the class code and a join QR full-screen, for the projector. */
+const JoinCode = (() => {
+  function open(code, title) {
+    const url = location.origin + location.pathname + '?session=' + encodeURIComponent(code) + '#student';
+    const el = document.createElement('div');
+    el.className = 'overlay';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Class code');
+    el.innerHTML = `<div class="overlay-panel join-panel">
+      <div class="eyebrow">Join ${title ? '“' + title.replace(/[<>&]/g, '') + '”' : 'the quest'}</div>
+      <p style="margin:6px 0 0">Scan with your phone camera, or go to the WorldQuest site and type</p>
+      <div class="join-code mono">${code.replace(/[<>&]/g, '')}</div>
+      <div class="station-qr" data-join></div>
+      <button class="btn btn-ghost btn-sm" data-x>Close</button></div>`;
+    document.body.appendChild(el);
+    const q = el.querySelector('[data-join]');
+    if (window.QRCode) new QRCode(q, { text: url, width: 220, height: 220, colorDark: '#20264B', colorLight: '#FFFFFF' });
+    el.querySelector('[data-x]').onclick = () => el.remove();
+    el.addEventListener('click', (e) => { if (e.target === el) el.remove(); });
   }
   return { open };
 })();

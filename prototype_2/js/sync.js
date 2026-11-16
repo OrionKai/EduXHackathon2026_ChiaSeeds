@@ -46,8 +46,8 @@ const Sync = (() => {
   }
 
   async function push(type, payload, tries = 0) {
-    if (type === 'resetDemo') {
-      // A reset legitimately clears claims, so it uses the reset function instead of the guarded save.
+    if (type === 'resetDemo' || type === 'createQuest' || type === 'openQuest') {
+      // Resetting or switching quests legitimately clears claims, so these use the reset function instead of the guarded save.
       const { data: rv, error: re } = await db.rpc('wq_reset_session', { p_id: session, p_state: Engine.sharedState() });
       if (re) setStatus('error'); else if (rv) state.version = rv;
       return;

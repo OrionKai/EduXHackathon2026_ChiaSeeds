@@ -53,6 +53,14 @@
     return `<span class="status-chip ${cls}">${Art.icon(icon, 15)}${label}</span>`;
   }
 
+  const sessionCode = () => (typeof Sync !== 'undefined' ? Sync.state.session : 'FITZ-DEMO');
+  const joinedHere = (st) => !!(st.ui.joinedIn && st.ui.joinedIn[sessionCode()]);
+  function markJoined(pid, nick) {
+    const u = S().ui; u.joinedIn = u.joinedIn || {}; u.joinedIn[sessionCode()] = pid;
+    try { const k = 'wq-joined', list = JSON.parse(localStorage.getItem(k) || '[]').filter((x) => x.code !== sessionCode());
+      list.unshift({ code: sessionCode(), title: S().quest.title, nick: nick || '' }); localStorage.setItem(k, JSON.stringify(list.slice(0, 8))); } catch {}
+  }
+  const joinedList = () => { try { return JSON.parse(localStorage.getItem('wq-joined') || '[]'); } catch { return []; } };
   const who = (p) => (S().seats && S().seats[p.id] ? S().seats[p.id].nick : p.name);
   const topicColor = (t) => SEED.topicMeta[t].color;
   const topicChip = (t) =>
@@ -102,9 +110,7 @@
           <div id="main-content">
             ${role === 'student' ? studentView(st) : role === 'teacher' ? teacherView(st) : collaboratorView(st)}
           </div>
-          <p class="fiction-note">${esc(SEED.fictionDisclaimer)} Gallery anchors come from official Fitzwilliam Museum pages
-          (<a href="https://fitzmuseum.cam.ac.uk/plan-your-visit/galleries" target="_blank" rel="noopener">galleries</a>) and must be
-          re-checked before a real visit.</p>
+          <p class="fiction-note">${esc(SEED.genericDisclaimer)} ${st.quest.templateId === 'lost_museum' ? 'This example’s gallery details come from official Fitzwilliam Museum pages (<a href="https://fitzmuseum.cam.ac.uk/plan-your-visit/galleries" target="_blank" rel="noopener">galleries</a>) and must be re-checked before a visit; no partnership with the museum is claimed.' : 'Facts come only from the sources the educator approved.'}</p>
         </main>
       </div>
       ${overlays(st)}
@@ -138,7 +144,7 @@
           <a class="card role-card" href="#educator"><div class="eyebrow teal">Educator</div><h3>Design and run a quest</h3><p>Plan with the AI assistant, approve every step, run the live session.</p><span class="btn btn-teal btn-sm">Open studio ${Art.icon('arrow', 15)}</span></a>
           <a class="card role-card" href="#partner"><div class="eyebrow coral">Community partner</div><h3>Share your knowledge</h3><p>Review how your community is represented and talk with students.</p><span class="btn btn-secondary btn-sm">Contribute ${Art.icon('arrow', 15)}</span></a>
         </div>
-        <p class="fiction-note">${esc(SEED.fictionDisclaimer)}</p>
+        <p class="fiction-note">${esc(SEED.genericDisclaimer)}</p>
       </div>`;
   }
 
@@ -163,7 +169,7 @@
           <div class="row"><button class="btn btn-secondary btn-sm" data-a="sim-class">Seed classmates</button><button class="btn btn-secondary btn-sm" data-a="sim-bonus">Seed discoveries</button><button class="btn btn-secondary btn-sm" data-a="tamper">Tamper test</button></div></div>
         <div class="demo-sec"><span class="eyebrow">Running order</span>
           <ol class="hint-note" style="margin:0;padding-left:18px"><li>Partner approves their contribution</li><li>Educator drafts, approves tracks, publishes</li><li>Live session → advance phases; students join with the class code</li></ol></div>
-        <button class="btn btn-danger-ghost btn-sm" data-a="reset">Reset this session for everyone</button>
+        <button class="btn btn-danger-ghost btn-sm" data-a="reset">Reset demo data (everyone on this class code)</button>
       </div>` : ''}
       <button class="demo-fab" data-a="demo-toggle" aria-expanded="${!!st.ui.demoOpen}">${Art.icon('sparkle', 15)} Demo</button>
     </div>`;
@@ -178,28 +184,75 @@
 
   function studentView(st) {
     const me = SEED.byId[st.ui.student];
+    if (!joinedHere(st)) return `<div class="stage-wrap stack">${joinScreen(st, me)}</div>`;
     const screen = st.ui.screen || 'adventure';
-    const tabs = [
-      ['adventure', 'sparkle', 'My adventure'],
-      ['map', 'map', 'Quest map'],
-      ['album', 'trophy', 'Class album'],
-    ];
     return `
       <div class="stack">
         <div class="spread">
           <div class="row">
-            <span class="identity-chip">${Art.icon('eye', 17)} ${esc(who(me))} · Home ${me.home} · Expert ${me.topic}</span>
+            <span class="identity-chip">${Art.icon('eye', 17)} ${esc(who(me))} · Home team ${me.home}</span>
             ${topicChip(me.topic)}
             ${st.help.some((h) => h.pid === me.id && h.open)
               ? `<span class="pill peach">${Art.icon('clock', 14)} Teacher is on the way</span>`
               : `<button class="btn btn-sm help-btn" data-a="help">${Art.icon('alert', 15)} Call teacher</button>`}
           </div>
         </div>
+        ${nextStep(st, me)}
         <div class="stage-wrap stack">
           ${screen === 'map' ? questMap(st, me) : screen === 'album' ? albumScreen(st, 'student') : adventureScreen(st, me)}
         </div>
       </div>`;
   }
+
+  /* The one thing this student should do now, from the phase and their own progress. */
+  function nextStep(st, me) {
+    const m = SEED.missions[me.topic], a = m.assess || SEED.defaultAssess(), ev = st.evidence[me.id];
+    const track = esc(m.name || 'your track'), place = esc(m.gallery || 'your location');
+    const steps = (list) => `<ol class="ns-steps">${list.map(([done, now, text]) => `<li class="${done ? 'done' : now ? 'now' : ''}">${done ? Art.icon('check', 14) : ''}<span>${text}</span></li>`).join('')}</ol>`;
+    let title = '', body = '', action = '';
+    switch (st.phase) {
+      case 'LOBBY':
+        title = 'You’re in — wait for your teacher to start';
+        body = `<p>You are the <strong>${track}</strong> expert in home team <strong>${me.home}</strong>. Find your home team and stay together. Your teacher will start the briefing soon.</p>`;
+        break;
+      case 'BRIEFING':
+        title = 'Read your briefing';
+        body = `<p>Read the story and your role below. Next, your teacher opens the expert missions and you go to <strong>${place}</strong>.</p>`;
+        break;
+      case 'EXPERT': {
+        const at = a.checkin === 'none' || !!st.checkins[me.id];
+        const submitted = ev.status === 'SUBMITTED' || ev.status === 'VERIFIED';
+        const list = [[at, !at, `Go to <strong>${place}</strong> with your expert group${a.checkin === 'qr' ? ' and scan the clue card' : ''}`],
+          [at && (st.ui.missionTab === 'record' || submitted), at && !submitted, 'Look closely and talk it through — phone away'],
+          [submitted, at && !submitted, `Submit your evidence (${esc(SEED.ASSESS_TEXT.evidence[a.evidence]).toLowerCase()}${a.quiz && a.quiz.length ? ' + quick check' : ''})`],
+          [ev.status === 'VERIFIED', ev.status === 'SUBMITTED', ev.status === 'NEEDS_REVISION' ? 'Fix what your reviewer asked for, then submit again' : `Get it verified (${esc(SEED.ASSESS_TEXT.verify[a.verify]).toLowerCase()})`]];
+        title = ev.status === 'VERIFIED' ? 'Done! Wait for peer teaching' : 'Your expert mission';
+        body = steps(list);
+        if (!at && a.checkin === 'qr') action = `<button class="btn btn-primary btn-sm" data-a="scan-station">${Art.icon('eye', 15)} Scan clue card</button>`;
+        else if (!submitted || ev.status === 'NEEDS_REVISION') action = `<button class="btn btn-primary btn-sm" data-a="mtab" data-tab="record">${Art.icon('pencil', 15)} Open my field notes</button>`;
+        break;
+      }
+      case 'PEER_TEACH': {
+        const taught = SEED.topics.filter((t) => st.peerTeach[me.home][t].shared).length;
+        title = 'Teach your home team';
+        body = `<p>Go back to home team <strong>${me.home}</strong>. Explain what you found as the ${track} expert, then listen to the other three. A teammate answers a quick check after each one. <strong>${taught}/4</strong> taught so far.</p>`;
+        break;
+      }
+      case 'FINALE':
+        title = 'Solve the finale together';
+        body = `<p>With home team <strong>${me.home}</strong>, use all four perspectives to complete “${esc(SEED.finale.title)}”.</p>`;
+        break;
+      case 'REFLECTION':
+        title = 'Reflect';
+        body = '<p>Answer the two reflection questions on your own, then look up and join the class discussion.</p>';
+        break;
+      default:
+        title = 'Quest complete';
+        body = '<p>Have a look at the class album, then put your phone away.</p>';
+    }
+    return `<div class="card next-step"><div class="spread"><div><div class="eyebrow">What to do now</div><h3 style="margin:2px 0 6px">${title}</h3></div>${action}</div>${body}</div>`;
+  }
+
 
   function phasePath(st) {
     const stations = [
@@ -225,7 +278,7 @@
       case 'LOBBY': return joinScreen(st, me);
       default: break;
     }
-    if (!st.ui.joined) return joinScreen(st, me);
+    if (!joinedHere(st)) return joinScreen(st, me);
     switch (st.phase) {
       case 'BRIEFING': return briefingScreen(me) + phasePath(st);
       case 'EXPERT': return missionScreen(st, me) + phasePath(st);
@@ -245,15 +298,16 @@
           <h1>The world is <span class="accent">your classroom.</span></h1>
           <p class="lede">Explore real places, unlock hidden stories, and bring your friends’ discoveries together to solve a mystery.</p>
           <div class="row">
-          ${st.ui.joined ? `<p class="hint-note" style="margin:0">You’re in as <strong>${esc(who(me))}</strong>.</p>` : `
+          ${joinedHere(st) ? `<p class="hint-note" style="margin:0">You’re in as <strong>${esc(who(me))}</strong>.</p>` : `
           <form class="row" data-form="join">
             <label class="sr-only" for="join-code">Class code</label>
-            <input id="join-code" class="input" style="width:150px" placeholder="Class code" autocomplete="off" autocapitalize="characters">
+            <input id="join-code" class="input" style="width:150px" placeholder="Class code" autocomplete="off" autocapitalize="characters" value="${new URLSearchParams(location.search).get('session') ? esc(sessionCode()) : ''}">
             <label class="sr-only" for="join-nick">Nickname</label>
             <input id="join-nick" class="input" style="width:170px" placeholder="Nickname" maxlength="16" autocomplete="off">
             <button class="btn btn-primary" type="submit">Join the quest ✦</button>
           </form>`}
-          ${st.ui.joined ? '' : `<p class="hint-note" style="margin-top:10px">Use a nickname, not your real name. You’ll be placed in a home team and an expert track automatically.</p>`}
+          ${joinedHere(st) ? `<button class="btn btn-ghost btn-sm" data-a="leave-class">Join a different class</button>` : `<p class="hint-note" style="margin-top:10px">Your teacher shows the class code and a join QR on their screen — scanning the QR fills the code in for you. Use a nickname, not your real name; you’ll be placed in a home team and an expert track automatically.</p>
+          ${joinedList().length ? `<div class="stack" style="gap:6px;margin-top:12px"><span class="eyebrow">Your quests on this device</span>${joinedList().map((j) => `<a class="btn btn-secondary btn-sm" style="justify-content:flex-start" href="?session=${encodeURIComponent(j.code)}#student">${esc(j.title)} · <span class="mono">${esc(j.code)}</span>${j.nick ? ' · ' + esc(j.nick) : ''}</a>`).join('')}</div>` : ''}`}
         </div>
         <div class="hero-art">${Art.arch()}${Art.sticker('A clue awaits!', '🔍')}</div>
       </div>
@@ -262,7 +316,7 @@
         <p>${st.quest.status === 'PUBLISHED'
           ? 'You’re in! Your educator will start the briefing soon.'
           : 'Your educator hasn’t opened this quest yet. Hang tight.'}</p>
-        ${st.ui.joined ? `<p class="hint-note">You are ${esc(who(me))} in home team ${me.home}, expert track ${me.topic} · ${esc(SEED.topicMeta[me.topic].name)}.</p>` : ''}
+        ${joinedHere(st) ? `<p class="hint-note">You are ${esc(who(me))} in home team ${me.home}, expert track ${me.topic} · ${esc(SEED.topicMeta[me.topic].name)}.</p>` : ''}
       </div>`;
   }
 
@@ -276,7 +330,7 @@
           <p class="lede">${esc(SEED.story.opening)}</p>
           <div class="row">${SEED.story.rules.map((r) => `<span class="pill mint">${Art.icon('check', 14)} ${esc(r)}</span>`).join('')}</div>
         </div>
-        <div class="hero-art">${Art.arch({ door: '#20BDA9', face: '#F6C5CF' })}${Art.sticker('Junior Curators', '🏛️')}</div>
+        <div class="hero-art">${Art.arch({ door: '#20BDA9', face: '#F6C5CF' })}${Art.sticker('Team ' + me.home, '🧭')}</div>
       </div>
       <div class="card wash-lavender">
         <div class="eyebrow">You are a…</div>
@@ -285,7 +339,7 @@
           ${topicChip(me.topic)}
         </div>
       </div>
-      <div class="card"><p style="margin:0" class="hint-note">${Art.icon('help', 16)} This story is fiction, created for learning — it is not an official museum programme. Your educator starts the expert phase when every team is ready.</p></div>`;
+      <div class="card"><p style="margin:0" class="hint-note">${Art.icon('help', 16)} This story is fiction, created for learning — it is not an official programme of the venue. Your educator starts the expert phase when every team is ready.</p></div>`;
   }
 
   function missionScreen(st, me) {
@@ -325,7 +379,7 @@
         <div class="card"><p class="hint-note" style="margin:0"><strong>Verified anchor:</strong> ${esc(m.sourceFact)}
           <a href="${m.sourceUrl}" target="_blank" rel="noopener">official source</a> · re-check on the day. ${esc(m.fallback)}</p></div>
         <button class="btn btn-secondary" data-a="lookup">${Art.icon('eye', 18)} Look Up Mode</button>
-        <p class="hint-note">Observe in person with your group. Never place anything on museum objects.</p>` : ''}
+        <p class="hint-note">Observe in person with your group. Never touch or place anything on objects or exhibits.</p>` : ''}
       ${tab === 'discuss' ? `
         <div class="card wash-lavender"><h4>${Art.icon('voices', 18)} Talk it through</h4><p style="margin:0">${esc(m.discuss)}</p></div>
         ${m.needsFacilitator ? `<div class="card"><div class="eyebrow coral">Today’s question from the community partner</div><p style="margin:0"><strong>${esc([...SEED.contributor.prompts, ...(st.contributor.extraPrompts || [])][st.contributor.interactionPrompt || 0])}</strong></p></div>` : ''}
@@ -335,12 +389,13 @@
             ${st.interactions[me.id] ? statusChip('VERIFIED') : statusChip('SUBMITTED')}</div>
             <p style="margin:8px 0 0">${st.interactions[me.id]
               ? 'Your conversation with the approved contributor is verified — record their perspective in step 3.'
-              : `Meet the approved adult contributor (<em>${esc(SEED.contributor.label)}</em>). They confirm it from their own device.`}</p>
+              : `Meet the approved community partner (<em>${esc(st.quest.partner.name)}</em>). They confirm it from their own device.`}</p>
           </div>` : ''}` : ''}
-      ${tab === 'record' ? (st.checkins[me.id] ? recordForm(st, me, m, ev) : checkinCard(st, me, m, true)) : ''}`;
+      ${tab === 'record' ? (st.checkins[me.id] || (m.assess && m.assess.checkin === 'none') ? recordForm(st, me, m, ev) : checkinCard(st, me, m, true)) : ''}`;
   }
 
   function checkinCard(st, me, m, locked) {
+    if (m.assess && m.assess.checkin === 'none') return '';
     const c = st.checkins[me.id];
     if (c) return `<div class="card wash-mint" style="padding:12px 16px"><strong>${Art.icon('check', 16)} Checked in at ${esc(m.gallery)}</strong> <small>${c.via === 'QR' ? 'QR clue card' : c.via === 'CODE' ? 'facilitator code' : 'simulated'}</small></div>`;
     return `<div class="card checkin-card">
@@ -352,17 +407,24 @@
   function recordForm(st, me, m, ev) {
     if (ev.status === 'SUBMITTED') {
       return `<div class="card"><div class="spread"><h3>Evidence submitted</h3>${statusChip('SUBMITTED')}</div>
-        <p style="margin:0">Your educator is reviewing your evidence. Look up and keep exploring with your group — you’ll feel a tap when it’s verified.</p></div>`;
+        <p style="margin:0">${m.assess && m.assess.verify === 'partner' ? 'The community partner is reviewing your evidence.' : 'Your educator is reviewing your evidence.'} Look up and keep exploring with your group — you’ll feel a tap when it’s verified.</p></div>`;
     }
     const hintsOpen = st.ui.hintsOpen;
     return `
       <form class="card" data-form="evidence">
         <h3>Your field notes</h3>
-        ${m.evidenceFields.map((f) => `
+        <p class="hint-note" style="margin:0 0 10px">${esc(SEED.ASSESS_TEXT.evidence[(m.assess || {}).evidence || 'notes'])}${(m.assess || {}).quiz && m.assess.quiz.length ? ` · quick check (${m.assess.pass}/${m.assess.quiz.length} to pass)` : ''} · ${esc(SEED.ASSESS_TEXT.verify[(m.assess || {}).verify || 'teacher'])}</p>
+        ${(m.assess || {}).evidence === 'photo' ? '' : m.evidenceFields.map((f) => `
           <div class="fld-group">
             <label class="fld" for="f-${f.key}">${esc(f.label)}</label>
             <textarea class="input" id="f-${f.key}" name="${f.key}" rows="2" placeholder="${esc(f.placeholder)}">${esc(ev.answers?.[f.key] || st.ui.drafts?.[me.id]?.[f.key] || '')}</textarea>
           </div>`).join('')}
+        ${(m.assess || {}).evidence && m.assess.evidence !== 'notes' ? `<div class="fld-group"><span class="fld">Photo of the object or a detail (never people)</span>
+          ${st.ui.drafts?.[me.id]?.photo ? `<img class="ev-photo" src="${st.ui.drafts[me.id].photo}" alt="Your photo of the object">` : ''}
+          <label class="btn btn-secondary btn-sm" for="ev-photo-in" style="align-self:flex-start">${Art.icon('eye', 16)} ${st.ui.drafts?.[me.id]?.photo ? 'Retake photo' : 'Take photo'}</label>
+          <input id="ev-photo-in" type="file" accept="image/*" capture="environment" hidden></div>` : ''}
+        ${(m.assess || {}).quiz && m.assess.quiz.length ? `<div class="fld-group"><span class="fld">Quick check</span>${m.assess.quiz.map((q, i) => `<fieldset class="quiz-q"><legend>${i + 1}. ${esc(q.q)}</legend>
+          ${q.o.map((o, k) => `<label class="quiz-o"><input type="radio" name="quiz${i}" value="${k}" ${String(st.ui.drafts?.[me.id]?.['quiz' + i]) === String(k) ? 'checked' : ''}> ${esc(o)}</label>`).join('')}</fieldset>`).join('')}</div>` : ''}
         <div class="row">
           <button class="btn btn-primary" type="submit">${Art.icon('check', 18)} Submit evidence</button>
           <button class="btn btn-ghost" type="button" data-a="hints">${Art.icon('help', 17)} ${hintsOpen ? 'Hide hints' : 'Need a hint?'}</button>
@@ -435,7 +497,7 @@
       return `
         <div class="card">
           <div class="spread"><h2>${Art.icon('lock', 24)} Finale locked</h2>${statusChip('LOCKED')}</div>
-          <p>“Restore the Exhibition Introduction” needs every perspective in team ${home} verified <em>and</em> taught:</p>
+          <p>“${esc(SEED.finale.title)}” needs every perspective in team ${home} verified <em>and</em> taught:</p>
           <div class="stack" style="gap:8px">
             ${reasons.map((r) => `<div class="row">${topicChip(r.topic)}<span class="hint-note">${r.kind === 'evidence' ? 'evidence not yet verified by the educator' : 'not yet taught to the team'}</span></div>`).join('')}
           </div>
@@ -444,16 +506,16 @@
     }
     if (f.status === 'SUBMITTED') {
       return `<div class="card"><div class="spread"><h2>Introduction submitted</h2>${statusChip('SUBMITTED')}</div>
-        <p style="margin:0">The curator (your educator) is reviewing team ${home}’s restored introduction against the rubric: ${SEED.finale.rubric.join(' · ')}.</p></div>`;
+        <p style="margin:0">Your educator is reviewing team ${home}’s answer against the rubric: ${SEED.finale.rubric.join(' · ')}.</p></div>`;
     }
     if (f.status === 'APPROVED') {
       return `<div class="card wash-mint burst"><div class="spread"><h2>Main quest complete! ✦</h2>${statusChip('APPROVED')}</div>
-        <p style="margin:0">The curator approved team ${home}’s exhibition introduction. Beautifully cautious, evidence-based work.</p></div>`;
+        <p style="margin:0">Your educator approved team ${home}’s answer. Careful, evidence-based work.</p></div>`;
     }
     const fin = SEED.finale;
     const picked = st.ui.pickedObject;
     return `
-      ${f.status === 'NEEDS_REVISION' ? `<div class="card wash-peach"><strong>${Art.icon('alert', 17)} Curator’s note:</strong> ${esc(f.note)}</div>` : ''}
+      ${f.status === 'NEEDS_REVISION' ? `<div class="card wash-peach"><strong>${Art.icon('alert', 17)} Educator’s note:</strong> ${esc(f.note)}</div>` : ''}
       <div class="mission-hero sun">
         <div class="eyebrow sun">Escape-room finale · Team ${home}</div>
         <h2>${esc(fin.title)}</h2>
@@ -527,7 +589,7 @@
     const done = st.reflections[me.id];
     const f = st.finale[me.home];
     return `
-      ${f.status === 'APPROVED' ? `<div class="card wash-mint"><div class="spread"><h2>Quest complete ✦</h2>${statusChip('APPROVED')}</div><p style="margin:0">Team ${me.home} restored the exhibition introduction.</p></div>` : ''}
+      ${f.status === 'APPROVED' ? `<div class="card wash-mint"><div class="spread"><h2>Quest complete ✦</h2>${statusChip('APPROVED')}</div><p style="margin:0">Team ${me.home} completed the finale.</p></div>` : ''}
       ${st.partnerFeedback[me.home] ? `<div class="card wash-peach"><div class="eyebrow coral">From the community partner</div><p style="margin:0">“${esc(st.partnerFeedback[me.home].text)}”</p></div>` : ''}
       ${done ? `<div class="card"><h3>Reflection saved</h3><p style="margin:0">Thanks, ${esc(who(me))} — now look up and join the class discussion!</p></div>`
       : `<form class="card" data-form="reflection">
@@ -542,9 +604,9 @@
     return `
       <div class="hero">
         <div>
-          <div class="eyebrow sun">The Lost Museum · restored</div>
+          <div class="eyebrow sun">${esc(SEED.title)} · complete</div>
           <h1>Guardians of <span class="accent">stories.</span></h1>
-          <p class="lede">Four perspectives, five teams, one restored exhibition introduction. The best part wasn’t on this screen — it was the looking, the listening and the teaching.</p>
+          <p class="lede">Four perspectives, five teams, one shared answer. The best part wasn’t on this screen — it was the looking, the listening and the teaching.</p>
           <button class="btn btn-primary" data-a="screen" data-screen="album">${Art.icon('trophy', 18)} Open the class album</button>
         </div>
         <div class="hero-art">${Art.arch({ door: '#FFB547', face: '#C8EDE3' })}${Art.sticker('Quest complete!', '🏆')}</div>
@@ -631,36 +693,53 @@
 
   function teacherDashboard(st) {
     const pend = sel.pendingEvidence().length + sel.pendingFinales().length + sel.pendingBonus().length;
+    const quests = Object.entries(st.library).map(([id, r]) => ({ id, q: id === st.activeQuest ? st.quest : r.quest, active: id === st.activeQuest }))
+      .sort((x, y) => (y.active - x.active) || String(y.id).localeCompare(String(x.id)));
+    const live = st.phase !== 'LOBBY';
+    const code = typeof Sync !== 'undefined' ? Sync.state.session : 'FITZ-DEMO';
     return `
       <div class="stack">
-        <div class="hero" style="background:linear-gradient(120deg,#EFEBFF,#FDF3FA 60%,#FFF1DA)">
-          <div>
-            <div class="eyebrow">Educator creative studio</div>
-            <h1>Design an <span class="accent">adventure.</span></h1>
-            <p class="lede">Bring curriculum, community expertise and real-world exploration into one unforgettable quest.</p>
-            <div class="row">
-              <button class="btn btn-primary" data-a="screen" data-screen="builder">Create a quest ✦</button>
-              <button class="btn btn-secondary" data-a="screen" data-screen="live">${Art.icon('eye', 17)} Live session</button>
-            </div>
-          </div>
-          <div class="hero-art">${Art.arch({ door: '#6B5CE7', face: '#C8EDE3' })}${Art.sticker('Quest Builder', '✏️')}</div>
-        </div>
+        <div class="spread"><div><div class="eyebrow">Educator studio · class code <span class="mono">${esc(code)}</span></div><h2 style="margin:4px 0 0">My quests</h2></div>
+          <button class="btn btn-primary" data-a="new-quest" ${live ? 'disabled title="End the live session first"' : ''}>${Art.icon('plus', 16)} New quest</button></div>
+        ${st.ui.newQuest && !live ? `<div class="card new-quest">
+          <div class="spread"><h3 style="margin:0">Start a new quest</h3><button class="btn btn-ghost btn-sm" data-a="new-quest-x">Cancel</button></div>
+          <label class="fld" for="nq-title">Working title (optional)</label><input class="input" id="nq-title" placeholder="e.g. Pollinator Patrol at the community garden">
+          <div class="grid-3" style="margin-top:10px">
+            <button class="card choice-card" data-a="create-quest" data-tpl="blank">${Art.icon('pencil', 20)}<strong>Blank quest</strong><small>Write every part yourself, or ask the AI as you go.</small></button>
+            <button class="card choice-card" data-a="create-quest" data-tpl="ai">${Art.icon('sparkle', 20)}<strong>Generate with AI</strong><small>Add your sources, then the assistant drafts all four tracks, the finale and collectibles for you to review.</small></button>
+            <button class="card choice-card" data-a="create-quest" data-tpl="lost_museum">${Art.icon('book', 20)}<strong>Example: The Lost Museum</strong><small>A complete Fitzwilliam quest to adapt.</small></button>
+          </div></div>` : ''}
         <div class="grid-3">
-          <div class="card wash-lavender"><div class="eyebrow">My quests</div><h2 style="font-size:40px">01</h2><p style="margin:0">${esc(st.quest.title)} · ${statusChip(st.quest.status === 'PUBLISHED' ? 'APPROVED' : 'PENDING').replace('Approved', 'Published').replace('Awaiting review', esc(st.quest.status))}</p></div>
-          <div class="card wash-mint"><div class="eyebrow teal">Class explorers</div><h2 style="font-size:40px">${Object.keys(st.seats).length}<small style="font-size:20px">/20</small></h2><p style="margin:0">joined with the class code · 5 home teams × 4 expert tracks</p></div>
-          <div class="card wash-peach"><div class="eyebrow coral">Pending reviews</div><h2 style="font-size:40px">${String(pend).padStart(2, '0')}</h2><p style="margin:0">${pend ? 'Evidence, finales or discoveries waiting in the live room.' : 'Nothing waiting — all clear.'}</p></div>
+          ${quests.map(({ id, q, active }) => `<div class="card quest-card ${active ? 'is-active' : ''}">
+            <div class="spread"><span class="pill ${q.status === 'PUBLISHED' ? 'mint' : 'plain'}">${q.status === 'PUBLISHED' ? 'Published' : 'Draft'}</span>${active ? '<span class="pill lavender">This class</span>' : ''}</div>
+            <h3 style="margin:8px 0 2px">${esc(q.title || 'Untitled quest')}</h3>
+            <p class="hint-note" style="margin:0 0 10px">${esc(q.venue || 'No venue yet')} · ${q.duration || 60} min · ${q.templateId === 'blank' ? 'written from scratch' : 'from an example'}</p>
+            <div class="row" style="margin-top:auto">${active
+              ? `<button class="btn btn-secondary btn-sm" data-a="screen" data-screen="builder">${Art.icon('pencil', 15)} Open in builder</button>${q.status === 'PUBLISHED' ? `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="live">${Art.icon('eye', 15)} Live session</button>` : ''}`
+              : `<button class="btn btn-secondary btn-sm" data-a="open-quest" data-id="${id}" ${live ? 'disabled' : ''}>Use with this class</button><button class="btn btn-ghost btn-sm" data-a="del-quest" data-id="${id}">Delete</button>`}</div>
+          </div>`).join('')}
         </div>
-        <div class="card">
-          <div class="spread"><h3>${Art.icon('handshake', 19)} Your community collaborator</h3>${statusChip(st.contributor.status)}</div>
-          <p style="margin:0">${esc(SEED.contributor.name)} — <em>${esc(SEED.contributor.label)}</em>. ${st.contributor.status === 'APPROVED' ? 'Contribution approved; the quest can be published.' : 'Awaiting their review of the learning contribution.'}</p>
+        ${live ? `<p class="hint-note" style="margin:0">A live session is running. Return it to the lobby (Live session → Back) before switching quests.</p>` : ''}
+        <div class="grid-3">
+          <div class="card wash-mint"><div class="eyebrow teal">Students joined</div><h2 style="font-size:40px">${Object.keys(st.seats).length}<small style="font-size:20px">/20</small></h2><p style="margin:0">with class code <span class="mono">${esc(code)}</span></p></div>
+          <div class="card wash-peach"><div class="eyebrow coral">Pending reviews</div><h2 style="font-size:40px">${String(pend).padStart(2, '0')}</h2><p style="margin:0">${pend ? 'Evidence, finales or discoveries waiting in the live room.' : 'Nothing waiting — all clear.'}</p></div>
+          <form class="card" data-form="partner">
+            <div class="spread"><div class="eyebrow">Community partner for this quest</div>${statusChip(st.contributor.status)}</div>
+            <label class="fld" for="pt-name">Name</label><input class="input" id="pt-name" value="${esc(st.quest.partner.name)}">
+            <label class="fld" for="pt-org">Organisation</label><input class="input" id="pt-org" value="${esc(st.quest.partner.org)}">
+            <button class="btn btn-secondary btn-sm" type="submit" style="margin-top:8px">Save partner</button>
+          </form>
         </div>
       </div>`;
   }
 
+
   function teacherBuilder(st) {
     const q = st.quest;
+    const head = `<div class="spread" style="margin-bottom:12px"><div><div class="eyebrow">Quest builder</div><h2 style="margin:2px 0 0">${esc(q.title || 'Untitled quest')}</h2></div><button class="btn btn-ghost btn-sm" data-a="screen" data-screen="dashboard">${Art.icon('back', 15)} All quests</button></div>`;
     const step = q.status === 'PUBLISHED' ? 4 : q.draftGenerated ? (st.contributor.status === 'APPROVED' ? 4 : 3) : 1;
     return `
+      ${head}
       <div class="grid-2">
         <div class="stack">
           <div class="card">
@@ -706,7 +785,7 @@
             ${q.draftGenerated ? `
               <div class="row" style="margin-bottom:10px">${SEED.topics.map((t) => topicChip(t)).join('')}</div>
               <div class="card" style="padding:12px;background:var(--grad-collect);text-align:center">
-                <strong>${Art.icon('puzzle', 16)} Restore the Exhibition Story</strong><br><small>One collaborative escape-room finale needs all four perspectives</small>
+                <strong>${Art.icon('puzzle', 16)} ${esc(SEED.finale.title)}</strong><br><small>One collaborative escape-room finale needs all four perspectives</small>
               </div>` : `<p class="hint-note" style="margin:0">Generate a draft to see the Jigsaw map appear here.</p>`}
           </div>
           <p class="hint-note" style="margin:12px 0 0;text-align:center">Edit the inputs — the preview updates live.</p>
@@ -762,6 +841,7 @@
         <div class="card">
           <div class="spread">
             <h2>Live control room</h2>
+            <button class="btn btn-secondary btn-sm" data-a="show-code">${Art.icon('team', 15)} Show class code</button>
             <div class="row">
               <button class="btn btn-secondary btn-sm" data-a="rewind" ${idx === 0 ? 'disabled' : ''}>${Art.icon('back', 15)} Back</button>
               <button class="btn btn-secondary btn-sm" data-a="qr-cards">${Art.icon('map', 15)} Station QR cards</button>
@@ -786,7 +866,9 @@
                 const ev = st.evidence[p.id];
                 return `<div class="queue-row"><div class="meta">
                   <div class="row">${topicChip(p.topic)}<strong>${esc(who(p))}</strong><small>${esc(m.gallery)}</small></div>
-                  <dl class="evidence-quote">${m.evidenceFields.map((f) => `<dt>${esc(f.label)}</dt><dd>${esc(ev.answers[f.key])}</dd>`).join('')}</dl></div>
+                  ${ev.photo ? `<img class="ev-photo" src="${ev.photo}" alt="Photo submitted by ${esc(who(p))}">` : ''}
+                  ${ev.quiz ? `<p class="hint-note" style="margin:4px 0">Quick check: ${ev.quiz.score}/${ev.quiz.total}</p>` : ''}
+                  ${m.assess && m.assess.evidence === 'photo' ? '' : `<dl class="evidence-quote">${m.evidenceFields.map((f) => `<dt>${esc(f.label)}</dt><dd>${esc(ev.answers[f.key])}</dd>`).join('')}</dl>`}</div>
                   <div class="stack" style="gap:8px">
                     <button class="btn btn-teal btn-sm" data-a="verify-ev" data-pid="${p.id}">${Art.icon('check', 15)} Verify</button>
                     <button class="btn btn-danger-ghost btn-sm" data-a="return-ev" data-pid="${p.id}">Needs revision</button>
@@ -864,6 +946,8 @@
 
   function collaboratorView(st) {
     const screen = st.ui.screen || 'review';
+    const pqId = st.ui.pq && st.library[st.ui.pq] ? st.ui.pq : st.activeQuest;
+    const pq = pqId === st.activeQuest ? st.quest : st.library[pqId].quest;
     const pendD = sel.pendingInteractions();
     return `
       <div class="stack">
@@ -872,48 +956,54 @@
             <div class="eyebrow coral">Community-powered learning</div>
             <h1>Your knowledge <span class="accent-coral">brings it to life.</span></h1>
             <p class="lede">Help educators create respectful, accurate missions rooted in people, places and real stories.</p>
-            <span class="pill">${esc(SEED.contributor.label)}</span>
+            <span class="pill">${esc(pq.partner.name)} · ${esc(pq.partner.org)}</span>
           </div>
           <div class="hero-art">${Art.arch({ door: '#6B5CE7', face: '#F6C5CF' })}${Art.sticker('A story to share', '💬')}</div>
         </div>
-        ${screen === 'facilitate' ? facilitateScreen(st, pendD) : screen === 'work' ? partnerWork(st) : reviewScreen(st)}
+        <div class="card row" style="padding:12px 16px;gap:10px"><label class="fld" for="pq-sel" style="margin:0">Quest</label>
+          <select class="input" id="pq-sel" data-a="pq-sel" style="width:auto;flex:1;min-width:180px">${Object.entries(st.library).map(([id, r]) => `<option value="${id}" ${id === pqId ? 'selected' : ''}>${esc((id === st.activeQuest ? st.quest : r.quest).title)}${id === st.activeQuest ? ' (running with the class)' : ''}</option>`).join('')}</select></div>
+        ${screen === 'facilitate' || screen === 'work' ? (pqId === st.activeQuest ? (screen === 'facilitate' ? facilitateScreen(st, pendD) : partnerWork(st)) : `<div class="card"><p style="margin:0">Facilitation and student work are for the quest the class is running: <strong>${esc(st.quest.title)}</strong>.</p></div>`) : reviewScreen(st, pqId)}
       </div>`;
   }
 
-  function reviewScreen(st) {
-    const approved = st.contributor.status === 'APPROVED';
+  function reviewScreen(st, qid) {
+    const rec = qid === st.activeQuest ? st : st.library[qid];
+    const c = rec.contributor, q = rec.quest, approved = c.status === 'APPROVED';
+    const conv = SEED.topics.map((t) => rec.content.missions[t]).find((m) => m.needsFacilitator);
     return `
       <div class="grid-2">
-        <form class="card" data-form="contribution">
-          <div class="eyebrow coral">Expert D · Connections &amp; Voices</div>
-          <h3>Your approved learning contribution</h3>
-          <p class="hint-note">Review the student discussion prompts and add context that cannot be replaced by generic AI answers. You edit only your own contribution — never the educator’s curriculum.</p>
+        <form class="card" data-form="contribution" data-qid="${qid}">
+          <div class="eyebrow coral">${esc(q.title)}${conv ? ' · ' + esc(conv.name) : ''}</div>
+          <h3>Your learning contribution</h3>
+          <p class="hint-note">Add context students can only get from you. You edit only your own contribution — never the educator’s curriculum. It becomes an approved source the assistant may draw on.</p>
           <label class="fld" for="contrib">What students can learn from you</label>
-          <textarea class="input" id="contrib" rows="4" ${approved ? 'disabled' : ''}>${esc(st.contributor.text)}</textarea>
+          <textarea class="input" id="contrib" rows="4" ${approved ? 'disabled' : ''}>${esc(c.text)}</textarea>
           <div class="row" style="margin-top:12px">
             ${approved
               ? `<span class="status-chip st-verified">${Art.icon('check', 15)}Approved — educator notified</span>`
               : `<button class="btn btn-primary" type="submit">${Art.icon('pencil', 16)} Save edit</button>
-                 <button class="btn btn-teal" type="button" data-a="approve-contrib">${Art.icon('check', 16)} Approve contribution</button>`}
+                 <button class="btn btn-teal" type="button" data-a="approve-contrib" data-qid="${qid}">${Art.icon('check', 16)} Approve contribution</button>`}
           </div>
         </form>
-        <div class="card wash-peach">
-          <div class="eyebrow coral">A shared responsibility</div>
-          <h3>Made together. Learned together.</h3>
-          <div class="stack" style="gap:10px">
-            ${[['Community context', 'Adult-approved knowledge', true],
-               ['Respectful representation', 'Review learning activity and cultural context', true],
-               ['Approve student interaction', 'Explicit confirmation is recorded', approved]]
-              .map(([t, d, on]) => `<div class="queue-row" style="background:var(--white)"><div class="meta"><strong>${t}</strong><br><small>${d}</small></div>${on ? statusChip('VERIFIED').replace('Verified', '✓') : statusChip('PENDING').replace('Awaiting review', 'open')}</div>`).join('')}
+        <div class="stack">
+          <form class="card" data-form="partner" data-qid="${qid}">
+            <div class="eyebrow coral">How students see you</div>
+            <label class="fld" for="pt-name">Name</label><input class="input" id="pt-name" value="${esc(q.partner.name)}">
+            <label class="fld" for="pt-org">Organisation</label><input class="input" id="pt-org" value="${esc(q.partner.org)}">
+            <button class="btn btn-secondary btn-sm" type="submit" style="margin-top:8px">Save</button>
+          </form>
+          <div class="card wash-peach">
+            <div class="eyebrow coral">A shared responsibility</div>
+            <p class="hint-note" style="margin:0">Your approval is a separate sign-off from the educator’s: the quest can’t be published without it. This demo role is simulated; it does not represent venue staff or a confirmed partnership.</p>
           </div>
-          <p class="hint-note" style="margin:12px 0 0">This demo role is simulated; it does not represent museum staff or a confirmed museum partnership. Your approval is a separate sign-off from the educator’s.</p>
         </div>
       </div>`;
   }
 
+
   function partnerWork(st) {
     const homes = SEED.homeGroups.filter((h) => ['SUBMITTED', 'APPROVED'].includes(st.finale[h].status));
-    return `<div class="card"><div class="eyebrow coral">Partner feedback</div><h3>Teams’ restored exhibition introductions</h3>
+    return `<div class="card"><div class="eyebrow coral">Partner feedback</div><h3>Teams’ finale answers</h3>
       <p class="hint-note">Respond as the community partner: what rings true, what is missing, what would you add? Students see your words as a perspective, not a grade.</p>
       ${homes.length === 0 ? '<p class="hint-note" style="margin:0">Introductions appear here once teams submit their finale.</p>' : ''}
       <div class="stack" style="gap:12px">${homes.map((h) => { const f = st.finale[h], fb = st.partnerFeedback[h];
@@ -926,23 +1016,29 @@
 
   function facilitateScreen(st, pendD) {
     const promptIdx = st.contributor.interactionPrompt || 0;
+    const toCheck = sel.pendingEvidence().filter((p) => (SEED.missions[p.topic].assess || {}).verify === 'partner');
     return `
+      ${toCheck.length ? `<div class="card"><div class="spread"><h3>${Art.icon('check', 18)} Evidence for you to verify</h3><span class="pill peach">${toCheck.length}</span></div>
+        <div class="stack" style="gap:10px">${toCheck.map((p) => { const m = SEED.missions[p.topic], ev = st.evidence[p.id]; return `<div class="queue-row"><div class="meta"><strong>${esc(who(p))}</strong> · ${esc(m.name)}
+          ${ev.photo ? `<img class="ev-photo" src="${ev.photo}" alt="Photo submitted by ${esc(who(p))}">` : ''}${ev.quiz ? `<p class="hint-note" style="margin:4px 0">Quick check: ${ev.quiz.score}/${ev.quiz.total}</p>` : ''}
+          ${m.assess.evidence === 'photo' ? '' : `<dl class="evidence-quote">${m.evidenceFields.map((f) => `<dt>${esc(f.label)}</dt><dd>${esc(ev.answers[f.key])}</dd>`).join('')}</dl>`}</div>
+          <div class="stack" style="gap:8px"><button class="btn btn-teal btn-sm" data-a="pverify-ev" data-pid="${p.id}">${Art.icon('check', 15)} Verify</button><button class="btn btn-danger-ghost btn-sm" data-a="preturn-ev" data-pid="${p.id}">Needs revision</button></div></div>`; }).join('')}</div></div>` : ''}
       <div class="grid-2">
         <div class="card">
           <div class="eyebrow coral">Live facilitation</div>
           <h3>Your conversation prompt</h3>
-          <p class="hint-note">Pick one prompt and discuss it with each Expert D student in an arranged, supervised conversation.</p>
+          <p class="hint-note">Pick one prompt and discuss it with each student in the conversation track in an arranged, supervised conversation.</p>
           ${[...SEED.contributor.prompts, ...(st.contributor.extraPrompts || [])].map((p, i) => `<button type="button" class="tile-pick" data-a="prompt" data-i="${i}" aria-pressed="${promptIdx === i}">${i >= SEED.contributor.prompts.length ? '<span class="pill mint" style="margin-right:6px">your question</span>' : ''}${esc(p)}</button>`).join('')}
           <form class="row" data-form="partner-q" style="margin-top:10px"><label class="sr-only" for="pq">Add your own question</label>
             <input class="input" id="pq" placeholder="Add your own question for students…" style="flex:1;min-width:180px"><button class="btn btn-secondary btn-sm" type="submit">${Art.icon('plus', 15)} Add</button></form>
-          <p class="hint-note" style="margin-top:10px">Your reply is recorded by students as a <em>perspective</em>, never as museum fact.</p>
+          <p class="hint-note" style="margin-top:10px">Your reply is recorded by students as a <em>perspective</em>, never as established fact.</p>
         </div>
         <div class="card">
           <h3>${Art.icon('handshake', 19)} Verify arranged interactions</h3>
           ${st.phase === 'LOBBY' ? '<p class="hint-note" style="margin:0">Interactions open once the educator starts the session.</p>' : ''}
-          ${pendD.length === 0 && st.phase !== 'LOBBY' ? '<p class="hint-note" style="margin:0">All Expert D conversations are verified. ✓</p>' : ''}
+          ${pendD.length === 0 && st.phase !== 'LOBBY' ? '<p class="hint-note" style="margin:0">All arranged conversations are verified. ✓</p>' : ''}
           <div class="stack" style="gap:10px">
-            ${pendD.map((p) => `<div class="queue-row"><div class="meta"><strong>${esc(who(p))}</strong><br><small>Home ${p.home} · Expert D · Gallery 24</small></div>
+            ${pendD.map((p) => `<div class="queue-row"><div class="meta"><strong>${esc(who(p))}</strong><br><small>Home ${p.home} · Expert ${p.topic} · ${esc(SEED.missions[p.topic].gallery)}</small></div>
               <button class="btn btn-teal btn-sm" data-a="verify-int" data-pid="${p.id}">${Art.icon('check', 15)} Confirm interaction</button></div>`).join('')}
           </div>
           <p class="hint-note" style="margin-top:12px">Verification is an adult-controlled action — students cannot confirm it themselves.</p>
@@ -987,8 +1083,9 @@
   function bind() {
     root.querySelectorAll('[data-a]').forEach((el) => {
       const a = el.dataset.a;
+      if (a === 'pq-sel') { el.addEventListener('change', () => { S().ui.pq = el.value; render(); }); return; }
       if (a === 'student-sel') {
-        el.addEventListener('change', () => { S().ui.joined = true; act('setStudent', { id: el.value }); });
+        el.addEventListener('change', () => { markJoined(el.value); act('setStudent', { id: el.value }); });
         return;
       }
       el.addEventListener('click', (e) => {
@@ -996,12 +1093,13 @@
           case 'role': location.hash = ROUTE_OF[el.dataset.role] || ''; return;
           case 'screen': return act('setScreen', { screen: el.dataset.screen });
           case 'reset': if (confirmReset()) act('resetDemo'); return;
-          case 'mtab': S().ui.missionTab = el.dataset.tab; render(); return;
+          case 'mtab': S().ui.missionTab = el.dataset.tab; S().ui.screen = 'adventure'; render(); return;
           case 'hints': S().ui.hintsOpen = !S().ui.hintsOpen; S().ui.hintsShown = 1; render(); return;
           case 'hint-more': S().ui.hintsShown = (S().ui.hintsShown || 1) + 1; render(); return;
           case 'help': return act('requestHelp', { participantId: S().ui.student });
           case 'resolve-help': return act('resolveHelp', { id: el.dataset.id });
           case 'qr-cards': return StationCards.open();
+          case 'show-code': return JoinCode.open(sessionCode(), S().quest.title);
           case 'demo-toggle': S().ui.demoOpen = !S().ui.demoOpen; render(); return;
           case 'safety': return act('updateQuest', { field: 'safety', value: el.checked }), render();
           case 'tamper': return typeof Sync !== 'undefined' && Sync.tamperTest().then((r) => toast(r.msg, r.ok ? 'success' : 'error'));
@@ -1036,12 +1134,27 @@
           case 'advance': return act('advancePhase');
           case 'rewind': return act('rewindPhase');
           case 'verify-ev': return act('reviewEvidence', { participantId: el.dataset.pid, verdict: 'VERIFIED', reviewer: 'teacher' });
+          case 'pverify-ev': return act('reviewEvidence', { participantId: el.dataset.pid, verdict: 'VERIFIED', reviewer: 'collaborator' });
+          case 'preturn-ev': return act('reviewEvidence', { participantId: el.dataset.pid, verdict: 'NEEDS_REVISION', reviewer: 'collaborator' });
           case 'return-ev': return act('reviewEvidence', { participantId: el.dataset.pid, verdict: 'NEEDS_REVISION', reviewer: 'teacher' });
           case 'return-finale': return act('reviewFinale', { home: el.dataset.home, approve: false });
           case 'approve-bonus': return act('approveBonus', { collectibleId: el.dataset.card });
           case 'sim-class': return act('simulateClassmates');
           case 'sim-bonus': return act('simulateBonusSubmissions');
-          case 'approve-contrib': return act('approveContribution');
+          case 'approve-contrib': return act('approveContribution', { questId: el.dataset.qid });
+          case 'new-quest': S().ui.newQuest = true; render(); return;
+          case 'new-quest-x': S().ui.newQuest = false; render(); return;
+          case 'create-quest': {
+            const tpl = el.dataset.tpl, title = (document.getElementById('nq-title') || {}).value || '';
+            const r = act('createQuest', { template: tpl === 'ai' ? 'blank' : tpl, title });
+            if (!r.ok) return;
+            S().ui.newQuest = false; S().ui.screen = 'builder'; render();
+            if (tpl === 'ai') { toast('Add your sources and the quest settings, then press “Generate the whole quest”.', 'success'); document.getElementById('as-sources')?.scrollIntoView({ behavior: 'smooth' }); }
+            return;
+          }
+          case 'open-quest': return act('openQuest', { id: el.dataset.id });
+          case 'del-quest': return act('deleteQuest', { id: el.dataset.id });
+          case 'leave-class': { const code = sessionCode(); delete S().ui.joinedIn[code]; render(); return; }
           case 'verify-int': return act('verifyInteraction', { participantId: el.dataset.pid });
           case 'prompt': return act('setInteractionPrompt', { index: Number(el.dataset.i) }), render();
           case 'teamview': S().ui.teamView = el.dataset.view; render(); return;
@@ -1054,6 +1167,23 @@
     root.querySelectorAll('form[data-form="evidence"] textarea, form[data-form="reflection"] textarea').forEach((t) => {
       t.addEventListener('input', () => { const id = S().ui.student; const d = (S().ui.drafts[id] = S().ui.drafts[id] || {}); d[t.name] = t.value; });
     });
+    const ph = root.querySelector('#ev-photo-in');
+    if (ph) ph.addEventListener('change', () => {
+      const file = ph.files[0]; if (!file) return;
+      const img = new Image();
+      img.onload = () => {
+        const k = Math.min(1, 240 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        const id = S().ui.student, d = (S().ui.drafts[id] = S().ui.drafts[id] || {});
+        d.photo = cv.toDataURL('image/jpeg', 0.6);
+        render();
+      };
+      img.src = URL.createObjectURL(file);
+    });
+    root.querySelectorAll('form[data-form="evidence"] input[type=radio]').forEach((r) => r.addEventListener('change', () => {
+      const id = S().ui.student, d = (S().ui.drafts[id] = S().ui.drafts[id] || {}); d[r.name] = r.value;
+    }));
     if (typeof Assistant !== 'undefined') Assistant.bind(root);
 
     // live preview typing in the quest builder (silent updates, targeted DOM refresh)
@@ -1078,18 +1208,27 @@
           return;
         }
         if (kind === 'join') {
-          const code = form.querySelector('#join-code').value.trim().toUpperCase();
-          const expected = typeof Sync !== 'undefined' && Sync.state.status !== 'offline' ? Sync.state.session : 'FITZ-DEMO';
-          if (code !== expected) return toast('That class code doesn’t match. Check with your teacher.', 'error');
-          const r = act('joinClass', { nick: form.querySelector('#join-nick').value });
-          if (r.ok) { S().ui.joined = true; act('setStudent', { id: r.pid }); }
+          const code = form.querySelector('#join-code').value.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+          const nick = form.querySelector('#join-nick').value;
+          if (!code) return toast('Enter the class code from your teacher.', 'error');
+          if (nick.trim().length < 2) return toast('Pick a nickname of 2–16 characters.', 'error');
+          if (code !== sessionCode()) {
+            // another class: go to its session and finish joining there
+            try { localStorage.setItem('wq-pending-join', JSON.stringify({ code, nick })); } catch {}
+            location.href = location.pathname + '?session=' + encodeURIComponent(code) + '#student';
+            return;
+          }
+          const r = act('joinClass', { nick });
+          if (r.ok) { markJoined(r.pid, nick); act('setStudent', { id: r.pid }); }
           return;
         }
         if (kind === 'evidence') {
-          const me = SEED.byId[S().ui.student];
+          const me = SEED.byId[S().ui.student], m = SEED.missions[me.topic], d = S().ui.drafts[me.id] || {};
           const answers = {};
-          SEED.missions[me.topic].evidenceFields.forEach((f) => { answers[f.key] = form.querySelector(`[name="${f.key}"]`)?.value || ''; });
-          act('submitEvidence', { participantId: me.id, answers });
+          m.evidenceFields.forEach((f) => { answers[f.key] = form.querySelector(`[name="${f.key}"]`)?.value || ''; });
+          const quiz = ((m.assess || {}).quiz || []).map((q, i) => { const c = form.querySelector(`[name="quiz${i}"]:checked`); return c ? Number(c.value) : null; });
+          const r = act('submitEvidence', { participantId: me.id, answers, photo: d.photo || null, quiz });
+          if (r.ok && S().ui.drafts[me.id]) delete S().ui.drafts[me.id].photo;
         } else if (kind === 'teach') {
           const me = SEED.byId[S().ui.student];
           const topic = form.dataset.topic;
@@ -1103,7 +1242,9 @@
           const me = SEED.byId[S().ui.student];
           act('submitReflection', { participantId: me.id, answers: [form.querySelector('[name="r0"]').value, form.querySelector('[name="r1"]').value] });
         } else if (kind === 'contribution') {
-          act('saveContribution', { text: form.querySelector('#contrib').value });
+          act('saveContribution', { text: form.querySelector('#contrib').value, questId: form.dataset.qid });
+        } else if (kind === 'partner') {
+          act('setPartner', { questId: form.dataset.qid, name: form.querySelector('#pt-name').value, org: form.querySelector('#pt-org').value });
         } else if (kind === 'finale-review') {
           const rubric = {};
           form.querySelectorAll('[name="rub"]:checked').forEach((c) => { rubric[c.value] = true; });
@@ -1175,7 +1316,17 @@
   });
   window.WQ = { act, toast, render };
   addEventListener('hashchange', () => { window.scrollTo(0, 0); render(); });
-  document.addEventListener('wq-sync', () => render());
+  function finishPendingJoin() {
+    let p = null; try { p = JSON.parse(localStorage.getItem('wq-pending-join') || 'null'); } catch {}
+    if (!p || p.code !== sessionCode()) return;
+    try { localStorage.removeItem('wq-pending-join'); } catch {}
+    if (joinedHere(S())) return;
+    const r = act('joinClass', { nick: p.nick });
+    if (r.ok) { markJoined(r.pid, p.nick); act('setStudent', { id: r.pid }); }
+  }
+  document.addEventListener('wq-sync', (e) => { if (e.detail === 'live' || e.detail === 'offline') finishPendingJoin(); render(); });
+  // when this class code is opened on a device that joined before, play as the same explorer
+  { const pid = S().ui.joinedIn && S().ui.joinedIn[sessionCode()]; if (pid) S().ui.student = pid; }
   document.addEventListener('wq-sync-msg', (e) => toast(e.detail, 'error'));
 
   applyDemoParams();

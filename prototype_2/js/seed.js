@@ -273,9 +273,9 @@ const SEED = {
   phaseMeta: {
     LOBBY: { label: 'Lobby', desc: 'Explorers join and home teams form.' },
     BRIEFING: { label: 'Briefing', desc: 'Story, safety rules and expert roles.' },
-    EXPERT: { label: 'Expert missions', desc: 'Expert groups investigate four galleries.' },
+    EXPERT: { label: 'Expert missions', desc: 'Expert groups investigate their four locations.' },
     PEER_TEACH: { label: 'Peer teaching', desc: 'Experts return home and teach their team.' },
-    FINALE: { label: 'Finale', desc: 'Teams restore the exhibition introduction.' },
+    FINALE: { label: 'Finale', desc: 'Home teams combine every perspective to solve the finale.' },
     REFLECTION: { label: 'Reflection', desc: 'Individual reflections and debrief.' },
     COMPLETE: { label: 'Complete', desc: 'Quest complete — look up and celebrate.' },
   },
@@ -289,3 +289,140 @@ SEED.expertOf = (h, topic) => SEED.participants.find((p) => p.home === h && p.to
    and a short backup code a facilitator can read out (backupCode). */
 Object.entries({ A: ['WQ-STATION-A', 'LENS'], B: ['WQ-STATION-B', 'STONE'], C: ['WQ-STATION-C', 'TOKEN'], D: ['WQ-STATION-D', 'VOICE'] })
   .forEach(([t, [qr, code]]) => { SEED.missions[t].stationCode = qr; SEED.missions[t].backupCode = code; });
+
+/* ================= Quest content is owned by the session, not this file =================
+ * Everything a teacher can author (title, story, the four expert tracks, peer-teaching checks,
+ * finale, collectibles, master award, reflection questions) lives in the session state as
+ * `content`. SEED keeps only the fixed Jigsaw structure (20 seats, 5 home teams x 4 tracks,
+ * phases). The properties below are getters, so existing screens keep reading SEED.missions,
+ * SEED.finale, ... and automatically get the current quest. Templates are starting points only.
+ */
+const STATION = { A: ['WQ-STATION-A', 'LENS'], B: ['WQ-STATION-B', 'STONE'], C: ['WQ-STATION-C', 'TOKEN'], D: ['WQ-STATION-D', 'VOICE'] };
+const CONTENT_KEYS = ['title', 'subtitle', 'story', 'topicMeta', 'missions', 'peerTeaching', 'finale', 'collectibles', 'master', 'reflection'];
+const TEMPLATES = {
+  lost_museum: JSON.parse(JSON.stringify(Object.fromEntries(CONTENT_KEYS.map((k) => [k, SEED[k]])))),
+};
+TEMPLATES.lost_museum.meta = { id: 'lost_museum', name: 'The Lost Museum', blurb: 'Fitzwilliam Museum, Cambridge · four galleries · ancient world' };
+/* How each track is assessed: check-in at the place, what evidence students submit, an optional
+   multiple-choice check with a pass mark, and who verifies it. */
+SEED.defaultAssess = () => ({ checkin: 'qr', evidence: 'notes', quiz: [], pass: 0, verify: 'teacher' });
+SEED.topics.forEach((t) => { TEMPLATES.lost_museum.missions[t].assess = SEED.defaultAssess(); });
+SEED.ASSESS_TEXT = {
+  checkin: { qr: 'QR clue card or facilitator code', none: 'No check-in' },
+  evidence: { notes: 'Written field notes', photo: 'A photo of the object', notes_photo: 'Field notes and a photo' },
+  verify: { teacher: 'Educator verifies', partner: 'Community partner verifies', auto: 'Automatic when the quiz is passed' },
+};
+
+/* Build a track (mission + its topic label + its peer-teaching check) from flat, teacher-friendly fields. */
+SEED.buildTrack = (t, f) => {
+  const prompts = (f.evidence || []).map((x) => String(x).trim()).filter(Boolean);
+  return {
+    mission: {
+      id: 'expert_' + t.toLowerCase(), topic: t,
+      name: f.name || '', gallery: f.location || '', keyObject: f.keyObject || '',
+      narrative: f.narrative || '', observe: f.observe || '', discuss: f.discuss || '',
+      sourceFact: f.sourceFact || '', sourceUrl: f.sourceUrl || '',
+      evidenceFields: prompts.map((label, i) => ({ key: 'f' + (i + 1), label, placeholder: '' })),
+      hints: (f.hints || []).map((x) => String(x).trim()).filter(Boolean),
+      teachHeadline: f.teachHeadline || '', fallback: f.fallback || '',
+      needsFacilitator: !!f.needsContributor,
+      stationCode: STATION[t][0], backupCode: STATION[t][1],
+      assess: { ...SEED.defaultAssess(), ...(f.assess || {}) },
+    },
+    label: (f.name || 'Track ' + t).split(/\s+/)[0].replace(/[^\w’'-]/g, '').slice(0, 14) || 'Track ' + t,
+    check: [
+      { id: t.toLowerCase() + '_ok', text: f.checkCorrect || '', correct: true },
+      { id: t.toLowerCase() + '_no', text: f.checkIncorrect || '', correct: false },
+    ],
+  };
+};
+/* Flat fields back out of a track, for the editor. */
+SEED.trackFields = (c, t) => {
+  const m = c.missions[t], opts = (c.peerTeaching.checkOptions[t] || []);
+  return {
+    name: m.name, location: m.gallery, keyObject: m.keyObject || (c.finale.objects.find((o) => o.answer === c.topicMeta[t].tag) || {}).label || '',
+    narrative: m.narrative, observe: m.observe, discuss: m.discuss,
+    evidence: m.evidenceFields.map((e) => e.label), hints: m.hints, fallback: m.fallback, teachHeadline: m.teachHeadline,
+    checkCorrect: (opts.find((o) => o.correct) || {}).text || '', checkIncorrect: (opts.find((o) => !o.correct) || {}).text || '',
+    needsContributor: !!m.needsFacilitator, sourceFact: m.sourceFact, sourceUrl: m.sourceUrl,
+    assess: JSON.parse(JSON.stringify(m.assess || SEED.defaultAssess())),
+  };
+};
+/* Finale objects always follow the tracks: one key object per perspective. */
+SEED.syncFinaleObjects = (c) => {
+  c.finale.objects = SEED.topics.map((t) => ({
+    id: 'obj_' + t, label: c.missions[t].keyObject || c.missions[t].name || 'Track ' + t,
+    gallery: c.missions[t].gallery || '', answer: c.topicMeta[t].tag,
+  }));
+};
+SEED.buildFinale = (c, f) => {
+  const tiles = [];
+  (f.evidence || []).filter(Boolean).forEach((text, i) => tiles.push({ id: 'e' + (i + 1), cat: 'evidence', text }));
+  if (f.perspectives) tiles.push({ id: 'p1', cat: 'perspectives', text: f.perspectives });
+  if (f.uncertainty) tiles.push({ id: 'u1', cat: 'uncertainty', text: f.uncertainty });
+  if (f.invite) tiles.push({ id: 'i1', cat: 'invite', text: f.invite });
+  if (f.trap) tiles.push({ id: 'x1', cat: 'overclaim', text: f.trap, trap: true });
+  c.finale.title = f.title || c.finale.title || 'Restore the story';
+  c.finale.overclaim = { question: 'Which statement stays within the evidence?', options: [
+    { id: 'cautious', text: f.cautious || '', correct: true }, { id: 'absolute', text: f.overclaim || '', correct: false }] };
+  c.finale.compose.tiles = tiles;
+};
+SEED.finaleFields = (c) => {
+  const T = c.finale.compose.tiles, by = (cat) => T.filter((x) => x.cat === cat && !x.trap).map((x) => x.text);
+  const o = c.finale.overclaim.options;
+  return { title: c.finale.title, cautious: (o.find((x) => x.correct) || {}).text || '', overclaim: (o.find((x) => !x.correct) || {}).text || '',
+    evidence: by('evidence'), perspectives: by('perspectives')[0] || '', uncertainty: by('uncertainty')[0] || '', invite: by('invite')[0] || '',
+    trap: (T.find((x) => x.trap) || {}).text || '' };
+};
+
+/* A blank quest: the Jigsaw structure with every authored field empty. */
+TEMPLATES.blank = (() => {
+  const base = JSON.parse(JSON.stringify(TEMPLATES.lost_museum));
+  const c = { ...base, title: 'Untitled quest', subtitle: '', story: { opening: '', rules: base.story.rules }, meta: { id: 'blank', name: 'Blank quest', blurb: 'Your place, your perspectives' } };
+  c.topicMeta = JSON.parse(JSON.stringify(base.topicMeta));
+  c.missions = {}; c.peerTeaching = { prompt: base.peerTeaching.prompt, checkOptions: {} };
+  SEED.topics.forEach((t) => {
+    const b = SEED.buildTrack(t, { name: '', evidence: ['', ''], hints: [] });
+    c.missions[t] = b.mission; c.topicMeta[t].name = 'Track ' + t; c.topicMeta[t].label = 'Track ' + t; c.peerTeaching.checkOptions[t] = b.check;
+  });
+  c.finale = { ...base.finale, title: 'Restore the story', compose: { ...base.finale.compose, prompt: 'Build a short introduction: cite at least two pieces of evidence, acknowledge different perspectives, note one uncertainty, and invite a question.', tiles: [] },
+    overclaim: { question: 'Which statement stays within the evidence?', options: [{ id: 'cautious', text: '', correct: true }, { id: 'absolute', text: '', correct: false }] } };
+  SEED.syncFinaleObjects(c);
+  c.collectibles = base.collectibles.map((x) => ({ ...x, title: '', activity: '', fact: '', promptLabel: 'Your team’s discovery' }));
+  c.reflection = ['', ''];
+  return c;
+})();
+
+/* What still has to be filled in before students can play. */
+SEED.contentProblems = (c) => {
+  const p = [];
+  if (!c.title || !c.title.trim()) p.push('Give the quest a title');
+  SEED.topics.forEach((t) => {
+    const m = c.missions[t], chk = c.peerTeaching.checkOptions[t] || [];
+    if (!m.name) p.push(`Track ${t}: name`);
+    if (!m.gallery) p.push(`Track ${t}: location`);
+    if (!m.observe) p.push(`Track ${t}: what students do`);
+    if (m.evidenceFields.filter((e) => e.label).length < 1) p.push(`Track ${t}: at least one evidence prompt`);
+    if (chk.some((o) => !o.text)) p.push(`Track ${t}: teach-back check statements`);
+    const a = m.assess || SEED.defaultAssess();
+    if ((a.quiz || []).some((q) => !q.q || q.o.length < 2 || q.o.some((o) => !o))) p.push(`Track ${t}: complete every quiz question`);
+    if (a.verify === 'auto' && !(a.quiz || []).length) p.push(`Track ${t}: automatic verification needs a quiz`);
+  });
+  const T = c.finale.compose.tiles, n = (cat) => T.filter((x) => x.cat === cat && !x.trap).length;
+  if (n('evidence') < 2 || !n('perspectives') || !n('uncertainty') || !n('invite') || !T.some((x) => x.trap)) p.push('Finale: evidence, perspective, uncertainty, invitation and overclaim sentences');
+  if (c.finale.overclaim.options.some((o) => !o.text)) p.push('Finale: cautious and overclaiming statements');
+  if (c.collectibles.some((x) => !x.title || !x.activity)) p.push('Collectibles: a title and activity for each card');
+  if (c.reflection.some((q) => !q || !q.trim())) p.push('Reflection: two questions');
+  return p;
+};
+
+/* Station codes were attached above for the template; the getters below take over from here. */
+let __content = null;
+SEED.useContent = (c) => { __content = c; };
+CONTENT_KEYS.forEach((k) => Object.defineProperty(SEED, k, {
+  get: () => (__content && __content[k] !== undefined ? __content[k] : TEMPLATES.lost_museum[k]),
+  configurable: true, enumerable: true,
+}));
+
+SEED.genericDisclaimer = 'Story elements, characters and awards are fiction created for learning. No partnership with any venue is claimed unless one has been agreed. Real school visits must be booked with the venue.';
+SEED.partnerDefaults = { name: 'WorldQuest Demo Collaborator', org: 'Simulated community contributor' };

@@ -13,6 +13,9 @@
 
 const Engine = (() => {
   const STORAGE_KEY = 'worldquest-prototype2-v1';
+  const QUEST_KEYS = ['quest', 'content', 'tracks', 'revisions', 'sources', 'contributor'];
+  const PLAY_KEYS = ['phase', 'evidence', 'peerTeach', 'finale', 'bonus', 'claims', 'master', 'reflections', 'seats', 'checkins', 'help', 'partnerFeedback', 'interactions'];
+  const clone = (o) => JSON.parse(JSON.stringify(o));
 
   /* ---------- initial state ---------- */
 
@@ -53,7 +56,10 @@ const Engine = (() => {
         objective: 'Interpret evidence from multiple perspectives',
         duration: 60,
         classSize: 20,
-        venue: 'The Fitzwilliam Museum (demo setting)',
+        venue: 'The Fitzwilliam Museum, Cambridge',
+        id: 'q_lm',
+        templateId: 'lost_museum',
+        partner: { ...SEED.partnerDefaults },
         draftGenerated: false,
       },
       contributor: {
@@ -71,6 +77,9 @@ const Engine = (() => {
       masterSeen: false,
       reflections: {}, // participantId -> [a1, a2]
       sources: seedSources(), // the educator's approved-source library the assistant may draft from
+      content: JSON.parse(JSON.stringify(TEMPLATES.lost_museum)), // the quest students play (see seed.js)
+      library: {}, // questId -> { quest, content, tracks, revisions, sources, contributor }
+      activeQuest: 'q_lm', // the quest this class session is running
       seats: {}, // participantId -> { nick, at } once a real student joins with the class code
       partnerFeedback: {}, // home -> { text, at } from the community collaborator on the team's finale
       checkins: {}, // participantId -> { at, via: 'QR' | 'CODE' | 'SIMULATED' }
@@ -86,6 +95,7 @@ const Engine = (() => {
   /* ---------- persistence ---------- */
 
   let state = load();
+  SEED.useContent(state.content);
   const listeners = new Set();
 
   function load() {
@@ -98,7 +108,9 @@ const Engine = (() => {
     } catch (e) {
       /* corrupted or unavailable storage -> fresh demo */
     }
-    return freshState();
+    const f = freshState();
+    snapInto(f);
+    return f;
   }
 
   function seedSources() {
@@ -108,6 +120,13 @@ const Engine = (() => {
 
   function upgrade(s) {
     s.sources = s.sources || seedSources();
+    s.content = s.content || JSON.parse(JSON.stringify(TEMPLATES.lost_museum));
+    s.library = s.library || {};
+    s.activeQuest = s.activeQuest || 'q_lm';
+    s.quest.id = s.quest.id || s.activeQuest;
+    s.quest.templateId = s.quest.templateId || 'lost_museum';
+    s.quest.partner = s.quest.partner || { ...SEED.partnerDefaults };
+    if (!s.library[s.activeQuest]) snapInto(s);
     s.checkins = s.checkins || {};
     s.help = s.help || [];
     s.tracks = s.tracks || { A: 'AI', B: 'AI', C: 'AI', D: 'AI' };
@@ -123,6 +142,17 @@ const Engine = (() => {
     return s;
   }
 
+  /* ---------- quest library ---------- */
+  function snapInto(s) { s.library = s.library || {}; s.library[s.activeQuest] = clone(Object.fromEntries(QUEST_KEYS.map((k) => [k, s[k]]))); }
+  function resetPlay(s) { const f = freshState(); PLAY_KEYS.forEach((k) => { s[k] = f[k]; }); }
+  function loadQuest(s, id) {
+    const r = s.library[id];
+    QUEST_KEYS.forEach((k) => { s[k] = clone(r[k]); });
+    s.activeQuest = id;
+    SEED.useContent(s.content);
+    resetPlay(s);
+  }
+
   function persist() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -132,6 +162,7 @@ const Engine = (() => {
   }
 
   function emit(event) {
+    SEED.useContent(state.content);
     persist();
     listeners.forEach((fn) => fn(state, event));
   }
@@ -144,10 +175,7 @@ const Engine = (() => {
   /* ---------- selectors (read-only helpers) ---------- */
 
   const sel = {
-    mission: (t) => {
-      const base = SEED.missions[t], e = (state.trackEdits && state.trackEdits[t]) || {};
-      return { ...base, ...e, hints: [...base.hints, ...(e.hintsExtra || [])] };
-    },
+    mission: (t) => SEED.missions[t],
     participant: (id) => SEED.byId[id],
     evidenceOf: (id) => state.evidence[id],
 
@@ -191,7 +219,7 @@ const Engine = (() => {
 
     pendingInteractions: () =>
       SEED.participants.filter(
-        (p) => p.topic === 'D' && !state.interactions[p.id] && state.phase !== 'LOBBY'
+        (p) => SEED.missions[p.topic].needsFacilitator && !state.interactions[p.id] && state.phase !== 'LOBBY'
       ),
 
     pendingFinales: () => SEED.homeGroups.filter((h) => state.finale[h].status === 'SUBMITTED'),
@@ -227,6 +255,8 @@ const Engine = (() => {
 
     resetDemo() {
       state = freshState();
+      SEED.useContent(state.content);
+      snapInto(state);
       audit('system', 'Demo reset to seeded state.');
       return { ok: true, msg: 'Demo reset.' };
     },
@@ -236,6 +266,7 @@ const Engine = (() => {
       if (!['title', 'objective', 'venue', 'duration', 'classSize', 'safety'].includes(field)) return { ok: false };
       if (field === 'safety') { s.quest.safety = !!value; return { ok: true, silent: true }; }
       s.quest[field] = ['duration', 'classSize'].includes(field) ? Number(value) : value;
+      if (field === 'title') s.content.title = value;
       return { ok: true, silent: true };
     },
     generateDraft(s) {
@@ -251,6 +282,8 @@ const Engine = (() => {
         return { ok: false, msg: 'The community contribution has not been approved yet.' };
       if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Already published.' };
       if (!s.quest.draftGenerated) return { ok: false, msg: 'Draft the quest first.' };
+      const probs = SEED.contentProblems(s.content);
+      if (probs.length) return { ok: false, msg: `Not ready yet (${probs.length} to do): ${probs[0]}.` };
       if (!s.quest.safety) return { ok: false, msg: 'Confirm the safety and supervision plan first.' };
       if (SEED.topics.some((t) => s.tracks[t] !== 'APPROVED'))
         return { ok: false, msg: 'Approve all four AI-drafted expert tracks first — nothing reaches students unapproved.' };
@@ -260,14 +293,27 @@ const Engine = (() => {
     },
 
     /* ----- collaborator ----- */
-    saveContribution(s, { text }) {
+    saveContribution(s, { text, questId }) {
+      if (questId && questId !== s.activeQuest) {
+        const r = s.library[questId]; if (!r) return { ok: false };
+        const t = String(text || '').trim(); if (!t) return { ok: false, msg: 'The contribution cannot be empty.' };
+        r.contributor.text = t; r.contributor.status = 'PENDING';
+        return { ok: true, msg: 'Contribution saved.' };
+      }
       const trimmed = (text || '').trim();
       if (!trimmed) return { ok: false, msg: 'The contribution cannot be empty.' };
       s.contributor.text = trimmed;
       audit('collaborator', 'Edited learning contribution.');
       return { ok: true, msg: 'Contribution saved.' };
     },
-    approveContribution(s) {
+    approveContribution(s, { questId } = {}) {
+      if (questId && questId !== s.activeQuest) {
+        const r = s.library[questId]; if (!r) return { ok: false };
+        if (!r.contributor.text) return { ok: false, msg: 'Write your contribution first.' };
+        r.contributor.status = 'APPROVED';
+        audit('collaborator', `Approved their contribution to “${r.quest.title}”.`);
+        return { ok: true, msg: 'Contribution approved for that quest.' };
+      }
       if (s.contributor.status === 'APPROVED') return { ok: false, msg: 'Already approved.' };
       s.contributor.status = 'APPROVED';
       audit('collaborator', 'Approved community contribution (simulated contributor).');
@@ -275,7 +321,7 @@ const Engine = (() => {
     },
     verifyInteraction(s, { participantId }) {
       const p = SEED.byId[participantId];
-      if (!p || p.topic !== 'D') return { ok: false, msg: 'Only Expert D has an arranged interaction.' };
+      if (!p || !SEED.missions[p.topic].needsFacilitator) return { ok: false, msg: 'This track has no arranged conversation.' };
       if (s.interactions[participantId]) return { ok: false, msg: 'Interaction already verified.' };
       s.interactions[participantId] = true;
       audit('collaborator', `Verified arranged interaction with ${p.name}.`);
@@ -289,7 +335,7 @@ const Engine = (() => {
       s.contributor.extraPrompts.push(t);
       s.contributor.interactionPrompt = SEED.contributor.prompts.length + s.contributor.extraPrompts.length - 1;
       audit('collaborator', `Added a conversation question: “${t}”`);
-      return { ok: true, msg: 'Question added — Expert D students will see it.' };
+      return { ok: true, msg: 'Question added — students in the conversation track will see it.' };
     },
     partnerFeedback(s, { home, text }) {
       const f = s.finale[home];
@@ -297,7 +343,7 @@ const Engine = (() => {
       const t = String(text || '').trim();
       if (t.length < 8) return { ok: false, msg: 'Write a sentence or two of feedback.' };
       s.partnerFeedback[home] = { text: t, at: Date.now() };
-      audit('collaborator', `Gave feedback on team ${home}’s exhibition introduction.`);
+      audit('collaborator', `Gave feedback on team ${home}’s finale answer.`);
       return { ok: true, msg: `Feedback sent to team ${home}.` };
     },
     setInteractionPrompt(s, { index }) {
@@ -324,7 +370,7 @@ const Engine = (() => {
     },
 
     /* ----- evidence (student submits; educator/facilitator verifies) ----- */
-    submitEvidence(s, { participantId, answers }) {
+    submitEvidence(s, { participantId, answers, photo, quiz }) {
       const p = SEED.byId[participantId];
       if (!p) return { ok: false };
       if (!['EXPERT', 'PEER_TEACH', 'FINALE'].includes(s.phase))
@@ -332,22 +378,39 @@ const Engine = (() => {
       const ev = s.evidence[participantId];
       if (ev.status === 'VERIFIED') return { ok: false, msg: 'This evidence is already verified.' };
       const mission = SEED.missions[p.topic];
-      for (const f of mission.evidenceFields) {
+      const as = mission.assess || SEED.defaultAssess();
+      answers = answers || {};
+      for (const f of (as.evidence === 'photo' ? [] : mission.evidenceFields)) {
         if (!answers[f.key] || !String(answers[f.key]).trim())
           return { ok: false, msg: `Please fill in “${f.label}” before submitting.` };
       }
-      if (!s.checkins[participantId])
-        return { ok: false, msg: 'Check in at your gallery first: scan the QR clue card there (or type the station code).' };
+      if (as.checkin !== 'none' && !s.checkins[participantId])
+        return { ok: false, msg: 'Check in at your location first: scan the QR clue card there (or type the station code).' };
+      if (as.evidence !== 'notes' && !(typeof photo === 'string' && photo.startsWith('data:image/')))
+        return { ok: false, msg: 'Add a photo of the object (not of people).' };
+      if (photo && photo.length > 90000) return { ok: false, msg: 'That photo is too large — try again.' };
+      let score = null;
+      if ((as.quiz || []).length) {
+        score = as.quiz.filter((q, i) => quiz && Number(quiz[i]) === q.a).length;
+        if (score < (as.pass || 0)) return { ok: false, msg: `You got ${score} of ${as.quiz.length} — you need ${as.pass}. Look again at the object and retry.` };
+      }
       if (mission.needsFacilitator && !s.interactions[participantId])
         return {
           ok: false,
           msg: 'Your arranged contributor conversation has not been verified yet — ask the facilitator to confirm it first.',
         };
       ev.answers = answers;
-      ev.status = 'SUBMITTED';
+      ev.photo = as.evidence !== 'notes' ? photo : null;
+      ev.quiz = score === null ? null : { score, total: as.quiz.length };
       ev.note = '';
+      if (as.verify === 'auto') {
+        ev.status = 'VERIFIED';
+        audit('student', `${p.name} passed the ${mission.name} check (${score}/${as.quiz.length}) — verified automatically.`);
+        return { ok: true, msg: `Passed ${score}/${as.quiz.length} — evidence verified.` };
+      }
+      ev.status = 'SUBMITTED';
       audit('student', `${p.name} submitted ${mission.name} evidence.`);
-      return { ok: true, msg: 'Evidence submitted — awaiting educator review.' };
+      return { ok: true, msg: as.verify === 'partner' ? 'Evidence submitted — the community partner will review it.' : 'Evidence submitted — awaiting educator review.' };
     },
 
     reviewEvidence(s, { participantId, verdict, note, reviewer }) {
@@ -355,8 +418,8 @@ const Engine = (() => {
       const ev = s.evidence[participantId];
       if (!p || ev.status !== 'SUBMITTED') return { ok: false, msg: 'Nothing to review.' };
       const mission = SEED.missions[p.topic];
-      const allowed = reviewer === 'teacher' || (reviewer === 'collaborator' && mission.needsFacilitator);
-      if (!allowed) return { ok: false, msg: 'Only the educator (or the approved facilitator for Expert D) can verify this.' };
+      const allowed = reviewer === 'teacher' || (reviewer === 'collaborator' && (mission.needsFacilitator || (mission.assess && mission.assess.verify === 'partner')));
+      if (!allowed) return { ok: false, msg: 'Only the educator (or the approved facilitator) can verify this.' };
       if (verdict === 'VERIFIED') {
         ev.status = 'VERIFIED';
         audit(reviewer, `Verified ${p.name}’s ${mission.name} evidence.`);
@@ -442,7 +505,7 @@ const Engine = (() => {
       }
       // Panel 2 — cautious principle.
       const chosen = SEED.finale.overclaim.options.find((o) => o.id === f.overclaim);
-      if (!chosen) return { ok: false, msg: 'Choose an exhibition principle in panel 2.' };
+      if (!chosen) return { ok: false, msg: 'Choose a statement in panel 2.' };
       if (!chosen.correct)
         return { ok: false, msg: 'That principle overclaims. Which statement stays within the evidence?' };
       // Panel 3 — structural check of the composed introduction.
@@ -464,8 +527,8 @@ const Engine = (() => {
         }
       }
       f.status = 'SUBMITTED';
-      audit('student', `${home} submitted the restored exhibition introduction.`);
-      return { ok: true, msg: 'Introduction submitted — awaiting the curator’s (educator’s) approval.' };
+      audit('student', `${home} submitted their finale answer.`);
+      return { ok: true, msg: 'Submitted — your educator will review it.' };
     },
 
     reviewFinale(s, { home, approve, rubric, note }) {
@@ -476,7 +539,7 @@ const Engine = (() => {
           return { ok: false, msg: 'Tick all four rubric items to approve.' };
         f.status = 'APPROVED';
         f.rubric = rubric;
-        audit('teacher', `Approved ${home}’s exhibition introduction.`);
+        audit('teacher', `Approved ${home}’s finale answer.`);
         return { ok: true, msg: `${home}’s introduction approved — main quest complete for that team.` };
       }
       f.status = 'NEEDS_REVISION';
@@ -547,9 +610,10 @@ const Engine = (() => {
       if (!s.quest.draftGenerated) return { ok: false, msg: 'Draft the quest first.' };
       if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Already published — edits would disrupt a live session.' };
       if (!SEED.topics.includes(topic)) return { ok: false };
-      const e = (s.trackEdits[topic] = s.trackEdits[topic] || {});
-      for (const k of ['observe', 'discuss', 'narrative', 'fallback', 'teachHeadline']) if (patch && typeof patch[k] === 'string' && patch[k].trim()) e[k] = patch[k].trim().slice(0, 600);
-      if (patch && typeof patch.hint === 'string' && patch.hint.trim()) e.hintsExtra = [...(e.hintsExtra || []), patch.hint.trim().slice(0, 300)].slice(-3);
+      const m = s.content.missions[topic];
+      for (const k of ['observe', 'discuss', 'narrative', 'fallback', 'teachHeadline']) if (patch && typeof patch[k] === 'string' && patch[k].trim()) m[k] = patch[k].trim().slice(0, 600);
+      if (patch && typeof patch.hint === 'string' && patch.hint.trim()) m.hints = [...m.hints, patch.hint.trim().slice(0, 300)].slice(-5);
+      if (patch && patch.assess && typeof patch.assess === 'object') m.assess = { ...SEED.defaultAssess(), ...(m.assess || {}), ...patch.assess };
       s.tracks[topic] = by === 'educator' ? 'EDITED' : 'REVISED';
       s.revisions[topic] = [s.revisions[topic], note].filter(Boolean).join(' · ').slice(-500);
       audit('teacher', `AI revised track ${topic} on request (simulated AI) — needs approval again.`);
@@ -557,10 +621,100 @@ const Engine = (() => {
     },
     approveTrack(s, { topic }) {
       if (!s.quest.draftGenerated) return { ok: false, msg: 'Draft the quest first.' };
+      const tp = SEED.contentProblems(s.content).filter((x) => x.startsWith(`Track ${topic}:`));
+      if (tp.length) return { ok: false, msg: `Track ${topic} isn’t complete: ${tp[0].split(': ')[1]}.` };
       if (s.tracks[topic] === 'APPROVED') return { ok: false, msg: 'Already approved.' };
       s.tracks[topic] = 'APPROVED';
       audit('teacher', `Approved AI-drafted track ${topic} (${SEED.topicMeta[topic].name}).`);
       return { ok: true, msg: `Track ${topic} approved.` };
+    },
+
+    /* ----- quest library (educator) ----- */
+    createQuest(s, { template, title }) {
+      if (s.phase !== 'LOBBY') return { ok: false, msg: 'End the live session first (Live session → back to the lobby).' };
+      const tpl = TEMPLATES[template] ? template : 'blank';
+      snapInto(s);
+      const id = 'q' + Date.now().toString(36);
+      const content = clone(TEMPLATES[tpl]);
+      const t = String(title || '').trim() || (tpl === 'blank' ? 'Untitled quest' : content.title);
+      content.title = t;
+      s.quest = { id, title: t, objective: tpl === 'lost_museum' ? 'Interpret evidence from multiple perspectives' : '', venue: tpl === 'lost_museum' ? 'The Fitzwilliam Museum, Cambridge' : '',
+        duration: 60, classSize: 20, status: 'DRAFT', draftGenerated: true, safety: false, templateId: tpl, partner: { ...SEED.partnerDefaults } };
+      s.content = content;
+      s.tracks = Object.fromEntries(SEED.topics.map((x) => [x, tpl === 'blank' ? 'EMPTY' : 'TEMPLATE']));
+      s.revisions = {};
+      s.sources = tpl === 'lost_museum' ? seedSources() : seedSources().filter((x) => x.kind === 'partner').map((x) => ({ ...x, id: 'S1' }));
+      s.contributor = { text: '', status: 'PENDING', interactionPrompt: 0, extraPrompts: [] };
+      s.activeQuest = id;
+      SEED.useContent(s.content);
+      resetPlay(s);
+      audit('teacher', `Created quest “${t}” (${tpl === 'blank' ? 'blank' : 'from template ' + content.meta.name}).`);
+      return { ok: true, msg: `Created “${t}”.`, id };
+    },
+    openQuest(s, { id }) {
+      if (id === s.activeQuest) return { ok: true, silent: true };
+      if (!s.library[id]) return { ok: false, msg: 'Quest not found.' };
+      if (s.phase !== 'LOBBY') return { ok: false, msg: 'End the live session first (Live session → back to the lobby).' };
+      snapInto(s);
+      loadQuest(s, id);
+      audit('teacher', `Opened quest “${s.quest.title}” for this class.`);
+      return { ok: true, msg: `This class is now set to “${s.quest.title}”.` };
+    },
+    deleteQuest(s, { id }) {
+      if (id === s.activeQuest) return { ok: false, msg: 'Open another quest before deleting this one.' };
+      if (!s.library[id]) return { ok: false };
+      const t = s.library[id].quest.title;
+      delete s.library[id];
+      audit('teacher', `Deleted quest “${t}”.`);
+      return { ok: true, msg: `Deleted “${t}”.` };
+    },
+    setPartner(s, { questId, name, org }) {
+      const q = !questId || questId === s.activeQuest ? s.quest : s.library[questId] && s.library[questId].quest;
+      if (!q) return { ok: false };
+      const n = String(name || '').trim(), o = String(org || '').trim();
+      if (n.length < 2) return { ok: false, msg: 'Add the partner’s name.' };
+      q.partner = { name: n.slice(0, 60), org: o.slice(0, 80) };
+      return { ok: true, msg: 'Partner details saved.' };
+    },
+
+    /* ----- authoring the quest content (educator; AI proposals land here too) ----- */
+    setContent(s, { content }) {
+      if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Published quests are frozen — create a new quest to change it.' };
+      if (!content || !content.missions || !SEED.topics.every((t) => content.missions[t])) return { ok: false, msg: 'The draft was incomplete.' };
+      s.content = content;
+      if (content.title) s.quest.title = content.title;
+      SEED.useContent(s.content);
+      SEED.syncFinaleObjects(s.content);
+      s.tracks = Object.fromEntries(SEED.topics.map((t) => [t, 'AI']));
+      s.revisions = {};
+      audit('teacher', 'AI drafted the quest from the approved sources — awaiting the educator’s review.');
+      return { ok: true, msg: 'Draft ready — review each part before publishing.' };
+    },
+    editTrack(s, { topic, fields }) {
+      if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Published quests are frozen — create a new quest to change it.' };
+      if (!SEED.topics.includes(topic)) return { ok: false };
+      const b = SEED.buildTrack(topic, fields || {});
+      s.content.missions[topic] = b.mission;
+      s.content.topicMeta[topic] = { ...s.content.topicMeta[topic], name: fields.name || 'Track ' + topic, label: b.label };
+      s.content.peerTeaching.checkOptions[topic] = b.check;
+      SEED.syncFinaleObjects(s.content);
+      s.tracks[topic] = 'EDITED';
+      audit('teacher', `Edited track ${topic}.`);
+      return { ok: true, msg: `Track ${topic} saved — approve it when you’re happy.` };
+    },
+    editFinale(s, { fields }) {
+      if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Published quests are frozen.' };
+      SEED.buildFinale(s.content, fields || {});
+      audit('teacher', 'Edited the finale.');
+      return { ok: true, msg: 'Finale saved.' };
+    },
+    editExtras(s, { opening, collectibles, reflection }) {
+      if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Published quests are frozen.' };
+      if (typeof opening === 'string') s.content.story = { ...s.content.story, opening: opening.trim() };
+      if (Array.isArray(collectibles)) s.content.collectibles = s.content.collectibles.map((c, i) => ({ ...c, ...(collectibles[i] || {}) }));
+      if (Array.isArray(reflection)) s.content.reflection = reflection.map((q) => String(q || '').trim());
+      audit('teacher', 'Edited the story, collectibles and reflection.');
+      return { ok: true, msg: 'Saved.' };
     },
 
     /* ----- approved-source library (educator) ----- */
@@ -592,6 +746,7 @@ const Engine = (() => {
         return { ok: false, msg: 'Stations open when the educator starts the expert phase.' };
       if (s.checkins[participantId]) return { ok: true, silent: true };
       const m = SEED.missions[p.topic];
+      if (m.assess && m.assess.checkin === 'none') return { ok: true, silent: true };
       const c = String(code || '').trim().toUpperCase();
       const via = c === m.stationCode ? 'QR' : c === m.backupCode ? 'CODE' : null;
       if (!via) return { ok: false, msg: `That code isn’t for ${m.gallery}. Find the ${m.name} clue card.` };
@@ -641,6 +796,7 @@ const Engine = (() => {
           const mission = SEED.missions[p.topic];
           const answers = {};
           for (const f of mission.evidenceFields) answers[f.key] = '[Simulated demo answer] ' + f.label;
+          ev.quiz = mission.assess && mission.assess.quiz && mission.assess.quiz.length ? { score: mission.assess.quiz.length, total: mission.assess.quiz.length } : null;
           ev.answers = answers;
           ev.status = 'VERIFIED';
           ev.simulated = true;
@@ -707,6 +863,7 @@ const Engine = (() => {
     if (!action) return { ok: false, msg: 'Unknown action: ' + type };
     const result = action(state, payload) || { ok: true };
     if (result.ok) {
+      if (!UI_ACTIONS.has(type) && state.library) snapInto(state);
       emit({ type, payload, result });
       if (commitHook && !opts.replay && !UI_ACTIONS.has(type)) commitHook(type, payload, result);
     }

@@ -60,6 +60,55 @@ const TOOLS = [
   },
 ];
 
+
+/* ---------- whole-quest generation: plan first, then each part in parallel ---------- */
+const GEN_RULES = `You are writing a WorldQuest Jigsaw quest for students aged 13-16 at a real place.
+Structure: 4 expert tracks (A-D). Each home team has one student per track; experts investigate their location, then teach their home team; a finale needs all four perspectives.
+Rules: use ONLY facts in the APPROVED SOURCES (cite their ids). Never invent facts, dates, objects or cultural claims; if sources are thin, keep tasks about careful observation rather than facts. Activities must happen at the real place, away from screens. Short sentences, plain words. Separate observation from interpretation. Hints never give answers. Never claim a partnership is confirmed. At most one track includes an arranged conversation with the community partner, and only if the sources mention one.
+Call the tool exactly once.`;
+const str = { type: "string" };
+const arr = { type: "array", items: { type: "string" } };
+const obj = (properties) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
+const GEN_TOOLS = {
+  plan: { name: "plan_quest", description: "The quest title, a short story opening, and the four complementary expert tracks.", strict: true,
+    input_schema: obj({ title: str, story_opening: str, tracks: { type: "array", items: obj({ letter: { type: "string", enum: TOPICS }, name: str, location: str, key_object: str, perspective: str, needs_contributor: { type: "boolean" } }) } }) },
+  track: { name: "write_track", description: "Everything students need for one expert track.", strict: true,
+    input_schema: obj({ name: str, location: str, key_object: str, narrative: str, observe: str, discuss: str, evidence_prompts: arr, hints: arr, fallback: str, teach_headline: str, check_correct: str, check_incorrect: str, needs_contributor: { type: "boolean" }, source_ids: arr, quiz: { type: "array", items: obj({ question: str, options: arr, correct_index: { type: "integer" } }) } }) },
+  finale: { name: "write_finale", description: "The escape-room finale that needs all four perspectives.", strict: true,
+    input_schema: obj({ title: str, cautious_statement: str, overclaim_statement: str, evidence_sentences: arr, perspectives_sentence: str, uncertainty_sentence: str, invite_sentence: str, trap_sentence: str }) },
+  extras: { name: "write_extras", description: "Five optional team collectibles and two reflection questions.", strict: true,
+    input_schema: obj({ collectibles: { type: "array", items: obj({ title: str, activity: str, fact: str }) }, reflection: arr }) },
+};
+const GEN_ASK = {
+  plan: "Plan the quest: a title, a 2-3 sentence fictional story opening (clearly a story, no false claims), and four complementary perspectives (letters A-D), each tied to a real location and key object named in the sources.",
+  track: (letter) => `Write track ${letter} in full, following the plan. evidence_prompts: 2-4 prompts (observations first, then one interpretation and one limit of the evidence). hints: 2. check_correct: a one-sentence fair summary of what this expert teaches; check_incorrect: a tempting summary that overclaims. quiz: 2 multiple-choice questions (4 options each) answerable only by looking at the real object or from the sources, never trick questions.`,
+  finale: "Write the finale: a title; a cautious statement and an overclaiming one; 3-4 evidence sentences (one per track, citing what students observed); one sentence each about perspectives, uncertainty and inviting a visitor question; and one tempting overclaim students must leave out.",
+  extras: "Write 5 optional team collectibles (a short evocative name, a 1-sentence bonus activity done on site, and a 1-sentence fact shown when earned), and 2 reflection questions about learning from others.",
+};
+async function generatePart(part, body) {
+  const tool = GEN_TOOLS[part];
+  const ask = part === "track" ? GEN_ASK.track(body.letter) : GEN_ASK[part];
+  const content = `QUEST SETTINGS: ${JSON.stringify(body.quest || {})}
+APPROVED SOURCES: ${JSON.stringify(body.sources || [])}
+${body.plan ? "PLAN: " + JSON.stringify(body.plan) : ""}
+
+${ask}`;
+  const response = await client.beta.messages.create({
+    model: "claude-opus-5-5",
+    max_tokens: 3000,
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    output_config: { effort: "low" },
+    system: GEN_RULES,
+    tools: [tool],
+    tool_choice: { type: "auto" },
+    messages: [{ role: "user", content }],
+  });
+  if (response.stop_reason === "refusal") return null;
+  const use = response.content.find((b) => b.type === "tool_use" && b.name === tool.name);
+  return use ? use.input : null;
+}
+
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
@@ -70,10 +119,27 @@ export default async (req) => {
   if (pass && req.headers.get("x-demo-passcode") !== pass) return json({ error: "passcode" }, 401);
 
   const raw = await req.text();
-  if (raw.length > 30000) return json({ error: "too_large" }, 413);
+  if (raw.length > 60000) return json({ error: "too_large" }, 413);
   let body;
   try { body = JSON.parse(raw); } catch { return json({ error: "bad_json" }, 400); }
-  const { message, quest, tracks, sources, history } = body || {};
+  const { message, quest, tracks, sources, history, mode } = body || {};
+  if (["plan", "track", "finale", "extras"].includes(mode)) {
+    if (mode === "track" && !TOPICS.includes(body.letter)) return json({ error: "bad_letter" }, 400);
+    if (mode !== "plan" && !body.plan) return json({ error: "no_plan" }, 400);
+    try {
+      const out = await generatePart(mode, body);
+      if (!out) return json({ error: "no_output" }, 502);
+      if (mode === "plan") {
+        out.tracks = TOPICS.map((t) => (out.tracks || []).find((x) => x.letter === t)).filter(Boolean);
+        if (out.tracks.length !== 4) return json({ error: "bad_plan" }, 502);
+      }
+      return json({ [mode]: out });
+    } catch (error) {
+      if (error instanceof Anthropic.RateLimitError) return json({ error: "rate_limited" }, 429);
+      if (error instanceof Anthropic.APIError) return json({ error: "upstream", status: error.status }, 502);
+      return json({ error: "unknown" }, 500);
+    }
+  }
   if (typeof message !== "string" || !message.trim() || message.length > 1000) return json({ error: "bad_message" }, 400);
 
   // Short text-only history (alternating user/assistant), newest last.
