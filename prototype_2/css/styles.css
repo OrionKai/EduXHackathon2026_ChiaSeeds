@@ -498,3 +498,45 @@ label.fld { display: block; font-weight: 700; font-size: 14px; margin-bottom: 6p
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
+
+/* ---------- Kai additions: assistant, checkpoints, help, sync ---------- */
+.as-card { display: flex; flex-direction: column; gap: 12px; }
+.as-msgs { display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow-y: auto; padding: 4px 2px; }
+.as-msg { max-width: 88%; padding: 10px 13px; border-radius: 16px; font-size: 14.5px; line-height: 1.45; }
+.as-msg.you { align-self: flex-end; background: var(--violet); color: #fff; border-bottom-right-radius: 5px; }
+.as-msg.ai { align-self: flex-start; background: var(--lavender); border-bottom-left-radius: 5px; }
+.as-dots { display: inline-flex; gap: 4px; } .as-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--violet); animation: asb 1s infinite; }
+.as-dots i:nth-child(2) { animation-delay: .15s; } .as-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes asb { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+.as-chip { font: 600 13.5px var(--font-body); border-radius: 999px; padding: 7px 13px; border: 1px solid #DCD4FF; background: var(--white); color: var(--violet-deep); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.as-chip:disabled { opacity: .5; cursor: default; }
+.as-compose { display: flex; gap: 8px; } .as-compose .input { flex: 1; min-width: 0; }
+.as-cite { font: 700 11px ui-monospace, Menlo, monospace; padding: 2px 7px; border-radius: 6px; border: 0; background: var(--mint); color: var(--success); cursor: pointer; vertical-align: middle; }
+.as-track { border: 1px solid var(--stroke); border-radius: 14px; padding: 12px; background: var(--white); }
+.as-note { margin: 0 0 8px; font-size: 13.5px; background: var(--lavender); border-radius: 10px; padding: 7px 10px; }
+.as-src { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 8px; border-radius: 12px; }
+.as-src.flash { background: var(--mint); transition: background .3s; }
+.as-sources summary { cursor: pointer; }
+.checkin-card { border: 2px dashed var(--violet); background: var(--lavender); }
+.help-btn { background: var(--peach); color: #A44A3C; border-color: #F7D7CB; }
+.help-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--peach); }
+.hint-src { font-size: 12.5px; color: var(--muted); }
+.sync-pill.live { background: var(--mint); color: var(--success); border-color: #BFE9DE; }
+.sync-pill.offline, .sync-pill.error { background: var(--peach); color: #A44A3C; border-color: #F7D7CB; }
+.scan-panel { text-align: left; }
+.scan-view { position: relative; aspect-ratio: 1; border-radius: 18px; overflow: hidden; background: #141a33; display: grid; place-items: center; }
+.scan-view video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.scan-frame { position: absolute; inset: 18%; border: 3px solid rgba(255,255,255,.85); border-radius: 18px; }
+.scan-msg { position: absolute; bottom: 10px; left: 10px; right: 10px; margin: 0; color: #fff; text-align: center; font-size: 14px; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+.print-panel { max-width: 900px; text-align: left; }
+.station-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-top: 14px; }
+.station-card { border: 2px solid var(--ink); border-radius: 18px; padding: 14px; text-align: center; background: var(--white); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.station-card h3 { margin: 0; }
+.station-qr img, .station-qr canvas { display: block; margin: 6px auto; }
+.mono { font-family: ui-monospace, Menlo, monospace; }
+@media print {
+  body > *:not(.print-overlay) { display: none !important; }
+  .print-overlay { position: static; background: none; padding: 0; }
+  .print-panel { box-shadow: none; max-height: none; }
+  .no-print { display: none !important; }
+}

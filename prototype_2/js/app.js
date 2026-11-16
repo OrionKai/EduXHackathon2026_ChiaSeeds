@@ -85,7 +85,7 @@
               ${roleTab('teacher', '✏️', 'Educator')}
               ${roleTab('collaborator', '🤝', 'Collaborator')}
             </div>
-            <span class="pill">✦ Seeded demo · no live services</span>
+            ${syncPill()}
             <button class="btn btn-ghost btn-sm" data-a="reset">${Art.icon('back', 16)} Reset demo</button>
           </div>
           <div id="main-content">
@@ -102,6 +102,12 @@
     bind();
     window.scrollTo(0, y);
     lastReveal = null; // the one-time card flip plays only on the render right after its claim
+  }
+
+  function syncPill() {
+    const s = typeof Sync !== 'undefined' ? Sync.state : { status: 'offline', session: '' };
+    const txt = { live: `● Live · class ${s.session}`, connecting: 'Connecting…', offline: 'This device only', error: 'Sync error · this device only' }[s.status];
+    return `<span class="pill sync-pill ${s.status}" title="Shared session code: ${esc(s.session)}">${txt}</span>`;
   }
 
   const sideBtn = (role, icon, label) =>
@@ -125,6 +131,9 @@
           <div class="row">
             <span class="identity-chip">${Art.icon('eye', 17)} ${esc(me.name)} · Home ${me.home} · Expert ${me.topic}</span>
             ${topicChip(me.topic)}
+            ${st.help.some((h) => h.pid === me.id && h.open)
+              ? `<span class="pill peach">${Art.icon('clock', 14)} Teacher is on the way</span>`
+              : `<button class="btn btn-sm help-btn" data-a="help">${Art.icon('alert', 15)} Call teacher</button>`}
           </div>
           <div class="row">
             <label class="sr-only" for="student-sel">Play as explorer</label>
@@ -254,6 +263,7 @@
         ${tabs.map(([id, ic, lb]) => `<button data-a="mtab" data-tab="${id}" aria-pressed="${tab === id}">${Art.icon(ic, 15)}${lb}</button>`).join('')}
       </div>
       ${tab === 'observe' ? `
+        ${checkinCard(st, me, m)}
         <div class="gallery-note"><h4>${Art.icon('map', 18)} ${esc(m.gallery)}</h4><p style="margin:0">${esc(m.observe)}</p></div>
         <div class="card"><p class="hint-note" style="margin:0"><strong>Verified anchor:</strong> ${esc(m.sourceFact)}
           <a href="${m.sourceUrl}" target="_blank" rel="noopener">official source</a> · re-check on the day. ${esc(m.fallback)}</p></div>
@@ -269,7 +279,16 @@
               ? 'Your conversation with the approved contributor is verified — record their perspective in step 3.'
               : `Meet the approved adult contributor (<em>${esc(SEED.contributor.label)}</em>). They confirm the conversation from their own device — in this demo, switch to the Collaborator view to verify it.`}</p>
           </div>` : ''}` : ''}
-      ${tab === 'record' ? recordForm(st, me, m, ev) : ''}`;
+      ${tab === 'record' ? (st.checkins[me.id] ? recordForm(st, me, m, ev) : checkinCard(st, me, m, true)) : ''}`;
+  }
+
+  function checkinCard(st, me, m, locked) {
+    const c = st.checkins[me.id];
+    if (c) return `<div class="card wash-mint" style="padding:12px 16px"><strong>${Art.icon('check', 16)} Checked in at ${esc(m.gallery)}</strong> <small>${c.via === 'QR' ? 'QR clue card' : c.via === 'CODE' ? 'facilitator code' : 'simulated'}</small></div>`;
+    return `<div class="card checkin-card">
+      <h4 style="margin:0 0 6px">${Art.icon('map', 18)} ${locked ? 'Field notes unlock at your station' : 'Find your station'}</h4>
+      <p style="margin:0 0 10px">Go to <strong>${esc(m.gallery)}</strong> and scan the <strong>${esc(m.name)}</strong> clue card.</p>
+      <button class="btn btn-primary" data-a="scan-station">${Art.icon('eye', 17)} Scan clue card</button></div>`;
   }
 
   function recordForm(st, me, m, ev) {
@@ -290,8 +309,10 @@
           <button class="btn btn-primary" type="submit">${Art.icon('check', 18)} Submit evidence</button>
           <button class="btn btn-ghost" type="button" data-a="hints">${Art.icon('help', 17)} ${hintsOpen ? 'Hide hints' : 'Need a hint?'}</button>
         </div>
-        ${hintsOpen ? `<div class="gallery-note" style="margin-top:12px"><h4>${Art.icon('sparkle', 16)} Educator-approved hints</h4>
-          <ol style="margin:0;padding-left:18px">${m.hints.map((h) => `<li>${esc(h)}</li>`).join('')}</ol></div>` : ''}
+        ${hintsOpen ? `<div class="gallery-note" style="margin-top:12px"><h4>${Art.icon('sparkle', 16)} Hints, one at a time · never the answer</h4>
+          <ol style="margin:0;padding-left:18px">${m.hints.slice(0, st.ui.hintsShown || 1).map((h) => `<li>${esc(h)}</li>`).join('')}</ol>
+          <div class="spread" style="margin-top:8px"><span class="hint-src">From: approved source · <a href="${m.sourceUrl}" target="_blank" rel="noopener">${esc(m.gallery)} page</a> · educator-approved</span>
+          ${(st.ui.hintsShown || 1) < m.hints.length ? `<button class="btn btn-ghost btn-sm" type="button" data-a="hint-more">Another hint</button>` : ''}</div></div>` : ''}
       </form>`;
   }
 
@@ -597,18 +618,15 @@
               <input class="input" id="q-obj" data-q="objective" value="${esc(q.objective)}" ${q.status === 'PUBLISHED' ? 'disabled' : ''}></div>
             <div class="fld-group"><label class="fld" for="q-venue">Where will they explore?</label>
               <input class="input" id="q-venue" data-q="venue" value="${esc(q.venue)}" ${q.status === 'PUBLISHED' ? 'disabled' : ''}></div>
-            <div class="row">
-              <button class="btn btn-primary" data-a="generate" ${q.status === 'PUBLISHED' ? 'disabled' : ''}>✦ Generate quest draft</button>
-              <span class="pill">Seeded demo — no AI key</span>
-            </div>
-            <p class="hint-note" style="margin:10px 0 0">Without an API key the draft comes from the approved seed pack and is clearly labelled. The published app would call a server-side AI adapter here.</p>
           </div>
+          ${Assistant.panel()}
           ${q.draftGenerated ? `
           <div class="card">
             <div class="spread"><h3>Publish checklist</h3>${statusChip(q.status === 'PUBLISHED' ? 'APPROVED' : st.contributor.status === 'APPROVED' ? 'AVAILABLE' : 'PENDING')}</div>
             <ul style="margin:0 0 12px;padding-left:20px">
               <li>Safety &amp; supervision reviewed (demo checklist) ✓</li>
               <li>Sources verified against official gallery pages ✓</li>
+              <li>AI-drafted tracks approved by you: <strong>${SEED.topics.filter((t) => st.tracks[t] === 'APPROVED').length}/4</strong></li>
               <li>Community contribution approved: <strong>${st.contributor.status === 'APPROVED' ? 'yes' : 'not yet — collaborator must approve'}</strong></li>
               <li>Published as <strong>DEMO_ONLY</strong> — no real venue permission implied</li>
             </ul>
@@ -683,6 +701,7 @@
             <h2>Live control room</h2>
             <div class="row">
               <button class="btn btn-secondary btn-sm" data-a="rewind" ${idx === 0 ? 'disabled' : ''}>${Art.icon('back', 15)} Back</button>
+              <button class="btn btn-secondary btn-sm" data-a="qr-cards">${Art.icon('map', 15)} Station QR cards</button>
               <button class="btn btn-primary btn-sm" data-a="advance" ${idx >= SEED.phases.length - 1 ? 'disabled' : ''}>Advance phase ${Art.icon('arrow', 15)}</button>
             </div>
           </div>
@@ -692,6 +711,8 @@
           <p class="hint-note" style="margin:10px 0 0">${esc(SEED.phaseMeta[st.phase].desc)} ${st.phase === 'LOBBY' && st.quest.status !== 'PUBLISHED' ? '· Publish the quest first (Quest builder).' : ''}</p>
         </div>
 
+        ${st.help.some((h) => h.open) ? `<div class="card"><div class="spread"><h3>${Art.icon('alert', 18)} Help requests</h3><span class="pill peach">${st.help.filter((h) => h.open).length} open</span></div>
+          <div class="stack" style="gap:8px">${st.help.filter((h) => h.open).map((h) => { const p = SEED.byId[h.pid]; return `<div class="help-row"><span><strong>${esc(p.name)}</strong> · Home ${p.home} · ${esc(SEED.missions[p.topic].gallery)}</span><button class="btn btn-teal btn-sm" data-a="resolve-help" data-id="${h.id}">${Art.icon('check', 15)} I’m with them</button></div>`; }).join('')}</div></div>` : ''}
         <div class="grid-2">
           <div class="card">
             <div class="spread"><h3>${Art.icon('clock', 18)} Evidence queue</h3><span class="pill lavender">${evQ.length} waiting</span></div>
@@ -904,7 +925,16 @@
           case 'reset': if (confirmReset()) act('resetDemo'); return;
           case 'join': toast('You’re in the lobby, ' + SEED.byId[S().ui.student].name + '!', 'success'); return;
           case 'mtab': S().ui.missionTab = el.dataset.tab; render(); return;
-          case 'hints': S().ui.hintsOpen = !S().ui.hintsOpen; render(); return;
+          case 'hints': S().ui.hintsOpen = !S().ui.hintsOpen; S().ui.hintsShown = 1; render(); return;
+          case 'hint-more': S().ui.hintsShown = (S().ui.hintsShown || 1) + 1; render(); return;
+          case 'help': return act('requestHelp', { participantId: S().ui.student });
+          case 'resolve-help': return act('resolveHelp', { id: el.dataset.id });
+          case 'qr-cards': return StationCards.open();
+          case 'scan-station': {
+            const me = SEED.byId[S().ui.student], m = SEED.missions[me.topic];
+            return Scanner.open({ title: `Scan the ${m.name} clue card`, hint: `It’s at ${m.gallery}. The facilitator can read you the backup code if the camera won’t work.`,
+              onCode: (code) => act('checkIn', { participantId: me.id, code }).ok });
+          }
           case 'lookup': return act('setLookUp', { on: true });
           case 'lookup-off': return act('setLookUp', { on: false });
           case 'teach-open': S().ui.teachTopic = el.dataset.topic; render(); return;
@@ -944,6 +974,8 @@
         }
       });
     });
+
+    if (typeof Assistant !== 'undefined') Assistant.bind(root);
 
     // live preview typing in the quest builder (silent updates, targeted DOM refresh)
     root.querySelectorAll('[data-q]').forEach((el) => {
@@ -1036,11 +1068,22 @@
     if (q.get('screen')) Engine.dispatch('setScreen', { screen: q.get('screen') });
   }
 
+  let deferred = false;
   Engine.subscribe((st, event) => {
     if (event?.result?.silent && event.type === 'updateQuest') return; // targeted update already done
+    // A change from another device must not wipe what this person is typing: wait until they leave the field.
+    const a = document.activeElement;
+    if (event?.type === 'remote' && a && root.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) {
+      if (!deferred) { deferred = true; a.addEventListener('blur', () => { deferred = false; render(); }, { once: true }); }
+      return;
+    }
     render();
   });
+  window.WQ = { act, toast, render };
+  document.addEventListener('wq-sync', () => render());
+  document.addEventListener('wq-sync-msg', (e) => toast(e.detail, 'error'));
 
   applyDemoParams();
   render();
+  if (typeof Sync !== 'undefined') Sync.start();
 })();

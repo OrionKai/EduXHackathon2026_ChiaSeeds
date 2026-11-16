@@ -284,3 +284,8 @@ const SEED = {
 SEED.byId = Object.fromEntries(SEED.participants.map((p) => [p.id, p]));
 SEED.homeMembers = (h) => SEED.participants.filter((p) => p.home === h);
 SEED.expertOf = (h, topic) => SEED.participants.find((p) => p.home === h && p.topic === topic);
+
+/* Station check-in: each expert gallery has a printed QR clue card (stationCode)
+   and a short backup code a facilitator can read out (backupCode). */
+Object.entries({ A: ['WQ-STATION-A', 'LENS'], B: ['WQ-STATION-B', 'STONE'], C: ['WQ-STATION-C', 'TOKEN'], D: ['WQ-STATION-D', 'VOICE'] })
+  .forEach(([t, [qr, code]]) => { SEED.missions[t].stationCode = qr; SEED.missions[t].backupCode = code; });

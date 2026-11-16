@@ -68,6 +68,10 @@ const Engine = (() => {
       master: null, // { at } — exactly once
       masterSeen: false,
       reflections: {}, // participantId -> [a1, a2]
+      checkins: {}, // participantId -> { at, via: 'QR' | 'CODE' | 'SIMULATED' }
+      help: [], // { id, pid, at, open }
+      tracks: { A: 'AI', B: 'AI', C: 'AI', D: 'AI' }, // AI | REVISED | APPROVED (educator review of AI-drafted tracks)
+      revisions: {}, // topic -> note from an AI revision
       ui: { role: 'student', student: 'S06', screen: null, lookUp: false },
       log: [],
     };
@@ -83,12 +87,20 @@ const Engine = (() => {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && parsed.v === 1) return parsed;
+        if (parsed && parsed.v === 1) return upgrade(parsed);
       }
     } catch (e) {
       /* corrupted or unavailable storage -> fresh demo */
     }
     return freshState();
+  }
+
+  function upgrade(s) {
+    s.checkins = s.checkins || {};
+    s.help = s.help || [];
+    s.tracks = s.tracks || { A: 'AI', B: 'AI', C: 'AI', D: 'AI' };
+    s.revisions = s.revisions || {};
+    return s;
   }
 
   function persist() {
@@ -203,6 +215,8 @@ const Engine = (() => {
     },
     generateDraft(s) {
       s.quest.draftGenerated = true;
+      s.tracks = { A: 'AI', B: 'AI', C: 'AI', D: 'AI' };
+      s.revisions = {};
       audit('teacher', 'Generated quest draft (Seeded demo — no API key used).');
       return { ok: true, msg: 'Seeded demo draft ready — no AI key was used.' };
     },
@@ -210,6 +224,9 @@ const Engine = (() => {
       if (s.contributor.status !== 'APPROVED')
         return { ok: false, msg: 'The community contribution has not been approved yet.' };
       if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Already published.' };
+      if (!s.quest.draftGenerated) return { ok: false, msg: 'Draft the quest first.' };
+      if (SEED.topics.some((t) => s.tracks[t] !== 'APPROVED'))
+        return { ok: false, msg: 'Approve all four AI-drafted expert tracks first — nothing reaches students unapproved.' };
       s.quest.status = 'PUBLISHED';
       audit('teacher', 'Published quest (DEMO_ONLY — simulation notice shown).');
       return { ok: true, msg: 'Quest published as a demo-only adventure.' };
@@ -273,6 +290,8 @@ const Engine = (() => {
         if (!answers[f.key] || !String(answers[f.key]).trim())
           return { ok: false, msg: `Please fill in “${f.label}” before submitting.` };
       }
+      if (!s.checkins[participantId])
+        return { ok: false, msg: 'Check in at your gallery first: scan the QR clue card there (or type the station code).' };
       if (mission.needsFacilitator && !s.interactions[participantId])
         return {
           ok: false,
@@ -477,6 +496,56 @@ const Engine = (() => {
       return { ok: true, msg: 'Reflection saved — now look up and join the discussion!' };
     },
 
+    /* ----- AI draft review (educator approves each track) ----- */
+    reviseTrack(s, { topic, note }) {
+      if (!s.quest.draftGenerated) return { ok: false, msg: 'Draft the quest first.' };
+      if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Already published — edits would disrupt a live session.' };
+      s.tracks[topic] = 'REVISED';
+      s.revisions[topic] = note;
+      audit('teacher', `AI revised track ${topic} on request (simulated AI) — needs approval again.`);
+      return { ok: true, silent: true };
+    },
+    approveTrack(s, { topic }) {
+      if (!s.quest.draftGenerated) return { ok: false, msg: 'Draft the quest first.' };
+      if (s.tracks[topic] === 'APPROVED') return { ok: false, msg: 'Already approved.' };
+      s.tracks[topic] = 'APPROVED';
+      audit('teacher', `Approved AI-drafted track ${topic} (${SEED.topicMeta[topic].name}).`);
+      return { ok: true, msg: `Track ${topic} approved.` };
+    },
+
+    /* ----- real-world checkpoint: QR clue card or facilitator code ----- */
+    checkIn(s, { participantId, code }) {
+      const p = SEED.byId[participantId];
+      if (!p) return { ok: false };
+      if (!['EXPERT', 'PEER_TEACH', 'FINALE'].includes(s.phase))
+        return { ok: false, msg: 'Stations open when the educator starts the expert phase.' };
+      if (s.checkins[participantId]) return { ok: true, silent: true };
+      const m = SEED.missions[p.topic];
+      const c = String(code || '').trim().toUpperCase();
+      const via = c === m.stationCode ? 'QR' : c === m.backupCode ? 'CODE' : null;
+      if (!via) return { ok: false, msg: `That code isn’t for ${m.gallery}. Find the ${m.name} clue card.` };
+      s.checkins[participantId] = { at: Date.now(), via };
+      audit('student', `${p.name} checked in at ${m.gallery} (${via === 'QR' ? 'QR clue card' : 'facilitator code'}).`);
+      return { ok: true, msg: `Checked in at ${m.gallery}. Phone away — observe first.` };
+    },
+
+    /* ----- help: always one tap away ----- */
+    requestHelp(s, { participantId }) {
+      const p = SEED.byId[participantId];
+      if (!p) return { ok: false };
+      if (s.help.some((h) => h.pid === participantId && h.open)) return { ok: false, msg: 'Your teacher already has your request — stay where you are.' };
+      s.help.unshift({ id: 'h' + Date.now().toString(36), pid: participantId, at: Date.now(), open: true });
+      audit('student', `${p.name} asked for help.`);
+      return { ok: true, msg: 'Your teacher has been told. Stay with your group.' };
+    },
+    resolveHelp(s, { id }) {
+      const h = s.help.find((x) => x.id === id);
+      if (!h || !h.open) return { ok: false };
+      h.open = false;
+      audit('teacher', `Help request from ${SEED.byId[h.pid].name} resolved.`);
+      return { ok: true, silent: true };
+    },
+
     /* ----- clearly labelled demo shortcut (SIMULATED) ----- */
     simulateClassmates(s) {
       let changed = 0;
@@ -485,6 +554,7 @@ const Engine = (() => {
         const ev = s.evidence[p.id];
         if (ev.status !== 'VERIFIED') {
           if (p.topic === 'D') s.interactions[p.id] = true;
+          s.checkins[p.id] = s.checkins[p.id] || { at: Date.now(), via: 'SIMULATED' };
           const mission = SEED.missions[p.topic];
           const answers = {};
           for (const f of mission.evidenceFields) answers[f.key] = '[Simulated demo answer] ' + f.label;
@@ -545,12 +615,34 @@ const Engine = (() => {
 
   /* ---------- dispatch ---------- */
 
-  function dispatch(type, payload = {}) {
+  /* UI-only actions are per device and never shared with other devices. */
+  const UI_ACTIONS = new Set(['setRole', 'setStudent', 'setScreen', 'setLookUp', 'setInteractionPrompt', 'markMasterSeen']);
+  let commitHook = null; // set by sync.js: called after a shared action succeeds locally
+
+  function dispatch(type, payload = {}, opts = {}) {
     const action = actions[type];
     if (!action) return { ok: false, msg: 'Unknown action: ' + type };
     const result = action(state, payload) || { ok: true };
-    if (result.ok) emit({ type, payload, result });
+    if (result.ok) {
+      emit({ type, payload, result });
+      if (commitHook && !opts.replay && !UI_ACTIONS.has(type)) commitHook(type, payload, result);
+    }
     return result;
+  }
+
+  /* ---------- shared-state hooks for live sync (sync.js) ---------- */
+  function sharedState() {
+    const { ui, ...rest } = state;
+    return JSON.parse(JSON.stringify(rest));
+  }
+  function applyShared(shared) {
+    const ui = state.ui;
+    state = upgrade({ ...JSON.parse(JSON.stringify(shared)), ui });
+    emit({ type: 'remote' });
+  }
+  function freshShared() {
+    const { ui, ...rest } = freshState();
+    return rest;
   }
 
   function subscribe(fn) {
@@ -561,6 +653,10 @@ const Engine = (() => {
   return {
     dispatch,
     subscribe,
+    sharedState,
+    applyShared,
+    freshShared,
+    onCommit: (fn) => { commitHook = fn; },
     sel,
     get state() {
       return state;

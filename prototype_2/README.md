@@ -81,3 +81,16 @@ partnership exists or is implied; real school visits must be pre-booked. The eng
 single-browser demo adapter standing in for the server-side logic (Supabase + Next.js route
 handlers) specified in `WORLDQUEST_MVP_PRD.md` — it does not demonstrate multi-user
 production security.
+
+## Additions (Kai_Revision)
+
+- **Live sync across devices** ([js/sync.js](js/sync.js), [supabase/setup.sql](supabase/setup.sql)): one Supabase row per class
+  session; compare-and-swap writes so simultaneous actions can't both win (the loser replays its action on the newer state,
+  where engine rules like "card already claimed" decide). Use `?session=CODE` for a fresh session per demo run;
+  `?offline=1` keeps everything on this device. The browser only holds the publishable key.
+- **QR station checkpoints** ([js/scan.js](js/scan.js)): evidence unlocks only after a student scans their gallery's clue card
+  (or types the facilitator's backup code). Educator → Live session → *Station QR cards* prints them. Camera needs HTTPS.
+- **Quest assistant** ([js/assist.js](js/assist.js)): simulated, labelled AI chat in the quest builder. Drafts from approved
+  sources only (S1–S4 gallery pages, S5 partner contribution), cites them, revises tracks on request; the engine blocks
+  publishing until the educator approves all four tracks.
+- **Hints one at a time with their source**, and an always-visible **Call teacher** button with a help queue in the live session.
