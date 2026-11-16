@@ -134,6 +134,15 @@ Changes after team feedback on v1:
 - **Camera:** live viewfinder to scan the object (recognition simulated), live QR scanning for the pair code and studio check-in, with photo/typed fallbacks. **Look Up easter egg:** tilting the phone to point at the ceiling (device orientation); triple-tap the progress bar as a demo fallback.
 - **Hosting:** live camera and tilt need the page on its own HTTPS host (e.g. GitHub Pages). Inside a claude.ai artifact they fall back to photo capture.
 
+## 9c. Revision 3: explicit rules (16 Nov)
+
+- **Roles** state what each partner *holds* (information only they see) and what they do *on the phone*.
+- **Quests** are five ordered cards. Each shows a task per role, what finishes it (object scan, answer submitted, discovery card, quiz, pair-code scan, or teacher approval), who completes it (a role, either partner, or each student), whether the app or the teacher checks it, and its reward. All of these are editable.
+- **Collectibles** state exactly what earns them (quest finished, quiz score threshold, motion sensor at a place, or awarded by the teacher), who gets them (each student, both partners, or the finder), whether they're hidden, and how they evolve.
+- **Trip day** (teacher): live grid of 14 pairs × 5 quests; a review queue where the teacher approves or returns answers and cards with a comment; quests set to "teacher approves" hold the pair until approved; a stuck pair (camera can't scan) can be marked done after an in-person check; the experience trip unlocks when every pair finishes, or early with a reason.
+- **Student**: a quest list after joining, and on every screen a header with the quest, *your job* (role-specific) and *done when*. The journal shows how to earn each locked collectible.
+- Content (roles, quests, collectibles, quiz, sample submissions) lives in `prototype/js/content.js`.
+
 ## 10. Deck-only items (not built)
 
 Problem + persona, theory map (§3), risk register (minors contacting officials, cross-border pairing, business advertising, reward fairness, digital twin as alternative not default), pilot plan (5–9 university students, measure time looking up vs at the screen), differentiation vs Actionbound / Goosechase / Smartify, garden example, roadmap (partner review link, reuse, student-made quests).

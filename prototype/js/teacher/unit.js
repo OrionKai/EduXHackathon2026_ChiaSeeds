@@ -7,8 +7,7 @@ function renderUnit(){
   const pStatus={none:`<span class="chip lock">Not requested</span>`,sent:`<span class="chip edit">Awaiting studio</span>`,counter:`<span class="chip edit">New date proposed</span>`,accepted:`<span class="chip ok">Studio accepted</span>`}[P.status];
   const ready=q&&x&&B.published&&P.status==="accepted";
   const missing=[!q&&"Add a quest",!x&&"Add an experience",q&&!B.published&&"Publish the quest",x&&P.status!=="accepted"&&"Studio acceptance"].filter(Boolean);
-  const pct=Math.round(U.done/U.total*100);
-  let h=`<div class="row between" style="margin-bottom:18px"><div><span class="label">Autumn unit</span><h2>Memento mori</h2></div>
+    let h=`<div class="row between" style="margin-bottom:18px"><div><span class="label">Autumn unit</span><h2>Memento mori</h2></div>
     <div class="row">${U.live?`<span class="chip ok">Trip day live</span>`:`<button class="primary" id="launch" ${ready?"":"disabled"}>${ic("play")} Launch trip day</button>`}</div></div>
     ${!U.live&&missing.length?`<p class="small muted" style="margin:-8px 0 16px">To launch: ${missing.join(" · ")}</p>`:""}
     <div class="flow">`;
@@ -18,7 +17,7 @@ function renderUnit(){
     if(t.type==="quest") h+=`<div class="node"><span class="ic">${ic("map",22)}</span><div class="card stack" style="gap:8px">
       <div class="row between"><span class="label">WorldQuest trip</span>${qStatus}</div>
       <h3>${B.task?esc(B.task.title):"New quest"}</h3><p class="small muted">Fitzwilliam Museum · pairs</p>
-      ${U.live?`<div class="row between small"><span id="pcount">${U.done}/${U.total} students finished</span><span class="mono" id="ppct">${pct}%</span></div><div class="bar"><b id="pbar" style="width:${pct}%"></b></div>`:`<div class="row"><button data-goto="builder">${ic("spark")} ${B.started?"Continue in builder":"Build with AI"}</button></div>`}
+      ${U.live?`<div class="row between small"><span>${pairsDone()}/${D.pairs.length} pairs finished</span><span class="mono">${Math.round(pairsDone()/D.pairs.length*100)}%</span></div><div class="bar"><b style="width:${pairsDone()/D.pairs.length*100}%"></b></div><div class="row"><button data-goto="day">${ic("users")} Open trip day</button></div>`:`<div class="row"><button data-goto="builder">${ic("spark")} ${B.started?"Continue in builder":"Build with AI"}</button></div>`}
      </div></div>`;
     else { const pv=PROVIDERS.find(p=>p.id===t.provider);
       const locked=!U.unlocked;
@@ -26,7 +25,6 @@ function renderUnit(){
       <div class="row between"><span class="label">Experience trip</span>${U.live?(U.unlocked?`<span class="chip ok">Unlocked</span>`:`<span class="chip lock">Locked</span>`):pStatus}</div>
       <h3>${pv.name}</h3><p class="small muted">${pv.who} · ${P.date}</p>
       ${U.override?`<p class="small hint">Unlocked early: “${esc(U.override)}”</p>`:""}
-      ${U.live&&!U.unlocked?(U.showOverride?`<div class="row"><input id="reason" placeholder="Reason (saved to log)" style="flex:1;min-width:180px"><button class="primary" id="doUnlock">Unlock</button></div>`:`<div class="row"><button id="override">Unlock now</button></div>`):""}
       ${!U.live?`<div class="row"><button data-goto="partners">${ic("mail")} ${P.status==="none"?"Request booking":"View booking"}</button></div>`:""}
      </div></div>`;}
   });
@@ -46,11 +44,5 @@ function renderUnit(){
   $$("[data-goto]").forEach(b=>b.onclick=()=>go(b.dataset.goto));
   $("#rule")&&($("#rule").onchange=e=>{U.rule=e.target.value});
   $("#launch")&&($("#launch").onclick=launchDay);
-  $("#override")&&($("#override").onclick=()=>{U.showOverride=true;renderUnit()});
-  $("#doUnlock")&&($("#doUnlock").onclick=()=>{const r=$("#reason").value.trim();if(!r){toast("Add a reason first");return}U.override=r;U.unlocked=true;U.showOverride=false;toast("Unlocked for the class");renderUnit()});
 }
-function launchDay(){U.live=true;U.done=0;renderUnit();toast(`Session ${CODES.session} is live`);
-  const t=setInterval(()=>{U.done=Math.min(U.total,U.done+1+(Math.random()<.4?1:0));
-    const pct=Math.round(U.done/U.total*100);
-    if($("#pbar")){$("#pbar").style.width=pct+"%";$("#pcount").textContent=`${U.done}/${U.total} students finished`;$("#ppct").textContent=pct+"%"}
-    if(U.done>=U.total){clearInterval(t);if(U.rule==="all"&&!U.unlocked){U.unlocked=true;toast("Whole class finished. Drawing class unlocked.")}if(TAB==="unit")renderUnit()}},450)}
+function launchDay(){startTripDay()}

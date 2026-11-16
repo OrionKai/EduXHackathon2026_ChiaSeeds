@@ -3,8 +3,21 @@ const B={started:false,busy:false,msgs:[{who:"a",text:"Hi! Add anything I should
   sources:[],grounded:true,task:null,roles:[],quests:[],quiz:[],colls:[],done:new Set(),focus:null,hl:null,published:false,pasting:false};
 const allCards=()=>[B.task,...B.roles,...B.quests,...B.quiz,...B.colls].filter(Boolean);
 const find=id=>allCards().find(c=>c.id===id);
-function revise(c,kind){if(c.state!=="accepted")c.state=kind;c.flash=true}
 
+/* ---- readable rule text, shared with the trip-day view ---- */
+const roleName=id=>(B.roles.find(r=>r.id===id)||ROLE_DEFS.find(r=>r.id===id)).title;
+const whoText=v=>v==="Pair"?"Either partner":v==="Each"?"Each student":`The ${roleName(v)}`;
+const doneText=q=>{const t=DONE_TYPES[q.done].text(whoText(q.doneBy));return t[0].toUpperCase()+t.slice(1)};
+const collById=id=>B.colls.find(c=>c.id===id)||COLL_DEFS.find(c=>c.id===id);
+function whenText(c){const t=c.trigger,qs=B.quests.length?B.quests:QUEST_DEFS;
+  if(t.kind==="quest"){const i=qs.findIndex(q=>q.id===t.quest);return i<0?"A quest is finished":`Quest ${i+1} finished (${qs[i].title})`}
+  if(t.kind==="quiz")return `Quiz score ${t.min} of 3 or higher`;
+  if(t.kind==="sensor")return `Phone tilted up at ${t.place||"a set spot"} (motion sensor)`;
+  return "You award it by hand"}
+const collCheck=c=>c.trigger.kind==="teacher"?"You":"Automatic";
+const artFor=(a,s)=>a==="watch"?watchArt(s):a==="badge"?badgeArt(s):domeArt(s);
+
+/* ---- chat ---- */
 function renderBuilder(){
   $("#tmain").innerHTML=`<div class="builder">
     <section class="card chat" aria-label="AI assistant">
@@ -23,15 +36,15 @@ function renderChat(){
     ${x.cites&&x.cites.length?`<div class="row">${x.cites.map(id=>`<button class="cite" data-cite="${id}">${id}</button>`).join("")}</div>`:""}</div>`).join("");
   m.scrollTop=m.scrollHeight;
   $$("#msgs [data-cite]").forEach(b=>b.onclick=()=>showSource(b.dataset.cite));
-  const s=$("#sugg");const chips=[];
+  const chips=[];
   if(B.focus){const r=REV.find(r=>r.target===B.focus&&!B.done.has(r.id));if(r)chips.push(r)}
   const next=MAIN.find(x=>!B.done.has(x.id));if(next)chips.push(next);
   REV.filter(r=>!B.done.has(r.id)&&find(r.target)&&!chips.includes(r)).slice(0,2).forEach(r=>chips.push(r));
-  s.innerHTML=chips.slice(0,3).map(c=>`<button data-chip="${c.id}" class="${c.target?"rev":""}" ${B.busy?"disabled":""}>${c.target?ic("edit"):ic("spark")} ${esc(c.chip)}</button>`).join("");
+  $("#sugg").innerHTML=chips.slice(0,3).map(c=>`<button data-chip="${c.id}" class="${c.target?"rev":""}" ${B.busy?"disabled":""}>${c.target?ic("edit"):ic("spark")} ${esc(c.chip)}</button>`).join("");
   $$("[data-chip]").forEach(b=>b.onclick=()=>runPrompt([...MAIN,...REV].find(x=>x.id===b.dataset.chip)));
 }
-async function aiSay(text,cites){const m={who:"a",text:"",thinking:true};B.msgs.push(m);renderChat();await sleep(800+Math.random()*500);m.thinking=false;
-  for(const w of text.split(" ")){m.text+=(m.text?" ":"")+w;renderChat();await sleep(32)}m.cites=cites}
+async function aiSay(text){const m={who:"a",text:"",thinking:true};B.msgs.push(m);renderChat();await sleep(800+Math.random()*500);m.thinking=false;
+  for(const w of text.split(" ")){m.text+=(m.text?" ":"")+w;renderChat();await sleep(30)}}
 async function runPrompt(item,typed){
   if(B.busy||!item)return;B.busy=true;B.started=true;renderChat();
   const inp=$("#cin");if(inp&&!typed){inp.value="";for(const ch of item.prompt){inp.value+=ch;await sleep(12)}await sleep(250)}if(inp)inp.value="";
@@ -39,9 +52,10 @@ async function runPrompt(item,typed){
   await aiSay(typeof item.reply==="function"?item.reply():item.reply);
   item.apply();B.done.add(item.id);
   const cards=item.target?[find(item.target)]:{task:[B.task],roles:B.roles,quests:B.quests,quiz:B.quiz,colls:B.colls}[item.id];
-  cards.forEach(c=>item.target?revise(c,"revised"):(c.flash=true));
+  cards.forEach(c=>{if(item.target&&c.state!=="accepted")c.state="revised";if(item.target&&c.state==="accepted")c.state="revised";c.flash=true});
   B.msgs[B.msgs.length-1].cites=[...new Set(cards.flatMap(c=>c.cites||[]))];
   B.focus=null;B.busy=false;renderChat();renderBoard();
+  document.getElementById("card-"+cards[0].id)?.scrollIntoView({behavior:"smooth",block:"nearest"});
 }
 let samplePromise=null;
 async function freeSend(text){
@@ -49,60 +63,99 @@ async function freeSend(text){
   B.busy=true;B.started=true;$("#cin").value="";B.msgs.push({who:"t",text});renderChat();
   const focus=B.focus&&find(B.focus);let reply=null;
   try{const sample=await(samplePromise??=(window.claude?.use?window.claude.use("sample"):Promise.resolve(null)));
-    if(sample){const ctx=JSON.stringify(allCards().map(c=>({id:c.id,title:c.title,body:c.body||c.q})));
-      const r=await sample(`You are the quest assistant in WorldQuest, helping a teacher plan a museum trip (Fitzwilliam Museum, Year 10, pairs, memento mori). Current draft cards: ${ctx}. ${focus?`The teacher is asking about card "${focus.title}".`:""} Reply in at most 2 short sentences with a concrete suggestion. Teacher: ${text}`,{modelTier:"quick",cache:false});reply=r.text}}catch{}
-  await aiSay(reply||"Got it. In the full version I'd update the draft on the right — try one of the suggestions below for this demo.");
+    if(sample){const ctx=JSON.stringify(allCards().map(c=>({id:c.id,title:c.title,tasks:c.tasks,body:c.q||c.holds})));
+      const r=await sample(`You are the quest assistant in WorldQuest, helping a teacher plan a museum trip (Fitzwilliam Museum, Year 10, pairs, memento mori). Current draft: ${ctx}. ${focus?`The teacher is asking about "${focus.title}".`:""} Reply in at most 2 short sentences with a concrete suggestion. Teacher: ${text}`,{modelTier:"quick",cache:false});reply=r.text}}catch{}
+  await aiSay(reply||"Got it. In the full version I'd update the draft on the right — for this demo, try one of the suggestions below.");
   B.busy=false;renderChat();
 }
 function showSource(id){B.hl=id;renderBoard();document.getElementById("src-"+id)?.scrollIntoView({behavior:"smooth",block:"center"})}
-function genModel(){const c=find("c1");const t=setInterval(()=>{c.gen=Math.min(100,c.gen+7);const b=$("#gen-c1");if(b)b.style.width=c.gen+"%";if(c.gen>=100){clearInterval(t);if(TAB==="builder")renderBoard()}},220)}
+function genModel(){const c=find("c1");if(!c)return;const t=setInterval(()=>{c.gen=Math.min(100,c.gen+7);const b=$("#gen-c1");if(b)b.style.width=c.gen+"%";if(c.gen>=100){clearInterval(t);if(TAB==="builder")renderBoard()}},220)}
 
+/* ---- board ---- */
 const STATE={ai:`<span class="chip ai">${ic("spark")} AI draft</span>`,revised:`<span class="chip ai">${ic("spark")} Revised</span>`,edited:`<span class="chip edit">${ic("edit")} Edited by you</span>`,accepted:`<span class="chip ok">${ic("check")} Accepted</span>`};
-function cardHTML(c){
-  const cites=(c.cites||[]).map(id=>`<button class="cite" data-cite="${id}">${id}</button>`).join("");
-  let body="";
-  if(c.editing){
-    if(c.kind==="quiz") body=`<input data-f="q" value="${esc(c.q)}">${c.o.map((o,i)=>`<label class="row" style="flex-wrap:nowrap"><input type="radio" name="a-${c.id}" value="${i}" ${i===c.a?"checked":""} style="width:auto"><input data-o="${i}" value="${esc(o)}"></label>`).join("")}`;
-    else if(c.kind==="task") body=c.fields.map((f,i)=>`<label class="small">${f[0]}<input data-tf="${i}" value="${esc(f[1])}"></label>`).join("");
-    else body=`<input data-f="title" value="${esc(c.title)}"><textarea data-f="body">${esc(c.body)}</textarea>`;
-    return `<div class="c focus" id="card-${c.id}">${body}<div class="acts"><button class="tiny primary" data-save="${c.id}">Save</button><button class="tiny" data-cancel="${c.id}">Cancel</button></div></div>`;
-  }
-  if(c.kind==="quiz") body=`<b class="body">${esc(c.q)}</b><ol class="opts">${c.o.map((o,i)=>`<li class="${i===c.a?"correct":""}">${i===c.a?ic("check",13):"<span style='width:13px'></span>"}${esc(o)}</li>`).join("")}</ol>`;
-  else if(c.kind==="task") body=`<b class="body">${esc(c.title)}</b><dl style="margin:0;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:13px">${c.fields.map(f=>`<dt class="muted">${f[0]}</dt><dd style="margin:0">${esc(f[1])}</dd>`).join("")}</dl>`;
-  else if(c.kind==="coll"){const art=c.art==="watch"?watchArt(54):c.art==="badge"?badgeArt(50):domeArt(50);
-    const gen=c.art==="watch"&&c.gen<100;
-    body=`<div class="row" style="flex-wrap:nowrap;align-items:center"><div class="mini" style="flex:none">${gen?`<span class="small mono">${c.gen}%</span>`:art}</div><div style="min-width:0"><span class="label">${c.type}</span><br><b>${esc(c.title)}</b></div></div><p class="small">${esc(c.body)}</p>
-     ${c.art==="watch"?(gen?`<div class="gen"><b id="gen-c1" style="width:${c.gen}%"></b></div><span class="small muted">Generating in Manifest…</span>`:`<span class="chip sim">Manifest 3D (simulated)</span>`):""}`}
-  else body=`<b>${esc(c.title)}</b><p class="body">${esc(c.body)}</p>`;
-  return `<div class="c ${c.state==="accepted"?"accepted":""} ${B.focus===c.id?"focus":""} ${c.flash?"flash":""}" id="card-${c.id}">
-    <div class="row between">${STATE[c.state]}<span class="row" style="gap:3px">${cites}</span></div>${body}
-    <div class="acts">${c.state==="accepted"?`<button class="tiny ghost" data-unaccept="${c.id}">Undo</button>`:`<button class="tiny primary" data-accept="${c.id}">${ic("check",13)} Accept</button>`}
-     <button class="tiny" data-edit="${c.id}">${ic("edit",13)} Edit</button><button class="tiny" data-ask="${c.id}">${ic("chat",13)} Ask AI</button></div></div>`;
-}
-function section(title,icon,cards,emptyText,key){
-  const acc=cards.filter(c=>c.state==="accepted").length;
-  return `<section class="panel"><div class="panel-h"><h3>${ic(icon)} ${title}</h3><span class="row">${cards.length?`<span class="count">${acc}/${cards.length}</span>${acc<cards.length?`<button class="tiny" data-accall="${key}">Accept all</button>`:""}`:""}</span></div>
-   ${cards.length?`<div class="cards">${cards.map(cardHTML).join("")}</div>`:`<div class="empty">${emptyText}</div>`}</section>`;
-}
+const citesHTML=c=>(c.cites||[]).map(id=>`<button class="cite" data-cite="${id}">${id}</button>`).join("");
+const actsHTML=c=>`<div class="acts">${c.state==="accepted"?`<button class="tiny ghost" data-unaccept="${c.id}">Undo</button>`:`<button class="tiny primary" data-accept="${c.id}">${ic("check",13)} Accept</button>`}
+  <button class="tiny" data-edit="${c.id}">${ic("edit",13)} Edit</button><button class="tiny" data-ask="${c.id}">${ic("chat",13)} Ask AI</button></div>`;
+const saveActs=c=>`<div class="acts"><button class="tiny primary" data-save="${c.id}">Save</button><button class="tiny" data-cancel="${c.id}">Cancel</button></div>`;
+const sel=(f,val,opts)=>`<select data-f="${f}">${opts.map(([v,l])=>`<option value="${v}" ${String(v)===String(val)?"selected":""}>${esc(l)}</option>`).join("")}</select>`;
+const rdot=id=>`<span class="rdot ${id}">${id}</span>`;
+const wrapCls=c=>`c ${c.state==="accepted"?"accepted":""} ${B.focus===c.id?"focus":""} ${c.flash?"flash":""}`;
+const kv=rows=>`<dl class="kvs">${rows.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>`;
+
+function taskHTML(c){
+  if(c.editing)return `<div class="c focus" id="card-${c.id}">${c.fields.map((f,i)=>`<label class="small">${f[0]}<input data-f="fields.${i}.1" value="${esc(f[1])}"></label>`).join("")}${saveActs(c)}</div>`;
+  return `<div class="${wrapCls(c)}" id="card-${c.id}"><div class="row between">${STATE[c.state]}<span class="row" style="gap:3px">${citesHTML(c)}</span></div>
+    <b>${esc(c.title)}</b>${kv(c.fields.map(f=>[f[0],esc(f[1])]))}${actsHTML(c)}</div>`}
+function roleHTML(c){
+  if(c.editing)return `<div class="c focus" id="card-${c.id}"><label class="small">Role name<input data-f="title" value="${esc(c.title)}"></label>
+    <label class="small">Holds (information only this role sees)<textarea data-f="holds">${esc(c.holds)}</textarea></label>
+    <label class="small">On the phone<input data-f="device" value="${esc(c.device)}"></label>${saveActs(c)}</div>`;
+  return `<div class="${wrapCls(c)}" id="card-${c.id}"><div class="row between">${STATE[c.state]}<span class="row" style="gap:3px">${citesHTML(c)}</span></div>
+    <b class="row" style="gap:8px">${rdot(c.id)} ${esc(c.title)}</b>${kv([["Holds",esc(c.holds)],["On the phone",esc(c.device)]])}${actsHTML(c)}</div>`}
+function questRow(c,i){
+  const d=DONE_TYPES[c.done],rw=c.reward&&collById(c.reward);
+  if(c.editing)return `<div class="qc focus" id="card-${c.id}"><div class="row"><span class="qnum">${i+1}</span><b>Edit quest</b></div><div class="qedit">
+    <label class="small">Quest<input data-f="title" value="${esc(c.title)}"></label><label class="small">Minutes<input data-f="min" type="number" min="1" value="${c.min}"></label>
+    ${B.roles.map(r=>`<label class="small wide">${rdot(r.id)} ${esc(r.title)} does<textarea data-f="tasks.${r.id}">${esc(c.tasks[r.id])}</textarea></label>`).join("")}
+    <label class="small">Finished by${sel("done",c.done,Object.entries(DONE_TYPES).map(([k,v])=>[k,v.label]))}</label>
+    <label class="small">Who completes it${sel("doneBy",c.doneBy,[...B.roles.map(r=>[r.id,r.title]),["Pair","Either partner"],["Each","Each student"]])}</label>
+    <label class="small">Reward${sel("reward",c.reward,[["","None"],...(B.colls.length?B.colls:COLL_DEFS).map(x=>[x.id,x.title])])}</label>
+    </div>${saveActs(c)}</div>`;
+  return `<div class="qc ${c.state==="accepted"?"accepted":""} ${B.focus===c.id?"focus":""} ${c.flash?"flash":""}" id="card-${c.id}">
+    <div class="row between"><span class="row" style="gap:8px"><span class="qnum">${i+1}</span><b>${esc(c.title)}</b><span class="muted small">${c.min} min</span></span><span class="row" style="gap:4px">${citesHTML(c)}${STATE[c.state]}</span></div>
+    <div class="roles2">${B.roles.map(r=>`<div class="rbox"><span class="row small" style="gap:6px;font-weight:600">${rdot(r.id)} ${esc(r.title)}</span><p>${esc(c.tasks[r.id])}</p></div>`).join("")}</div>
+    <div class="foot"><span class="row" style="gap:6px;flex-wrap:nowrap">${ic(d.icon,15)}<span><b>Finished when:</b> ${esc(doneText(c))}</span></span>
+      <span class="chip ${d.check==="auto"?"lock":"edit"}">${d.check==="auto"?"App checks":"You check"}</span>
+      ${rw?`<span class="row" style="gap:6px;flex-wrap:nowrap"><span class="mini xs">${artFor(rw.art,18)}</span>Reward: ${esc(rw.title)}</span>`:""}</div>
+    ${actsHTML(c)}</div>`}
+function quizHTML(c){
+  if(c.editing)return `<div class="c focus" id="card-${c.id}"><input data-f="q" value="${esc(c.q)}">${c.o.map((o,i)=>`<label class="row" style="flex-wrap:nowrap"><input type="radio" name="a-${c.id}" data-f="a" value="${i}" ${i===c.a?"checked":""} style="width:auto" aria-label="Correct answer"><input data-f="o.${i}" value="${esc(o)}"></label>`).join("")}<span class="small muted">Tick the correct answer.</span>${saveActs(c)}</div>`;
+  return `<div class="${wrapCls(c)}" id="card-${c.id}"><div class="row between">${STATE[c.state]}<span class="row" style="gap:3px">${citesHTML(c)}</span></div>
+    <b class="body">${esc(c.q)}</b><ol class="opts">${c.o.map((o,i)=>`<li class="${i===c.a?"correct":""}">${i===c.a?ic("check",13):"<span style='width:13px'></span>"}${esc(o)}</li>`).join("")}</ol>${actsHTML(c)}</div>`}
+function collHTML(c){
+  const t=c.trigger,qs=B.quests.length?B.quests:QUEST_DEFS;
+  if(c.editing)return `<div class="c focus" id="card-${c.id}"><label class="small">Name<input data-f="title" value="${esc(c.title)}"></label>
+    <label class="small">Earned when${sel("trigger.kind",t.kind,[["quest","A quest is finished"],["quiz","Quiz score reaches…"],["sensor","Phone tilted up at a spot"],["teacher","I award it by hand"]])}</label>
+    <label class="small" data-k="quest" ${t.kind==="quest"?"":"hidden"}>Which quest${sel("trigger.quest",t.quest,qs.map((q,i)=>[q.id,`Quest ${i+1}: ${q.title}`]))}</label>
+    <label class="small" data-k="quiz" ${t.kind==="quiz"?"":"hidden"}>Minimum score${sel("trigger.min",t.min,[[1,"1 of 3"],[2,"2 of 3"],[3,"3 of 3"]])}</label>
+    <label class="small" data-k="sensor" ${t.kind==="sensor"?"":"hidden"}>Where<input data-f="trigger.place" value="${esc(t.place)}"></label>
+    <label class="small">Who gets it${sel("to",c.to,Object.entries(TO_TEXT))}</label>
+    <label class="small">Evolves (optional)<input data-f="evolve" value="${esc(c.evolve)}"></label>
+    <label class="toggle"><input type="checkbox" data-f="hidden" ${c.hidden?"checked":""}> Hide the condition from students</label>${saveActs(c)}</div>`;
+  const gen=c.art==="watch"&&c.gen<100;
+  return `<div class="${wrapCls(c)}" id="card-${c.id}"><div class="row between">${STATE[c.state]}<span class="row" style="gap:3px">${citesHTML(c)}</span></div>
+    <div class="row" style="flex-wrap:nowrap"><div class="mini" style="flex:none">${gen?`<span class="small mono">${c.gen}%</span>`:artFor(c.art,c.art==="watch"?44:42)}</div><div style="min-width:0"><span class="label">${c.type}</span><br><b>${esc(c.title)}</b></div></div>
+    ${kv([["Earned when",esc(whenText(c))],["Goes to",TO_TEXT[c.to]],["Checked by",collCheck(c)],...(c.evolve?[["Evolves",esc(c.evolve)]]:[]),...(c.hidden?[["Students see","Nothing until found"]]:[])])}
+    ${c.art==="watch"?(gen?`<div class="gen"><b id="gen-c1" style="width:${c.gen}%"></b></div><span class="small muted">Generating in Manifest…</span>`:`<span class="chip sim">Manifest 3D model (simulated)</span>`):""}
+    ${actsHTML(c)}</div>`}
+function sectionHead(title,icon,cards,key){const acc=cards.filter(c=>c.state==="accepted").length;
+  return `<div class="panel-h"><h3>${ic(icon)} ${title}</h3><span class="row">${cards.length?`<span class="count">${acc}/${cards.length} accepted</span>${acc<cards.length?`<button class="tiny" data-accall="${key}">Accept all</button>`:""}`:""}</span></div>`}
+const emptyBox=t=>`<div class="empty">${t}</div>`;
+
 function renderBoard(){
   const el=$("#board");if(!el)return;
   const cards=allCards(),acc=cards.filter(c=>c.state==="accepted").length,allDone=MAIN.every(m=>B.done.has(m.id));
   const unadded=SAMPLE_SOURCES.filter(s=>!B.sources.some(x=>x.id===s.id));
   el.innerHTML=`
    <section class="panel"><div class="panel-h"><h3>${ic("doc")} Sources</h3><label class="toggle"><input type="checkbox" id="grounded" ${B.grounded?"checked":""}> Only use my sources</label></div>
-    ${B.sources.map(s=>`<div class="src ${B.hl===s.id?"hl":""}" id="src-${s.id}"><span class="kind">${s.kind}</span><span>${esc(s.title)}</span><span class="small muted">${s.indexing?"Indexing…":s.chunks+" passages"} <span class="cite">${s.id}</span></span>${B.hl===s.id?`<p class="snip">${esc(s.snip)}</p>`:""}</div>`).join("")||`<div class="empty">Ground the AI in your own material.</div>`}
+    ${B.sources.map(s=>`<div class="src ${B.hl===s.id?"hl":""}" id="src-${s.id}"><span class="kind">${s.kind}</span><span>${esc(s.title)}</span><span class="small muted">${s.indexing?"Indexing…":s.chunks+" passages"} <span class="cite">${s.id}</span></span>${B.hl===s.id?`<p class="snip">${esc(s.snip)}</p>`:""}</div>`).join("")||emptyBox("Ground the AI in your own material.")}
     <div class="row">${unadded.map(s=>`<button class="tiny" data-addsrc="${s.id}">${ic("plus",13)} ${esc(s.title)}</button>`).join("")}<button class="tiny" id="pasteBtn">${ic("plus",13)} Paste text</button></div>
     ${B.pasting?`<div class="stack" style="gap:8px"><input id="ptitle" placeholder="Title, e.g. Museum guide notes"><textarea id="ptext" placeholder="Paste facts about the place or objects"></textarea><div class="row"><button class="tiny primary" id="paddsrc">Add source</button></div></div>`:""}
    </section>
-   ${section("Trip task","map",B.task?[B.task]:[],"Ask the assistant to plan the quest.","task")}
-   ${section("Roles","users",B.roles,"Roles appear here.","roles")}
-   ${section("Quests","spark",B.quests,"Quests appear here.","quests")}
-   ${section("Knowledge quiz","check",B.quiz,"Multiple-choice questions appear here.","quiz")}
-   ${section("Collectibles","cam",B.colls,"Collectibles appear here.","colls")}
+   <section class="panel">${sectionHead("Trip task","map",B.task?[B.task]:[],"task")}${B.task?`<div class="cards">${taskHTML(B.task)}</div>`:emptyBox("Ask the assistant to plan the quest.")}</section>
+   <section class="panel">${sectionHead("Roles","users",B.roles,"roles")}${B.roles.length?`<div class="cards">${B.roles.map(roleHTML).join("")}</div><p class="small muted">Each role gets its own task in every quest below.</p>`:emptyBox("Each partner gets a role with different information.")}</section>
+   <section class="panel">${sectionHead("Quests","spark",B.quests,"quests")}
+    ${B.quests.length?`<div class="stack" style="gap:10px">${B.quests.map(questRow).join("")}</div>`:emptyBox(B.roles.length?"Quests appear here, with a task for each role.":"Suggest roles first, then quests.")}</section>
+   <section class="panel">${sectionHead("Knowledge quiz (Quest 4)","check",B.quiz,"quiz")}${B.quiz.length?`<div class="cards">${B.quiz.map(quizHTML).join("")}</div>`:emptyBox("Multiple-choice questions appear here.")}</section>
+   <section class="panel">${sectionHead("Collectibles","cam",B.colls,"colls")}${B.colls.length?`<div class="cards">${B.colls.map(collHTML).join("")}</div>`:emptyBox("Collectibles appear here, each with the condition that awards it.")}</section>
    <section class="panel"><div class="panel-h"><h3>Publish</h3><span class="count">${acc}/${cards.length} accepted</span></div>
     <div class="row"><button class="primary" id="publish" ${B.published||!allDone||acc<cards.length?"disabled":""}>${B.published?`Published · code ${CODES.session}`:"Publish to students"}</button>
-    ${!B.published&&(!allDone||acc<cards.length)?`<span class="small muted">You accept every item before students see it.</span>`:""}</div></section>`;
+    ${!B.published&&(!allDone||acc<cards.length)?`<span class="small muted">Students see nothing until you accept every item.</span>`:""}</div></section>`;
   allCards().forEach(c=>c.flash=false);
+  bindBoard();
+}
+function setPath(o,path,v){const k=path.split(".");let t=o;for(let i=0;i<k.length-1;i++)t=t[k[i]];t[k.at(-1)]=v}
+function bindBoard(){
   $("#grounded").onchange=e=>B.grounded=e.target.checked;
   $$("[data-addsrc]").forEach(b=>b.onclick=async()=>{const s={...SAMPLE_SOURCES.find(x=>x.id===b.dataset.addsrc),indexing:true};B.sources.push(s);renderBoard();await sleep(700);s.indexing=false;renderBoard()});
   $("#pasteBtn").onclick=()=>{B.pasting=!B.pasting;renderBoard()};
@@ -114,10 +167,12 @@ function renderBoard(){
   $$("[data-accall]").forEach(b=>b.onclick=()=>{const k=b.dataset.accall;(k==="task"?[B.task]:B[k]).forEach(c=>c.state="accepted");renderBoard()});
   $$("[data-edit]").forEach(b=>b.onclick=()=>{find(b.dataset.edit).editing=true;renderBoard()});
   $$("[data-cancel]").forEach(b=>b.onclick=()=>{find(b.dataset.cancel).editing=false;renderBoard()});
+  $$('select[data-f="trigger.kind"]').forEach(s=>s.onchange=()=>{const root=s.closest(".c");root.querySelectorAll("[data-k]").forEach(l=>l.hidden=l.dataset.k!==s.value)});
   $$("[data-save]").forEach(b=>b.onclick=()=>{const c=find(b.dataset.save),root=$("#card-"+c.id);
-    if(c.kind==="quiz"){c.q=root.querySelector('[data-f="q"]').value;c.o=[...root.querySelectorAll("[data-o]")].map(i=>i.value);c.a=+(root.querySelector("input[type=radio]:checked")?.value||0)}
-    else if(c.kind==="task"){root.querySelectorAll("[data-tf]").forEach(i=>c.fields[+i.dataset.tf][1]=i.value)}
-    else{c.title=root.querySelector('[data-f="title"]').value;c.body=root.querySelector('[data-f="body"]').value}
+    root.querySelectorAll("[data-f]").forEach(inp=>{const f=inp.dataset.f;
+      if(inp.type==="radio"){if(inp.checked)c.a=+inp.value;return}
+      if(inp.type==="checkbox"){setPath(c,f,inp.checked);return}
+      let v=inp.value;if(f==="min"||f==="trigger.min")v=+v;setPath(c,f,v)});
     c.editing=false;c.state="edited";renderBoard()});
   $$("[data-ask]").forEach(b=>b.onclick=()=>{B.focus=b.dataset.ask;const c=find(B.focus);renderBoard();renderChat();const i=$("#cin");i.value=`About “${c.title}”: `;i.focus()});
   $("#publish").onclick=()=>{B.published=true;renderBoard();toast(`Published. Students join with ${CODES.session}`)};

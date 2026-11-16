@@ -1,31 +1,40 @@
 // Simulated AI: what the assistant drafts (MAIN) and how it revises cards (REV).
-// Edit prompts, replies and card content here. KW = words in typed messages that trigger each step.
-const cite=(...ids)=>ids.filter(id=>B.sources.some(s=>s.id===id));
+// Draft content comes from content.js (ROLE_DEFS, QUEST_DEFS, QUIZ, COLL_DEFS).
+// KW = words in a typed message that trigger each step.
+const clone=o=>JSON.parse(JSON.stringify(o));
+const cite=(...ids)=>ids.flat().filter(id=>B.sources.some(s=>s.id===id));
 const MAIN=[
  {id:"task",chip:"Plan the quest",prompt:"Plan a 60-minute pair quest at the Fitzwilliam for my Year 10 history class. Theme: memento mori.",
-  reply:()=>B.sources.length?"Here's a plan grounded in your sources.":"No sources yet, so this uses general knowledge. Add sources to ground it.",
-  apply(){B.task={id:"task",kind:"task",title:"The Case of the Missing Label",fields:[["Goal","Tell observation from interpretation, using evidence"],["Where","Fitzwilliam Museum, case 2"],["Time","60 min"],["Who","Year 10 · pairs"]],cites:cite("S1","S2","S3"),state:"ai"}}},
- {id:"roles",chip:"Suggest roles",prompt:"Suggest two roles so each partner holds different information.",reply:()=>"Two roles with split information. Neither can finish alone.",
-  apply(){B.roles=[{id:"r1",kind:"role",title:"Riddle Keeper",body:"Holds a riddle about the object. No picture.",cites:cite("S1"),state:"ai"},{id:"r2",kind:"role",title:"Navigator",body:"Holds the gallery map. No descriptions.",cites:cite("S2"),state:"ai"}]}},
- {id:"quests",chip:"Draft quests",prompt:"Draft the quests for the trip.",reply:()=>"Three quests. Quest 2 needs the museum to brief an attendant — worth checking with them.",
-  apply(){B.quests=[{id:"q1",kind:"quest",title:"Find the object",body:"Riddle + map. Talk until you agree on the case.",cites:cite("S1","S2"),state:"ai"},
-   {id:"q2",kind:"quest",title:"Ask an attendant",body:"Ask: “Which object here is oldest, and how can you tell?”",cites:[],state:"ai"},
-   {id:"q3",kind:"quest",title:"Look closer",body:"Scan the object. Name 3 details before guessing what they mean.",cites:cite("S3"),state:"ai"}]}},
- {id:"quiz",chip:"Write the quiz",prompt:"Write a 3-question multiple-choice quiz from my sources for the knowledge badge.",reply:()=>B.sources.length?"Three questions. Each links to the source it came from.":"Three questions from general knowledge. Add sources so I can cite them.",
+  reply:()=>B.sources.length?"Here's a plan grounded in your sources. Next I'd split the class into pairs with different roles.":"No sources yet, so this uses general knowledge. Add sources to ground it.",
+  apply(){B.task={id:"task",kind:"task",title:"The Case of the Missing Label",fields:[["Goal","Tell observation from interpretation, using evidence"],["Where","Fitzwilliam Museum, case 2"],["Time","60 min"],["Groups","14 pairs (Year 10, 28 students)"]],cites:cite("S1","S2","S3"),state:"ai"}}},
+ {id:"roles",chip:"Suggest roles",prompt:"Suggest two roles so each partner holds different information.",
+  reply:()=>"Two roles with split information, so neither partner can finish alone. I'll assign each role its own task in every quest.",
+  apply(){B.roles=ROLE_DEFS.map(r=>({...clone(r),kind:"role",cites:cite(r.cites),state:"ai"}))}},
+ {id:"quests",chip:"Draft quests",prompt:"Draft the quests, with a task for each role and a clear way to finish each one.",
+  reply:()=>"Five quests in order. Each one shows what each role does, what finishes it, and whether the app or you check it. Quest 2 needs the museum to brief an attendant.",
+  apply(){B.quests=QUEST_DEFS.map(q=>({...clone(q),kind:"quest",cites:cite(q.cites),state:"ai"}))}},
+ {id:"quiz",chip:"Write the quiz",prompt:"Write a 3-question multiple-choice quiz from my sources for Quest 4.",
+  reply:()=>B.sources.length?"Three questions for Quest 4. Each links to the source it came from.":"Three questions from general knowledge. Add sources so I can cite them.",
   apply(){B.quiz=QUIZ.map((x,i)=>({id:"m"+(i+1),kind:"quiz",title:"Q"+(i+1),q:x.q,o:[...x.o],a:x.a,cites:cite(x.src),state:"ai"}))}},
- {id:"colls",chip:"Design collectibles",prompt:"Design the collectibles: one for finding the object, one for the quiz, and a hidden easter egg.",reply:()=>"Three collectibles. Generating the 3D watch in Manifest now.",
-  apply(){B.colls=[{id:"c1",kind:"coll",title:"Memento Mori Watch",type:"Discovery",body:"Scan the object to collect its 3D model.",art:"watch",gen:0,cites:cite("S1"),state:"ai"},
-   {id:"c2",kind:"coll",title:"Timekeeper",type:"Knowledge",body:"Score 2 of 3 on the quiz.",art:"badge",cites:[],state:"ai"},
-   {id:"c3",kind:"coll",title:"Look Up",type:"Easter egg",body:"Point the camera at the entrance-hall ceiling. Not in the instructions.",art:"dome",cites:[],state:"ai"}];genModel()}}
+ {id:"colls",chip:"Design collectibles",prompt:"Design the collectibles: one for finding the object, one for the quiz, and a hidden easter egg.",
+  reply:()=>"Three collectibles, each with the exact condition that awards it and who gets it. Generating the 3D watch in Manifest now.",
+  apply(){B.colls=COLL_DEFS.map(c=>({...clone(c),kind:"coll",gen:c.art==="watch"?0:100,cites:cite(c.cites),state:"ai"}));genModel()}}
 ];
 const REV=[
- {id:"rev-task",target:"task",chip:"Make it 45 minutes",prompt:"Make it 45 minutes.",reply:"Done. 45 minutes — Quest 3 is now 10 minutes.",apply(){B.task.fields[2][1]="45 min"}},
- {id:"rev-r2",target:"r2",chip:"Navigator: less phone",prompt:"Give the Navigator something to do off-screen — sketching?",reply:"Updated. The Navigator now sketches one detail; phone away while searching.",apply(){const r=find("r2");r.body="Holds the gallery map and sketches one detail. Phone away while searching."}},
- {id:"rev-q2",target:"q2",chip:"Backup if no attendant",prompt:"What if no attendant is free?",reply:"Added a backup: a museum prompt card at the gallery door.",apply(){const q=find("q2");q.body+=" Backup: museum prompt card at the door."}},
- {id:"rev-m3",target:"m3",chip:"Q3: test observation",prompt:"Make Q3 test observation instead of recall.",reply:"Rewritten. Q3 now asks students to spot the observation.",apply(){Object.assign(find("m3"),{q:"Which of these is an observation, not an interpretation?",o:["The jaw opens on a hinge","The owner feared death","It was a gift","It was made to scare"],a:0})}},
- {id:"rev-c3",target:"c3",chip:"Share the easter egg",prompt:"Make the easter egg shared — if one partner finds it, both get it.",reply:"Done. Look Up is now shared by the pair.",apply(){find("c3").body+=" Shared: both partners get it."}}
+ {id:"rev-task",target:"task",chip:"Make it 45 minutes",prompt:"Make it 45 minutes.",reply:"Done. 45 minutes total — Quest 3 is now 10 minutes.",
+  apply(){B.task.fields[2][1]="45 min";const q=find("q3");if(q)q.min=10}},
+ {id:"rev-r2",target:"B",chip:"Navigator: less phone",prompt:"Give the Navigator something to do off-screen.",reply:"Updated. The Navigator now keeps the phone away while searching and sketches in Quest 3.",
+  apply(){find("B").device="Scans the object and pair code. Phone away while searching.";const q=find("q1");if(q)q.tasks.B="Lead the search with the map, phone away. Scan once you agree."}},
+ {id:"rev-q2",target:"q2",chip:"Backup if no attendant",prompt:"What if no attendant is free?",reply:"Added a backup: a museum prompt card at the gallery door.",
+  apply(){find("q2").tasks.A+=" No attendant free? Use the prompt card at the door."}},
+ {id:"rev-q3",target:"q3",chip:"Let me mark Quest 3",prompt:"For Quest 3, I want to approve each card before it counts.",reply:"Changed. Quest 3 now finishes only when you approve the card.",
+  apply(){const q=find("q3");q.done="teacher";q.tasks.B+=" Submit the card for approval."}},
+ {id:"rev-m3",target:"m3",chip:"Q3: test observation",prompt:"Make Q3 test observation instead of recall.",reply:"Rewritten. Q3 now asks students to spot the observation.",
+  apply(){Object.assign(find("m3"),{q:"Which of these is an observation, not an interpretation?",o:["The jaw opens on a hinge","The owner feared death","It was a gift","It was made to scare"],a:0})}},
+ {id:"rev-c3",target:"c3",chip:"Share the easter egg",prompt:"Make the easter egg shared — if one partner finds it, both get it.",reply:"Done. Look Up now goes to both partners.",
+  apply(){find("c3").to="pair"}}
 ];
 const KW={task:["plan","trip"],roles:["role"],quests:["quest"],quiz:["quiz","question","mcq"],colls:["collectible","badge","reward","easter"],
-  "rev-task":["minute","shorter"],"rev-r2":["navigator","sketch"],"rev-q2":["attendant","backup"],"rev-m3":["q3","observation"],"rev-c3":["share","both"]};
+  "rev-task":["minute","shorter"],"rev-r2":["navigator","sketch","off-screen"],"rev-q2":["attendant","backup"],"rev-q3":["approve","mark"],"rev-m3":["q3","observation"],"rev-c3":["share","both"]};
 function matchItem(text){const t=text.toLowerCase();
   return [...REV.filter(r=>find(r.target)),...MAIN].find(x=>!B.done.has(x.id)&&KW[x.id].some(k=>t.includes(k)))}
