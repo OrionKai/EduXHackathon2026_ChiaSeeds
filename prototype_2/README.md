@@ -94,3 +94,16 @@ production security.
   sources only (S1–S4 gallery pages, S5 partner contribution), cites them, revises tracks on request; the engine blocks
   publishing until the educator approves all four tracks.
 - **Hints one at a time with their source**, and an always-visible **Call teacher** button with a help queue in the live session.
+- **Join flow**: students enter the class code (the `?session=` code, default `FITZ-DEMO`) and a nickname, and are
+  seated automatically in the next free Jigsaw place; the educator dashboard shows how many have joined.
+- **Quest setup**: session length and class size (demo seating supports 20) feed the assistant's draft.
+- **Server-side rules** ([supabase/guard.sql](supabase/guard.sql)): the database refuses states where a finale opens
+  before all four tracks are verified and taught, or where claims exceed 5 / disappear / the master award comes early.
+  Educator → Live session → *Tamper test* shows a forged write being refused.
+- **Partner role**: the collaborator can add their own question for Expert D students and give feedback on each team's
+  restored introduction (students see it; the report counts it). Richer learning report per home team.
+- **Real AI (optional)** ([../netlify/functions/assistant.mjs](../netlify/functions/assistant.mjs)): on Netlify, the
+  assistant calls Claude through a server function with two tools (`revise_track`, `add_hint`) that propose edits from
+  the approved sources only; edits become "AI revised" items the educator must approve, and they change what students
+  see. Needs `ANTHROPIC_API_KEY` (secret env var); optional `DEMO_PASSCODE`. Without it, or with "AI: off", the
+  scripted assistant answers.

@@ -1,0 +1,7 @@
+# Netlify: serves prototype_2 as the site and netlify/functions as server functions.
+[build]
+  publish = "prototype_2"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"

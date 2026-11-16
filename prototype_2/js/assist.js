@@ -9,6 +9,10 @@
 const Assistant = (() => {
   const msgs = [{ who: 'ai', text: 'Hi! I only draft from approved sources: the four official gallery pages and your community partner’s contribution. Tell me what the quest is for.' }];
   let busy = false, speed = 1; // speed 0 = no animation (tests)
+  // AI mode: 'live' calls the server function (/api/assistant); 'simulated' uses the scripted replies.
+  let mode = (() => { try { return localStorage.getItem('wq-ai-mode') || 'live'; } catch { return 'live'; } })();
+  let needPass = false, lastNotice = '';
+  const history = []; // text-only {role, content} for the live model
   const sleep = (ms) => (speed ? new Promise((r) => setTimeout(r, ms * speed)) : Promise.resolve());
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -21,7 +25,7 @@ const Assistant = (() => {
   /* scripted steps: draft first, then revisions the teacher can request */
   const DRAFT = {
     id: 'draft', chip: 'Draft the jigsaw quest',
-    prompt: (q) => `Draft a 60-minute jigsaw quest for 20 students at ${q.venue}. Goal: ${q.objective}. Use only approved sources.`,
+    prompt: (q) => `Draft a ${q.duration || 60}-minute jigsaw quest for ${q.classSize || 20} students at ${q.venue}. Goal: ${q.objective}. Use only approved sources.`,
     reply: 'Drafted 4 expert tracks (one per gallery), a locked escape-room finale that needs all four, and 5 optional class cards. Each track cites its approved source. Please review and approve each track below — nothing reaches students until you do.',
     cites: ['S1', 'S2', 'S3', 'S4', 'S5'],
     run: () => Engine.dispatch('generateDraft'),
@@ -29,12 +33,15 @@ const Assistant = (() => {
   const REVS = [
     { id: 'rc', topic: 'C', chip: 'Track C: simpler wording', prompt: 'Make Track C easier to read for students who struggle with long instructions.',
       note: 'Instructions shortened to about a 12-year-old reading level. Same evidence fields, so it still counts for the finale.',
+      patch: { observe: 'Find two different kinds of object, like a painted pot and a coin. Write down what you see on each one.' },
       reply: 'Done. Track C now uses shorter instructions at about a 12-year-old reading level. The evidence it asks for hasn’t changed, so the finale still works.' },
     { id: 'rd', topic: 'D', chip: 'Track D: if the contributor is busy', prompt: 'What happens in Track D if the community contributor is busy?',
       note: 'Fallback added: a labelled prompt card from the partner’s approved questions, plus a staggered schedule (max 5 students at a time).',
+      patch: { fallback: 'If the contributor is busy: use the partner’s prompt card at the gallery door (clearly labelled), then talk to them later. No more than 5 students at a time.' },
       reply: 'I added a fallback for Track D: a clearly labelled prompt card built from the partner’s approved questions (S5), and a staggered schedule so no more than 5 students reach them at once.' },
     { id: 'rb', topic: 'B', chip: 'Track B: a hint, not an answer', prompt: 'Add a hint to Track B that helps without giving the answer away.',
       note: 'New hint: “Compare its size with nearby cases. What might scale suggest about who it honoured?”',
+      patch: { hint: 'Compare its size with nearby cases. What might scale suggest about who it honoured?' },
       reply: 'Added a hint to Track B: “Compare its size with nearby cases. What might scale suggest about who it honoured?” It points students back to the object rather than giving the answer. Source: S2.' },
   ];
 
@@ -55,7 +62,10 @@ const Assistant = (() => {
     const cs = chips();
     return `
       <div class="card as-card">
-        <div class="spread"><h3 style="margin:0">${Art.icon('sparkle', 18)} Quest assistant</h3><span class="pill">AI · simulated (no key)</span></div>
+        <div class="spread"><h3 style="margin:0">${Art.icon('sparkle', 18)} Quest assistant</h3>
+          <button type="button" class="pill ${mode === 'live' ? 'mint' : ''}" data-as-mode title="Switch between the real AI and the scripted demo">AI: ${mode === 'live' ? 'live (Claude)' : 'off · scripted'}</button></div>
+        ${lastNotice ? `<p class="hint-note" style="margin:0">${esc(lastNotice)}</p>` : ''}
+        ${needPass ? `<form class="row" data-as-pass><label class="sr-only" for="as-pass">Demo passcode</label><input class="input" id="as-pass" type="password" placeholder="Demo passcode for live AI" style="flex:1"><button class="btn btn-secondary btn-sm">Save</button></form>` : ''}
         <div class="as-msgs" id="as-msgs">${msgs.map(msgHTML).join('')}</div>
         ${cs.length ? `<div class="row" style="gap:6px">${cs.map((c) => `<button class="as-chip" type="button" data-as-chip="${c.id}" ${busy ? 'disabled' : ''}>${Art.icon(c.id === 'draft' ? 'sparkle' : 'pencil', 14)} ${esc(c.chip)}</button>`).join('')}</div>` : ''}
         <form class="as-compose" data-as-form><label class="sr-only" for="as-in">Message the assistant</label>
@@ -82,6 +92,7 @@ const Assistant = (() => {
                 <span class="status-chip ${cls}">${txt}</span></div>
               <p class="hint-note" style="margin:6px 0">${esc(m.gallery)} · ${esc(m.narrative)} <button class="as-cite" type="button" data-as-cite="${srcFor(t)}">${srcFor(t)}</button>${m.needsFacilitator ? ' <button class="as-cite" type="button" data-as-cite="S5">S5</button>' : ''}</p>
               ${st.revisions[t] ? `<p class="as-note">${Art.icon('pencil', 14)} ${esc(st.revisions[t])}</p>` : ''}
+              ${st.trackEdits && st.trackEdits[t] ? `<details><summary class="hint-note" style="cursor:pointer">What students will see</summary><dl class="evidence-quote" style="margin-top:6px">${Object.entries(st.trackEdits[t]).map(([k, v]) => `<dt>${esc(k === 'hintsExtra' ? 'extra hints' : k)}</dt><dd>${esc(Array.isArray(v) ? v.join(' · ') : v)}</dd>`).join('')}</dl></details>` : ''}
               ${locked ? '' : `<div class="row" style="gap:6px">${st.tracks[t] === 'APPROVED' ? '' : `<button class="btn btn-teal btn-sm" type="button" data-as-approve="${t}">${Art.icon('check', 14)} Approve</button>`}
                 <button class="btn btn-ghost btn-sm" type="button" data-as-ask="${t}">Ask AI to change</button></div>`}
             </div>`;
@@ -131,7 +142,7 @@ const Assistant = (() => {
     document.querySelectorAll('[data-as-chip]').forEach((b) => (b.disabled = true));
     await say(step.reply, step.cites || [srcFor(step.topic)]);
     busy = false;
-    const r = step.run ? step.run() : Engine.dispatch('reviseTrack', { topic: step.topic, note: step.note });
+    const r = step.run ? step.run() : Engine.dispatch('reviseTrack', { topic: step.topic, note: step.note, patch: step.patch });
     if (r && !r.ok && r.msg) window.WQ?.toast(r.msg, 'error');
     if (step.topic) document.getElementById('as-track-' + step.topic)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
@@ -139,6 +150,7 @@ const Assistant = (() => {
   async function freeText(text) {
     const t = text.toLowerCase();
     const st = Engine.state;
+    if (mode === 'live' && st.quest.draftGenerated && st.quest.status !== 'PUBLISHED') return liveTurn(text);
     if (!st.quest.draftGenerated && /draft|quest|plan|create|make/.test(t)) return runStep(DRAFT, text);
     const rev = REVS.find((r) => !st.revisions[r.topic] && (t.includes('track ' + r.topic.toLowerCase()) || (r.topic === 'D' && /contributor|busy|unavailable/.test(t)) || (r.topic === 'B' && /hint/.test(t)) || (r.topic === 'C' && /simpl|easier|read/.test(t))));
     if (rev && st.quest.draftGenerated) return runStep(rev, text);
@@ -147,6 +159,47 @@ const Assistant = (() => {
     await say('Noted. In the full product I’d revise the draft from your approved sources. For this demo, try one of the suggestions.');
     busy = false;
     window.WQ?.render();
+  }
+
+  function liveContext() {
+    const st = Engine.state;
+    const tracks = {};
+    SEED.topics.forEach((t) => { const m = Engine.sel.mission(t); tracks[t] = { name: m.name, gallery: m.gallery, narrative: m.narrative, observe: m.observe, discuss: m.discuss, hints: m.hints, fallback: m.fallback, teachHeadline: m.teachHeadline, status: st.tracks[t], source: srcFor(t) }; });
+    return { quest: { title: st.quest.title, objective: st.quest.objective, venue: st.quest.venue, minutes: st.quest.duration, students: st.quest.classSize, ages: '13-16' },
+      tracks, sources: SRC().map((s) => ({ id: s.id, title: s.title, text: s.fact })) };
+  }
+
+  async function liveTurn(text) {
+    busy = true;
+    msgs.push({ who: 'you', text }); paintMsgs();
+    const m = { who: 'ai', text: '', thinking: true }; msgs.push(m); paintMsgs();
+    let data = null, status = 0;
+    try {
+      let pass = ''; try { pass = localStorage.getItem('wq-ai-pass') || ''; } catch {}
+      const res = await fetch('/api/assistant', { method: 'POST', headers: { 'content-type': 'application/json', 'x-demo-passcode': pass },
+        body: JSON.stringify({ message: text, history, ...liveContext() }) });
+      status = res.status;
+      data = await res.json().catch(() => null);
+    } catch { status = 0; }
+    msgs.pop();
+    if (!data || data.error || status !== 200) {
+      if (status === 401) { needPass = true; lastNotice = 'Live AI needs the demo passcode.'; }
+      else { mode = 'simulated'; lastNotice = 'Live AI is unavailable here, so the scripted assistant is answering.'; }
+      busy = false;
+      msgs.pop(); // drop the echoed request; freeText re-adds it
+      return status === 401 ? window.WQ.render() : freeText(text);
+    }
+    const cites = [...new Set((data.edits || []).flatMap((e) => e.input.source_ids || []))];
+    await say(data.reply, cites);
+    history.push({ role: 'user', content: text }, { role: 'assistant', content: data.reply });
+    for (const e of data.edits || []) {
+      const i = e.input;
+      const patch = e.tool === 'add_hint' ? { hint: i.hint } : { [i.field]: i.new_text };
+      Engine.dispatch('reviseTrack', { topic: i.topic, note: (i.summary || 'AI revision') + (i.source_ids && i.source_ids.length ? ` [${i.source_ids.join(', ')}]` : ''), patch });
+    }
+    busy = false;
+    lastNotice = data.edits && data.edits.length ? `Claude proposed ${data.edits.length} change${data.edits.length > 1 ? 's' : ''} — review and approve below.` : '';
+    window.WQ.render();
   }
 
   function bind(root) {
@@ -165,6 +218,13 @@ const Assistant = (() => {
       const row = document.getElementById('as-src-' + b.dataset.asCite);
       if (row) { row.classList.add('flash'); row.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => row.classList.remove('flash'), 1400); }
     }));
+    root.querySelectorAll('[data-as-mode]').forEach((b) => b.addEventListener('click', () => {
+      mode = mode === 'live' ? 'simulated' : 'live'; lastNotice = '';
+      try { localStorage.setItem('wq-ai-mode', mode); } catch {}
+      window.WQ.render();
+    }));
+    const pf = root.querySelector('[data-as-pass]');
+    if (pf) pf.addEventListener('submit', (e) => { e.preventDefault(); try { localStorage.setItem('wq-ai-pass', document.getElementById('as-pass').value); } catch {} needPass = false; window.WQ.render(); });
     const f = root.querySelector('[data-as-form]');
     if (f) f.addEventListener('submit', (e) => {
       e.preventDefault();

@@ -46,8 +46,21 @@ const Sync = (() => {
   }
 
   async function push(type, payload, tries = 0) {
+    if (type === 'resetDemo') {
+      // A reset legitimately clears claims, so it uses the reset function instead of the guarded save.
+      const { data: rv, error: re } = await db.rpc('wq_reset_session', { p_id: session, p_state: Engine.sharedState() });
+      if (re) setStatus('error'); else if (rv) state.version = rv;
+      return;
+    }
     const { data: v, error } = await db.rpc('wq_save_state', { p_id: session, p_expected: state.version, p_state: Engine.sharedState() });
     if (error) { setStatus('error'); return; }
+    if (v === -1) {
+      // The database refused a state that breaks a game rule: reload the real state.
+      const { data: row } = await db.from('wq_sessions').select('state,version').eq('id', session).single();
+      if (row) { state.version = row.version; Engine.applyShared(row.state); }
+      notify('The server refused that change because it breaks a game rule.');
+      return;
+    }
     if (v) { state.version = v; return; }
     // Someone else saved first: load their state and replay this action on top of it.
     const { data: row } = await db.from('wq_sessions').select('state,version').eq('id', session).single();
@@ -60,5 +73,17 @@ const Sync = (() => {
     if (r.msg) notify(`Another device got there first: ${r.msg}`);
   }
 
-  return { start, state };
+  /* Demo: try to cheat by opening team H1's finale without any evidence, straight to the database. */
+  async function tamperTest() {
+    if (!db || state.status === 'offline') return { ok: false, msg: 'Tamper test needs live sync (no ?offline=1).' };
+    const forged = Engine.sharedState();
+    forged.finale.H1.status = 'AVAILABLE';
+    const { data: row } = await db.from('wq_sessions').select('state').eq('id', session).single();
+    const { data: reason } = await db.rpc('wq_state_violation', { p_old: row ? row.state : null, p_new: forged });
+    const { data: v } = await db.rpc('wq_save_state', { p_id: session, p_expected: state.version, p_state: forged });
+    if (v === -1) return { ok: true, msg: `Server refused the forged write: ${reason || 'rule broken'}.` };
+    return { ok: false, msg: v ? 'Forged write was ACCEPTED — run supabase/guard.sql.' : 'Version moved; try again.' };
+  }
+
+  return { start, state, tamperTest };
 })();

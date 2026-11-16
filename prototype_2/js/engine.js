@@ -51,6 +51,8 @@ const Engine = (() => {
         status: 'PARTNER_REVIEW', // DRAFT | PARTNER_REVIEW | APPROVED | PUBLISHED
         title: SEED.title,
         objective: 'Interpret evidence from multiple perspectives',
+        duration: 60,
+        classSize: 20,
         venue: 'The Fitzwilliam Museum (demo setting)',
         draftGenerated: false,
       },
@@ -68,11 +70,14 @@ const Engine = (() => {
       master: null, // { at } — exactly once
       masterSeen: false,
       reflections: {}, // participantId -> [a1, a2]
+      seats: {}, // participantId -> { nick, at } once a real student joins with the class code
+      partnerFeedback: {}, // home -> { text, at } from the community collaborator on the team's finale
       checkins: {}, // participantId -> { at, via: 'QR' | 'CODE' | 'SIMULATED' }
       help: [], // { id, pid, at, open }
       tracks: { A: 'AI', B: 'AI', C: 'AI', D: 'AI' }, // AI | REVISED | APPROVED (educator review of AI-drafted tracks)
       revisions: {}, // topic -> note from an AI revision
-      ui: { role: 'student', student: 'S06', screen: null, lookUp: false },
+      trackEdits: {}, // topic -> { observe?, discuss?, narrative?, fallback?, teachHeadline?, hintsExtra?: [] } shown to students
+      ui: { role: 'student', student: 'S06', screen: null, lookUp: false, joined: false, masterSeen: false, drafts: {} },
       log: [],
     };
   }
@@ -100,6 +105,14 @@ const Engine = (() => {
     s.help = s.help || [];
     s.tracks = s.tracks || { A: 'AI', B: 'AI', C: 'AI', D: 'AI' };
     s.revisions = s.revisions || {};
+    s.trackEdits = s.trackEdits || {};
+    s.seats = s.seats || {};
+    s.contributor.extraPrompts = s.contributor.extraPrompts || [];
+    s.partnerFeedback = s.partnerFeedback || {};
+    s.quest.duration = s.quest.duration || 60;
+    s.quest.classSize = s.quest.classSize || 20;
+    s.ui = s.ui || {};
+    s.ui.drafts = s.ui.drafts || {};
     return s;
   }
 
@@ -124,6 +137,10 @@ const Engine = (() => {
   /* ---------- selectors (read-only helpers) ---------- */
 
   const sel = {
+    mission: (t) => {
+      const base = SEED.missions[t], e = (state.trackEdits && state.trackEdits[t]) || {};
+      return { ...base, ...e, hints: [...base.hints, ...(e.hintsExtra || [])] };
+    },
     participant: (id) => SEED.byId[id],
     evidenceOf: (id) => state.evidence[id],
 
@@ -209,14 +226,15 @@ const Engine = (() => {
 
     /* ----- quest authoring (educator) ----- */
     updateQuest(s, { field, value }) {
-      if (!['title', 'objective', 'venue'].includes(field)) return { ok: false };
-      s.quest[field] = value;
+      if (!['title', 'objective', 'venue', 'duration', 'classSize'].includes(field)) return { ok: false };
+      s.quest[field] = ['duration', 'classSize'].includes(field) ? Number(value) : value;
       return { ok: true, silent: true };
     },
     generateDraft(s) {
       s.quest.draftGenerated = true;
       s.tracks = { A: 'AI', B: 'AI', C: 'AI', D: 'AI' };
       s.revisions = {};
+      s.trackEdits = {};
       audit('teacher', 'Generated quest draft (Seeded demo — no API key used).');
       return { ok: true, msg: 'Seeded demo draft ready — no AI key was used.' };
     },
@@ -253,6 +271,25 @@ const Engine = (() => {
       s.interactions[participantId] = true;
       audit('collaborator', `Verified arranged interaction with ${p.name}.`);
       return { ok: true, msg: `Interaction with ${p.name} verified.` };
+    },
+    addPartnerPrompt(s, { text }) {
+      const t = String(text || '').trim();
+      if (t.length < 8) return { ok: false, msg: 'Write a full question for the students.' };
+      s.contributor.extraPrompts = s.contributor.extraPrompts || [];
+      if (s.contributor.extraPrompts.length >= 3) return { ok: false, msg: 'Three of your own questions is plenty for one session.' };
+      s.contributor.extraPrompts.push(t);
+      s.contributor.interactionPrompt = SEED.contributor.prompts.length + s.contributor.extraPrompts.length - 1;
+      audit('collaborator', `Added a conversation question: “${t}”`);
+      return { ok: true, msg: 'Question added — Expert D students will see it.' };
+    },
+    partnerFeedback(s, { home, text }) {
+      const f = s.finale[home];
+      if (!f || !['SUBMITTED', 'APPROVED'].includes(f.status)) return { ok: false, msg: 'This team has not submitted its introduction yet.' };
+      const t = String(text || '').trim();
+      if (t.length < 8) return { ok: false, msg: 'Write a sentence or two of feedback.' };
+      s.partnerFeedback[home] = { text: t, at: Date.now() };
+      audit('collaborator', `Gave feedback on team ${home}’s exhibition introduction.`);
+      return { ok: true, msg: `Feedback sent to team ${home}.` };
     },
     setInteractionPrompt(s, { index }) {
       s.contributor.interactionPrompt = index;
@@ -481,7 +518,7 @@ const Engine = (() => {
     },
 
     markMasterSeen(s) {
-      s.masterSeen = true;
+      s.ui.masterSeen = true;
       return { ok: true, silent: true };
     },
 
@@ -497,11 +534,15 @@ const Engine = (() => {
     },
 
     /* ----- AI draft review (educator approves each track) ----- */
-    reviseTrack(s, { topic, note }) {
+    reviseTrack(s, { topic, note, patch }) {
       if (!s.quest.draftGenerated) return { ok: false, msg: 'Draft the quest first.' };
       if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Already published — edits would disrupt a live session.' };
+      if (!SEED.topics.includes(topic)) return { ok: false };
+      const e = (s.trackEdits[topic] = s.trackEdits[topic] || {});
+      for (const k of ['observe', 'discuss', 'narrative', 'fallback', 'teachHeadline']) if (patch && typeof patch[k] === 'string' && patch[k].trim()) e[k] = patch[k].trim().slice(0, 600);
+      if (patch && typeof patch.hint === 'string' && patch.hint.trim()) e.hintsExtra = [...(e.hintsExtra || []), patch.hint.trim().slice(0, 300)].slice(-3);
       s.tracks[topic] = 'REVISED';
-      s.revisions[topic] = note;
+      s.revisions[topic] = [s.revisions[topic], note].filter(Boolean).join(' · ').slice(-500);
       audit('teacher', `AI revised track ${topic} on request (simulated AI) — needs approval again.`);
       return { ok: true, silent: true };
     },
@@ -529,6 +570,18 @@ const Engine = (() => {
       return { ok: true, msg: `Checked in at ${m.gallery}. Phone away — observe first.` };
     },
 
+    /* ----- joining: class code is checked by the device; the engine hands out the next Jigsaw seat ----- */
+    joinClass(s, { nick }) {
+      const n = String(nick || '').trim().replace(/\s+/g, ' ');
+      if (n.length < 2 || n.length > 16) return { ok: false, msg: 'Pick a nickname of 2–16 characters (not your real name).' };
+      if (Object.values(s.seats).some((x) => x.nick.toLowerCase() === n.toLowerCase())) return { ok: false, msg: 'That nickname is taken — try another.' };
+      const p = SEED.participants.find((x) => !s.seats[x.id] && !s.evidence[x.id].simulated && s.evidence[x.id].status === 'AVAILABLE');
+      if (!p) return { ok: false, msg: 'This class is full (20 explorers).' };
+      s.seats[p.id] = { nick: n, at: Date.now() };
+      audit('student', `${n} joined as ${p.name} (home ${p.home}, expert ${p.topic}).`);
+      return { ok: true, msg: `Welcome, ${n}! You’re in home team ${p.home}, expert track ${p.topic}.`, pid: p.id };
+    },
+
     /* ----- help: always one tap away ----- */
     requestHelp(s, { participantId }) {
       const p = SEED.byId[participantId];
@@ -550,7 +603,7 @@ const Engine = (() => {
     simulateClassmates(s) {
       let changed = 0;
       for (const p of SEED.participants) {
-        if (p.id === s.ui.student) continue;
+        if (p.id === s.ui.student || s.seats[p.id] || (s.checkins[p.id] && s.checkins[p.id].via !== 'SIMULATED')) continue;
         const ev = s.evidence[p.id];
         if (ev.status !== 'VERIFIED') {
           if (p.topic === 'D') s.interactions[p.id] = true;
@@ -568,7 +621,7 @@ const Engine = (() => {
         for (const t of SEED.topics) {
           const cell = s.peerTeach[h][t];
           const expert = SEED.expertOf(h, t);
-          const isActive = expert && expert.id === s.ui.student;
+          const isActive = expert && (expert.id === s.ui.student || !!s.seats[expert.id]);
           if (!cell.shared && !isActive && s.evidence[expert.id].status === 'VERIFIED') {
             const checker = SEED.homeMembers(h).find((m) => m.id !== expert.id);
             cell.shared = true;
@@ -616,7 +669,7 @@ const Engine = (() => {
   /* ---------- dispatch ---------- */
 
   /* UI-only actions are per device and never shared with other devices. */
-  const UI_ACTIONS = new Set(['setRole', 'setStudent', 'setScreen', 'setLookUp', 'setInteractionPrompt', 'markMasterSeen']);
+  const UI_ACTIONS = new Set(['setRole', 'setStudent', 'setScreen', 'setLookUp', 'markMasterSeen']);
   let commitHook = null; // set by sync.js: called after a shared action succeeds locally
 
   function dispatch(type, payload = {}, opts = {}) {

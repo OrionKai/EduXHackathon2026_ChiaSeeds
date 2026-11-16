@@ -53,6 +53,7 @@
     return `<span class="status-chip ${cls}">${Art.icon(icon, 15)}${label}</span>`;
   }
 
+  const who = (p) => (S().seats && S().seats[p.id] ? S().seats[p.id].nick : p.name);
   const topicColor = (t) => SEED.topicMeta[t].color;
   const topicChip = (t) =>
     `<span class="topic-chip ${topicColor(t)}">${Art.icon(SEED.topicMeta[t].icon, 15)}${t} · ${SEED.topicMeta[t].label}</span>`;
@@ -129,7 +130,7 @@
       <div class="stack">
         <div class="spread">
           <div class="row">
-            <span class="identity-chip">${Art.icon('eye', 17)} ${esc(me.name)} · Home ${me.home} · Expert ${me.topic}</span>
+            <span class="identity-chip">${Art.icon('eye', 17)} ${esc(who(me))} · Home ${me.home} · Expert ${me.topic}</span>
             ${topicChip(me.topic)}
             ${st.help.some((h) => h.pid === me.id && h.open)
               ? `<span class="pill peach">${Art.icon('clock', 14)} Teacher is on the way</span>`
@@ -174,6 +175,10 @@
   function adventureScreen(st, me) {
     switch (st.phase) {
       case 'LOBBY': return joinScreen(st, me);
+      default: break;
+    }
+    if (!st.ui.joined) return joinScreen(st, me);
+    switch (st.phase) {
       case 'BRIEFING': return briefingScreen(me) + phasePath(st);
       case 'EXPERT': return missionScreen(st, me) + phasePath(st);
       case 'PEER_TEACH': return teachScreen(st, me) + phasePath(st);
@@ -192,11 +197,15 @@
           <h1>The world is <span class="accent">your classroom.</span></h1>
           <p class="lede">Explore real places, unlock hidden stories, and bring your friends’ discoveries together to solve a mystery.</p>
           <div class="row">
-            <label class="sr-only" for="join-code">Classroom code</label>
-            <input id="join-code" class="input" style="width:170px" value="FITZ-DEMO" aria-label="Classroom code">
-            <button class="btn btn-primary" data-a="join">Join the quest ✦</button>
-          </div>
-          <p class="hint-note" style="margin-top:10px">No real name needed — you play as a pseudonymous explorer.</p>
+          ${st.ui.joined ? `<p class="hint-note" style="margin:0">You’re in as <strong>${esc(who(me))}</strong>.</p>` : `
+          <form class="row" data-form="join">
+            <label class="sr-only" for="join-code">Class code</label>
+            <input id="join-code" class="input" style="width:150px" placeholder="Class code" autocomplete="off" autocapitalize="characters">
+            <label class="sr-only" for="join-nick">Nickname</label>
+            <input id="join-nick" class="input" style="width:170px" placeholder="Nickname" maxlength="16" autocomplete="off">
+            <button class="btn btn-primary" type="submit">Join the quest ✦</button>
+          </form>`}
+          ${st.ui.joined ? '' : `<p class="hint-note" style="margin-top:10px">Use a nickname, not your real name. You’ll be placed in a home team and an expert track automatically.</p>`}
         </div>
         <div class="hero-art">${Art.arch()}${Art.sticker('A clue awaits!', '🔍')}</div>
       </div>
@@ -205,7 +214,7 @@
         <p>${st.quest.status === 'PUBLISHED'
           ? 'You’re in! Your educator will begin the briefing shortly. (In this demo, switch to the Educator view and advance the session.)'
           : 'The quest hasn’t been published yet. In this demo: the Collaborator approves their contribution, then the Educator publishes and starts the session.'}</p>
-        <p class="hint-note">You are ${esc(me.name)} in home team ${me.home}, expert track ${me.topic} · ${esc(SEED.topicMeta[me.topic].name)}.</p>
+        ${st.ui.joined ? `<p class="hint-note">You are ${esc(who(me))} in home team ${me.home}, expert track ${me.topic} · ${esc(SEED.topicMeta[me.topic].name)}.</p>` : ''}
       </div>`;
   }
 
@@ -232,7 +241,7 @@
   }
 
   function missionScreen(st, me) {
-    const m = SEED.missions[me.topic];
+    const m = sel.mission(me.topic);
     const ev = st.evidence[me.id];
     const tab = st.ui.missionTab || 'observe';
     const color = topicColor(me.topic);
@@ -271,6 +280,7 @@
         <p class="hint-note">Observe in person with your group. Never place anything on museum objects.</p>` : ''}
       ${tab === 'discuss' ? `
         <div class="card wash-lavender"><h4>${Art.icon('voices', 18)} Talk it through</h4><p style="margin:0">${esc(m.discuss)}</p></div>
+        ${m.needsFacilitator ? `<div class="card"><div class="eyebrow coral">Today’s question from the community partner</div><p style="margin:0"><strong>${esc([...SEED.contributor.prompts, ...(st.contributor.extraPrompts || [])][st.contributor.interactionPrompt || 0])}</strong></p></div>` : ''}
         ${m.needsFacilitator ? `
           <div class="card ${st.interactions[me.id] ? 'wash-mint' : 'wash-peach'}">
             <div class="spread"><h4 style="margin:0">${Art.icon('handshake', 18)} Arranged contributor conversation</h4>
@@ -303,7 +313,7 @@
         ${m.evidenceFields.map((f) => `
           <div class="fld-group">
             <label class="fld" for="f-${f.key}">${esc(f.label)}</label>
-            <textarea class="input" id="f-${f.key}" name="${f.key}" rows="2" placeholder="${esc(f.placeholder)}">${esc(ev.answers?.[f.key] || '')}</textarea>
+            <textarea class="input" id="f-${f.key}" name="${f.key}" rows="2" placeholder="${esc(f.placeholder)}">${esc(ev.answers?.[f.key] || st.ui.drafts?.[me.id]?.[f.key] || '')}</textarea>
           </div>`).join('')}
         <div class="row">
           <button class="btn btn-primary" type="submit">${Art.icon('check', 18)} Submit evidence</button>
@@ -356,7 +366,7 @@
         <p class="hint-note">${esc(SEED.peerTeaching.prompt)} The expert talks for ~2 minutes off-screen; then a teammate answers:</p>
         <div class="fld-group">
           <label class="fld" for="checker">Which teammate answers the check?</label>
-          <select class="input" id="checker" name="checker">${mates.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
+          <select class="input" id="checker" name="checker">${mates.map((p) => `<option value="${p.id}">${esc(who(p))}</option>`).join('')}</select>
         </div>
         <div class="fld-group" role="radiogroup" aria-label="Teach-back answer">
           ${opts.map((o) => `<label class="tile-pick" style="display:flex;gap:9px;align-items:flex-start">
@@ -470,11 +480,12 @@
     const f = st.finale[me.home];
     return `
       ${f.status === 'APPROVED' ? `<div class="card wash-mint"><div class="spread"><h2>Quest complete ✦</h2>${statusChip('APPROVED')}</div><p style="margin:0">Team ${me.home} restored the exhibition introduction.</p></div>` : ''}
-      ${done ? `<div class="card"><h3>Reflection saved</h3><p style="margin:0">Thanks, ${esc(me.name)} — now look up and join the class discussion!</p></div>`
+      ${st.partnerFeedback[me.home] ? `<div class="card wash-peach"><div class="eyebrow coral">From the community partner</div><p style="margin:0">“${esc(st.partnerFeedback[me.home].text)}”</p></div>` : ''}
+      ${done ? `<div class="card"><h3>Reflection saved</h3><p style="margin:0">Thanks, ${esc(who(me))} — now look up and join the class discussion!</p></div>`
       : `<form class="card" data-form="reflection">
           <div class="eyebrow">Two-minute reflection</div>
           <h3>Before you go…</h3>
-          ${SEED.reflection.map((q, i) => `<div class="fld-group"><label class="fld" for="refl-${i}">${esc(q)}</label><textarea id="refl-${i}" class="input" name="r${i}" rows="2"></textarea></div>`).join('')}
+          ${SEED.reflection.map((q, i) => `<div class="fld-group"><label class="fld" for="refl-${i}">${esc(q)}</label><textarea id="refl-${i}" class="input" name="r${i}" rows="2">${esc(st.ui.drafts?.[me.id]?.['r' + i] || '')}</textarea></div>`).join('')}
           <button class="btn btn-primary" type="submit">${Art.icon('check', 17)} Save my reflection</button>
         </form>`}`;
   }
@@ -591,7 +602,7 @@
         </div>
         <div class="grid-3">
           <div class="card wash-lavender"><div class="eyebrow">My quests</div><h2 style="font-size:40px">01</h2><p style="margin:0">${esc(st.quest.title)} · ${statusChip(st.quest.status === 'PUBLISHED' ? 'APPROVED' : 'PENDING').replace('Approved', 'Published').replace('Awaiting review', esc(st.quest.status))}</p></div>
-          <div class="card wash-mint"><div class="eyebrow teal">Class explorers</div><h2 style="font-size:40px">20</h2><p style="margin:0">5 home teams · 4 expertise tracks · seeded demo class</p></div>
+          <div class="card wash-mint"><div class="eyebrow teal">Class explorers</div><h2 style="font-size:40px">${Object.keys(st.seats).length}<small style="font-size:20px">/20</small></h2><p style="margin:0">joined with the class code · 5 home teams × 4 expert tracks</p></div>
           <div class="card wash-peach"><div class="eyebrow coral">Pending reviews</div><h2 style="font-size:40px">${String(pend).padStart(2, '0')}</h2><p style="margin:0">${pend ? 'Evidence, finales or discoveries waiting in the live room.' : 'Nothing waiting — all clear.'}</p></div>
         </div>
         <div class="card">
@@ -616,6 +627,13 @@
               <input class="input" id="q-title" data-q="title" value="${esc(q.title)}" ${q.status === 'PUBLISHED' ? 'disabled' : ''}></div>
             <div class="fld-group"><label class="fld" for="q-obj">Learning objective</label>
               <input class="input" id="q-obj" data-q="objective" value="${esc(q.objective)}" ${q.status === 'PUBLISHED' ? 'disabled' : ''}></div>
+            <div class="grid-2" style="gap:12px">
+              <div class="fld-group"><label class="fld" for="q-dur">Session length</label>
+                <select class="input" id="q-dur" data-q="duration" ${q.status === 'PUBLISHED' ? 'disabled' : ''}>${[45, 60, 75].map((m) => `<option value="${m}" ${q.duration === m ? 'selected' : ''}>${m} minutes</option>`).join('')}</select></div>
+              <div class="fld-group"><label class="fld" for="q-size">Class size</label>
+                <select class="input" id="q-size" data-q="classSize" ${q.status === 'PUBLISHED' ? 'disabled' : ''}><option value="20" selected>20 students</option></select>
+                <small class="hint-note">Demo seating: 5 home teams × 4 experts</small></div>
+            </div>
             <div class="fld-group"><label class="fld" for="q-venue">Where will they explore?</label>
               <input class="input" id="q-venue" data-q="venue" value="${esc(q.venue)}" ${q.status === 'PUBLISHED' ? 'disabled' : ''}></div>
           </div>
@@ -680,13 +698,13 @@
     const cls = { A: 'v', B: 't', C: 's', D: 'c' };
     return `<table><thead><tr><th scope="col">Track</th>${SEED.homeGroups.map((h) => `<th scope="col">${h}</th>`).join('')}</tr></thead>
       <tbody>${SEED.topics.map((t) => `<tr><th scope="row">${t} · ${esc(SEED.topicMeta[t].label)}</th>
-        ${SEED.homeGroups.map((h) => { const p = SEED.expertOf(h, t); return `<td class="${cls[t]}">${esc(p.name.replace('Explorer ', 'Ex '))}${evShort(st, p)}</td>`; }).join('')}</tr>`).join('')}</tbody></table>`;
+        ${SEED.homeGroups.map((h) => { const p = SEED.expertOf(h, t); return `<td class="${cls[t]}">${esc(who(p).replace('Explorer ', 'Ex '))}${evShort(st, p)}</td>`; }).join('')}</tr>`).join('')}</tbody></table>`;
   }
 
   function expertMatrix(st) {
     const cls = { A: 'v', B: 't', C: 's', D: 'c' };
     return `<table><thead><tr>${SEED.topics.map((t) => `<th scope="col">${t} · ${esc(SEED.topicMeta[t].name)}</th>`).join('')}</tr></thead>
-      <tbody><tr>${SEED.topics.map((t) => `<td class="${cls[t]}" style="vertical-align:top">${SEED.participants.filter((p) => p.topic === t).map((p) => `<div>${esc(p.name.replace('Explorer ', 'Ex '))} <small>(${p.home})</small>${evShort(st, p)}</div>`).join('')}</td>`).join('')}</tr></tbody></table>`;
+      <tbody><tr>${SEED.topics.map((t) => `<td class="${cls[t]}" style="vertical-align:top">${SEED.participants.filter((p) => p.topic === t).map((p) => `<div>${esc(who(p).replace('Explorer ', 'Ex '))} <small>(${p.home})</small>${evShort(st, p)}</div>`).join('')}</td>`).join('')}</tr></tbody></table>`;
   }
 
   function teacherLive(st) {
@@ -712,7 +730,7 @@
         </div>
 
         ${st.help.some((h) => h.open) ? `<div class="card"><div class="spread"><h3>${Art.icon('alert', 18)} Help requests</h3><span class="pill peach">${st.help.filter((h) => h.open).length} open</span></div>
-          <div class="stack" style="gap:8px">${st.help.filter((h) => h.open).map((h) => { const p = SEED.byId[h.pid]; return `<div class="help-row"><span><strong>${esc(p.name)}</strong> · Home ${p.home} · ${esc(SEED.missions[p.topic].gallery)}</span><button class="btn btn-teal btn-sm" data-a="resolve-help" data-id="${h.id}">${Art.icon('check', 15)} I’m with them</button></div>`; }).join('')}</div></div>` : ''}
+          <div class="stack" style="gap:8px">${st.help.filter((h) => h.open).map((h) => { const p = SEED.byId[h.pid]; return `<div class="help-row"><span><strong>${esc(who(p))}</strong> · Home ${p.home} · ${esc(SEED.missions[p.topic].gallery)}</span><button class="btn btn-teal btn-sm" data-a="resolve-help" data-id="${h.id}">${Art.icon('check', 15)} I’m with them</button></div>`; }).join('')}</div></div>` : ''}
         <div class="grid-2">
           <div class="card">
             <div class="spread"><h3>${Art.icon('clock', 18)} Evidence queue</h3><span class="pill lavender">${evQ.length} waiting</span></div>
@@ -722,7 +740,7 @@
                 const m = SEED.missions[p.topic];
                 const ev = st.evidence[p.id];
                 return `<div class="queue-row"><div class="meta">
-                  <div class="row">${topicChip(p.topic)}<strong>${esc(p.name)}</strong><small>${esc(m.gallery)}</small></div>
+                  <div class="row">${topicChip(p.topic)}<strong>${esc(who(p))}</strong><small>${esc(m.gallery)}</small></div>
                   <dl class="evidence-quote">${m.evidenceFields.map((f) => `<dt>${esc(f.label)}</dt><dd>${esc(ev.answers[f.key])}</dd>`).join('')}</dl></div>
                   <div class="stack" style="gap:8px">
                     <button class="btn btn-teal btn-sm" data-a="verify-ev" data-pid="${p.id}">${Art.icon('check', 15)} Verify</button>
@@ -763,6 +781,7 @@
               <div class="row">
                 <button class="btn btn-secondary btn-sm" data-a="sim-class">Seed classmate progress</button>
                 <button class="btn btn-secondary btn-sm" data-a="sim-bonus">Seed team discoveries</button>
+                <button class="btn btn-secondary btn-sm" data-a="tamper">Tamper test: force a finale open</button>
               </div>
             </div>
           </div>
@@ -789,6 +808,13 @@
           <div class="card wash-mint"><div class="eyebrow teal">Perspectives taught</div><h2 style="font-size:38px">${shares}/20</h2><p style="margin:0">teach-backs across 5 home teams</p></div>
           <div class="card wash-peach"><div class="eyebrow coral">Finales approved</div><h2 style="font-size:38px">${fins}/5</h2><p style="margin:0">cards claimed: ${sel.claimedCount()}/5 · master: ${st.master ? 'unlocked' : 'locked'}</p></div>
         </div>
+        <div class="card"><h3>By home team</h3><div class="matrix"><table><thead><tr><th scope="col">Team</th><th scope="col">Evidence verified</th><th scope="col">Perspectives taught</th><th scope="col">Finale</th><th scope="col">Partner feedback</th></tr></thead><tbody>
+          ${SEED.homeGroups.map((h) => { const mem = SEED.homeMembers(h); return `<tr><th scope="row">${h}</th><td>${mem.filter((p) => st.evidence[p.id].status === 'VERIFIED').length}/4</td><td>${SEED.topics.filter((t) => st.peerTeach[h][t].shared).length}/4</td><td>${statusChip(st.finale[h].status)}</td><td>${st.partnerFeedback[h] ? '✓' : '—'}</td></tr>`; }).join('')}
+          </tbody></table></div></div>
+        <div class="card"><h3>What students explained (live, not simulated)</h3>
+          ${(() => { const live = verified.filter((p) => !st.evidence[p.id].simulated); return live.length === 0 ? '<p class="hint-note" style="margin:0">Verified evidence from real students appears here, with their own words.</p>'
+            : live.map((p) => { const m = SEED.missions[p.topic], a = st.evidence[p.id].answers || {}; return `<div class="evidence-quote" style="margin-bottom:8px"><strong>${esc(who(p))}</strong> · ${topicChip(p.topic)}<br>${m.evidenceFields.slice(-2).map((f) => `<em>${esc(f.label)}:</em> ${esc(a[f.key])}`).join('<br>')}</div>`; }).join(''); })()}
+          <p class="hint-note" style="margin-top:10px">Look for misconceptions in the last field: does the student state a limit of the evidence, or overclaim?</p></div>
         <div class="card">
           <h3>Student reflections (${refl.length})</h3>
           ${refl.length === 0 ? '<p class="hint-note" style="margin:0">Individual reflections appear here after the reflection phase.</p>'
@@ -817,8 +843,9 @@
         <div class="stage-tabs" role="group" aria-label="Collaborator screens">
           <button data-a="screen" data-screen="review" aria-pressed="${screen === 'review'}">${Art.icon('pencil', 16)}Review contribution</button>
           <button data-a="screen" data-screen="facilitate" aria-pressed="${screen === 'facilitate'}">${Art.icon('voices', 16)}Facilitate · Expert D ${pendD.length ? `(${pendD.length})` : ''}</button>
+          <button data-a="screen" data-screen="work" aria-pressed="${screen === 'work'}">${Art.icon('book', 16)}Student work</button>
         </div>
-        ${screen === 'facilitate' ? facilitateScreen(st, pendD) : reviewScreen(st)}
+        ${screen === 'facilitate' ? facilitateScreen(st, pendD) : screen === 'work' ? partnerWork(st) : reviewScreen(st)}
       </div>`;
   }
 
@@ -853,6 +880,19 @@
       </div>`;
   }
 
+  function partnerWork(st) {
+    const homes = SEED.homeGroups.filter((h) => ['SUBMITTED', 'APPROVED'].includes(st.finale[h].status));
+    return `<div class="card"><div class="eyebrow coral">Partner feedback</div><h3>Teams’ restored exhibition introductions</h3>
+      <p class="hint-note">Respond as the community partner: what rings true, what is missing, what would you add? Students see your words as a perspective, not a grade.</p>
+      ${homes.length === 0 ? '<p class="hint-note" style="margin:0">Introductions appear here once teams submit their finale.</p>' : ''}
+      <div class="stack" style="gap:12px">${homes.map((h) => { const f = st.finale[h], fb = st.partnerFeedback[h];
+        const tiles = SEED.finale.compose.tiles.filter((t) => f.tiles.includes(t.id));
+        return `<div class="queue-row" style="display:block"><div class="spread"><strong>Team ${h}</strong>${statusChip(f.status)}</div>
+          <div class="evidence-quote" style="margin:8px 0">${tiles.map((t) => esc(t.text)).join(' ')}</div>
+          ${fb ? `<div class="card wash-mint" style="padding:10px 14px"><strong>Your feedback:</strong> ${esc(fb.text)}</div>` :
+          `<form class="row" data-form="partner-fb" data-home="${h}"><label class="sr-only" for="fb-${h}">Feedback for team ${h}</label><input class="input" id="fb-${h}" placeholder="Your response to team ${h}…" style="flex:1;min-width:180px"><button class="btn btn-teal btn-sm" type="submit">Send</button></form>`}</div>`; }).join('')}</div></div>`;
+  }
+
   function facilitateScreen(st, pendD) {
     const promptIdx = st.contributor.interactionPrompt || 0;
     return `
@@ -861,7 +901,9 @@
           <div class="eyebrow coral">Live facilitation</div>
           <h3>Your conversation prompt</h3>
           <p class="hint-note">Pick one prompt and discuss it with each Expert D student in an arranged, supervised conversation.</p>
-          ${SEED.contributor.prompts.map((p, i) => `<button type="button" class="tile-pick" data-a="prompt" data-i="${i}" aria-pressed="${promptIdx === i}">${esc(p)}</button>`).join('')}
+          ${[...SEED.contributor.prompts, ...(st.contributor.extraPrompts || [])].map((p, i) => `<button type="button" class="tile-pick" data-a="prompt" data-i="${i}" aria-pressed="${promptIdx === i}">${i >= SEED.contributor.prompts.length ? '<span class="pill mint" style="margin-right:6px">your question</span>' : ''}${esc(p)}</button>`).join('')}
+          <form class="row" data-form="partner-q" style="margin-top:10px"><label class="sr-only" for="pq">Add your own question</label>
+            <input class="input" id="pq" placeholder="Add your own question for students…" style="flex:1;min-width:180px"><button class="btn btn-secondary btn-sm" type="submit">${Art.icon('plus', 15)} Add</button></form>
           <p class="hint-note" style="margin-top:10px">Your reply is recorded by students as a <em>perspective</em>, never as museum fact.</p>
         </div>
         <div class="card">
@@ -869,7 +911,7 @@
           ${st.phase === 'LOBBY' ? '<p class="hint-note" style="margin:0">Interactions open once the educator starts the session.</p>' : ''}
           ${pendD.length === 0 && st.phase !== 'LOBBY' ? '<p class="hint-note" style="margin:0">All Expert D conversations are verified. ✓</p>' : ''}
           <div class="stack" style="gap:10px">
-            ${pendD.map((p) => `<div class="queue-row"><div class="meta"><strong>${esc(p.name)}</strong><br><small>Home ${p.home} · Expert D · Gallery 24</small></div>
+            ${pendD.map((p) => `<div class="queue-row"><div class="meta"><strong>${esc(who(p))}</strong><br><small>Home ${p.home} · Expert D · Gallery 24</small></div>
               <button class="btn btn-teal btn-sm" data-a="verify-int" data-pid="${p.id}">${Art.icon('check', 15)} Confirm interaction</button></div>`).join('')}
           </div>
           <p class="hint-note" style="margin-top:12px">Verification is an adult-controlled action — students cannot confirm it themselves.</p>
@@ -893,7 +935,7 @@
           <button class="btn btn-primary" data-a="lookup-off">${Art.icon('back', 17)} Back to quest</button>
         </div></div>`;
     }
-    if (st.master && !st.masterSeen) {
+    if (st.master && !st.ui.masterSeen) {
       html += `<div class="overlay" role="dialog" aria-modal="true" aria-label="Master award unlocked">
         <div class="overlay-panel master-panel">
           <div class="reveal">
@@ -915,7 +957,7 @@
     root.querySelectorAll('[data-a]').forEach((el) => {
       const a = el.dataset.a;
       if (a === 'student-sel') {
-        el.addEventListener('change', () => act('setStudent', { id: el.value }));
+        el.addEventListener('change', () => { S().ui.joined = true; act('setStudent', { id: el.value }); });
         return;
       }
       el.addEventListener('click', (e) => {
@@ -923,13 +965,13 @@
           case 'role': return act('setRole', { role: el.dataset.role }) && act('setScreen', { screen: null });
           case 'screen': return act('setScreen', { screen: el.dataset.screen });
           case 'reset': if (confirmReset()) act('resetDemo'); return;
-          case 'join': toast('You’re in the lobby, ' + SEED.byId[S().ui.student].name + '!', 'success'); return;
           case 'mtab': S().ui.missionTab = el.dataset.tab; render(); return;
           case 'hints': S().ui.hintsOpen = !S().ui.hintsOpen; S().ui.hintsShown = 1; render(); return;
           case 'hint-more': S().ui.hintsShown = (S().ui.hintsShown || 1) + 1; render(); return;
           case 'help': return act('requestHelp', { participantId: S().ui.student });
           case 'resolve-help': return act('resolveHelp', { id: el.dataset.id });
           case 'qr-cards': return StationCards.open();
+          case 'tamper': return typeof Sync !== 'undefined' && Sync.tamperTest().then((r) => toast(r.msg, r.ok ? 'success' : 'error'));
           case 'scan-station': {
             const me = SEED.byId[S().ui.student], m = SEED.missions[me.topic];
             return Scanner.open({ title: `Scan the ${m.name} clue card`, hint: `It’s at ${m.gallery}. The facilitator can read you the backup code if the camera won’t work.`,
@@ -975,11 +1017,15 @@
       });
     });
 
+    // keep unsent typing in this device's drafts so re-renders (hints, other devices) never wipe it
+    root.querySelectorAll('form[data-form="evidence"] textarea, form[data-form="reflection"] textarea').forEach((t) => {
+      t.addEventListener('input', () => { const id = S().ui.student; const d = (S().ui.drafts[id] = S().ui.drafts[id] || {}); d[t.name] = t.value; });
+    });
     if (typeof Assistant !== 'undefined') Assistant.bind(root);
 
     // live preview typing in the quest builder (silent updates, targeted DOM refresh)
     root.querySelectorAll('[data-q]').forEach((el) => {
-      el.addEventListener('input', () => {
+      el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
         Engine.dispatch('updateQuest', { field: el.dataset.q, value: el.value });
         const map = { title: 'pv-title', objective: 'pv-obj', venue: 'pv-venue' };
         const pv = document.getElementById(map[el.dataset.q]);
@@ -991,6 +1037,16 @@
       form.addEventListener('submit', (e) => {
         e.preventDefault();
         const kind = form.dataset.form;
+        if (kind === 'partner-q') { const r = act('addPartnerPrompt', { text: form.querySelector('#pq').value }); return; }
+        if (kind === 'partner-fb') { act('partnerFeedback', { home: form.dataset.home, text: form.querySelector('input').value }); return; }
+        if (kind === 'join') {
+          const code = form.querySelector('#join-code').value.trim().toUpperCase();
+          const expected = typeof Sync !== 'undefined' && Sync.state.status !== 'offline' ? Sync.state.session : 'FITZ-DEMO';
+          if (code !== expected) return toast('That class code doesn’t match. Check with your teacher.', 'error');
+          const r = act('joinClass', { nick: form.querySelector('#join-nick').value });
+          if (r.ok) { S().ui.joined = true; act('setStudent', { id: r.pid }); }
+          return;
+        }
         if (kind === 'evidence') {
           const me = SEED.byId[S().ui.student];
           const answers = {};

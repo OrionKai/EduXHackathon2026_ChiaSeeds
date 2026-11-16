@@ -1,0 +1,9 @@
+{
+  "name": "worldquest-prototype",
+  "private": true,
+  "type": "module",
+  "description": "WorldQuest hackathon prototype. The site is static (prototype_2); only the AI assistant function has a dependency.",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.136.0"
+  }
+}
