@@ -512,6 +512,10 @@ label.fld { display: block; font-weight: 700; font-size: 14px; margin-bottom: 6p
 .as-chip:disabled { opacity: .5; cursor: default; }
 .as-compose { display: flex; gap: 8px; } .as-compose .input { flex: 1; min-width: 0; }
 .as-cite { font: 700 11px ui-monospace, Menlo, monospace; padding: 2px 7px; border-radius: 6px; border: 0; background: var(--mint); color: var(--success); cursor: pointer; vertical-align: middle; }
+.as-jump { display: inline-flex; align-items: center; gap: 5px; font: 600 12px var(--font-body); padding: 4px 10px; border-radius: 999px; border: 1px solid var(--stroke); background: var(--lavender); color: var(--violet-deep); cursor: pointer; vertical-align: middle; }
+.as-jump:hover { background: #E4DBFF; } .as-jump svg { width: 13px; height: 13px; flex: none; }
+.flash { animation: flashpulse 1.4s ease; }
+@keyframes flashpulse { 0%, 60% { box-shadow: 0 0 0 3px var(--success); } 100% { box-shadow: 0 0 0 0 transparent; } }
 .as-track { border: 1px solid var(--stroke); border-radius: 14px; padding: 12px; background: var(--white); }
 .as-note { margin: 0 0 8px; font-size: 13.5px; background: var(--lavender); border-radius: 10px; padding: 7px 10px; }
 .as-src { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 8px; border-radius: 12px; }

@@ -95,7 +95,8 @@ const Assistant = (() => {
   /* ---------------- rendering ---------------- */
   function msgHTML(m) {
     return `<div class="as-msg ${m.who}">${m.thinking ? '<span class="as-dots"><i></i><i></i><i></i></span>' : esc(m.text)}
-      ${m.cites && m.cites.length ? `<div class="row" style="gap:4px;margin-top:6px">${m.cites.map((c) => `<button class="as-cite" data-as-cite="${c}" type="button">${c}</button>`).join('')}</div>` : ''}</div>`;
+      ${m.cites && m.cites.length ? `<div class="row" style="gap:4px;margin-top:6px">${m.cites.map((c) => `<button class="as-cite" data-as-cite="${c}" type="button">${c}</button>`).join('')}</div>` : ''}
+      ${m.parts && m.parts.length ? `<div class="row" style="gap:4px;margin-top:6px">${m.parts.map((p) => `<button class="as-jump" data-as-jump="${p.step}|${p.sel}" type="button" title="Go to what changed">${Art.icon(PART_ICON[p.kind] || 'arrow', 13)} ${esc(p.label)}</button>`).join('')}</div>` : ''}</div>`;
   }
 
   function chat() {
@@ -385,13 +386,14 @@ const Assistant = (() => {
     box.innerHTML = msgs.map(msgHTML).join('');
     box.scrollTop = box.scrollHeight;
   }
-  async function say(text, cites) {
+  async function say(text, cites, parts) {
     const m = { who: 'ai', text: '', thinking: true };
     msgs.push(m); paintMsgs();
     await sleep(700 + Math.random() * 400);
     m.thinking = false;
     for (const w of text.split(' ')) { m.text += (m.text ? ' ' : '') + w; paintMsgs(); await sleep(24); }
     m.cites = cites || [];
+    m.parts = (parts || []).slice();
     paintMsgs();
   }
   async function typeInto(text) {
@@ -407,7 +409,7 @@ const Assistant = (() => {
     busy = true;
     if (!typed) await typeInto(step.prompt);
     msgs.push({ who: 'you', text: typed || step.prompt }); paintMsgs();
-    await say(step.reply, step.topic === 'D' ? [srcFor('D'), partnerSrc()].filter(Boolean) : [srcFor(step.topic)].filter(Boolean));
+    await say(step.reply, step.topic === 'D' ? [srcFor('D'), partnerSrc()].filter(Boolean) : [srcFor(step.topic)].filter(Boolean), [{ step: 'tracks', sel: '#as-track-' + step.topic, label: 'Track ' + step.topic, kind: 'tracks' }]);
     busy = false;
     const r = Engine.dispatch('reviseTrack', { topic: step.topic, note: step.note, patch: step.patch });
     if (r && !r.ok && r.msg) window.WQ?.toast(r.msg, 'error');
@@ -522,6 +524,26 @@ const Assistant = (() => {
     Engine.dispatch('reviseTrack', { topic: i.topic, note, patch: { fields: f }, by: 'ai' });
   }
 
+  /* Which builder step + card an AI edit lands on, so the message can link to it. */
+  const PART_ICON = { tracks: 'map', split: 'team', finale: 'puzzle', story: 'book', reflection: 'leaf', card: 'trophy', source: 'lens', trip: 'pencil' };
+  function partTarget(e) {
+    const i = e.input || {}, T = i.topic;
+    if (['revise_track', 'set_track_list', 'set_assessment', 'set_teachback_check', 'add_hint'].includes(e.tool))
+      return SEED.topics.includes(T) ? { step: 'tracks', sel: '#as-track-' + T, label: 'Track ' + T, kind: 'tracks' } : null;
+    switch (e.tool) {
+      case 'remove_track': return { step: 'tracks', sel: '#as-content', label: 'Tracks', kind: 'tracks' };
+      case 'set_groups': return { step: 'trip', sel: '#as-splits', label: 'Class split', kind: 'split' };
+      case 'set_finale': return { step: 'finale', sel: '#as-finale', label: 'Finale', kind: 'finale' };
+      case 'set_story': return { step: 'finale', sel: '#as-extras', label: 'Story', kind: 'story' };
+      case 'set_reflection': return { step: 'finale', sel: '#as-extras', label: 'Reflection', kind: 'reflection' };
+      case 'set_card': return { step: 'finale', sel: '#as-collectibles', label: 'Collectibles', kind: 'card' };
+      case 'remove_card': return { step: 'finale', sel: '#as-collectibles', label: 'Collectibles', kind: 'card' };
+      case 'add_source': return { step: 'sources', sel: '#as-sources', label: 'Source', kind: 'source' };
+      case 'update_quest_settings': return { step: 'trip', sel: '#as-trip', label: 'Trip', kind: 'trip' };
+      default: return null;
+    }
+  }
+
   async function liveTurn(text) {
     busy = true;
     msgs.push({ who: 'you', text }); paintMsgs();
@@ -530,7 +552,9 @@ const Assistant = (() => {
     msgs.pop();
     if (!data || data.error || status !== 200) { failNotice(status); busy = false; msgs.pop(); return status === 401 ? window.WQ.render() : freeText(text); }
     const cites = [...new Set((data.edits || []).flatMap((e) => e.input.source_ids || []))];
-    await say(data.reply, cites);
+    const seenSel = new Set();
+    const parts = (data.edits || []).map(partTarget).filter(Boolean).filter((p) => !seenSel.has(p.sel) && seenSel.add(p.sel));
+    await say(data.reply, cites, parts);
     history.push({ role: 'user', content: text }, { role: 'assistant', content: data.reply });
     for (const e of data.edits || []) applyEdit(e);
     busy = false;
@@ -643,12 +667,20 @@ const Assistant = (() => {
     on('[data-as-gen-no]', 'click', () => { confirmGen = false; window.WQ.render(); });
     on('[data-as-approve]', 'click', (b) => window.WQ.act('approveTrack', { topic: b.dataset.asApprove }));
     on('[data-as-ask]', 'click', (b) => { const i = document.getElementById('as-in'); if (i) { i.value = `Track ${b.dataset.asAsk}: `; i.focus(); i.scrollIntoView({ behavior: 'smooth', block: 'center' }); } });
+    on('[data-as-jump]', 'click', (b) => {
+      const [step, sel] = b.dataset.asJump.split('|');
+      const go = (r) => { if (!r) return; r.classList.add('flash'); r.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => r.classList.remove('flash'), 1400); };
+      const here = Engine.state.ui.bStep === step && document.querySelector(sel);
+      if (here && !editing) return go(here);
+      Engine.state.ui.bStep = step; openEditor(null); window.WQ.render();
+      setTimeout(() => go(document.querySelector(sel)), 30);
+    });
     on('[data-as-cite]', 'click', (b) => {
       const id = b.dataset.asCite;
       const go = (r) => { if (!r) return; r.classList.add('flash'); r.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => r.classList.remove('flash'), 1400); };
       const row = document.getElementById('as-src-' + id);
       if (row) return go(row);
-       // The source list lives on the "Sources" builder step; switch to it first so the row is in the DOM, then jump to it.
+      // The source list lives on the "Sources" builder step; switch to it first so the row is in the DOM, then jump to it.
       Engine.state.ui.bStep = 'sources'; openEditor(null); window.WQ.render();
       setTimeout(() => go(document.getElementById('as-src-' + id)), 30);
     });

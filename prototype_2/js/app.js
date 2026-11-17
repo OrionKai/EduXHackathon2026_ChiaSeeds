@@ -798,7 +798,7 @@
   }
   function builderTrip(st, dis, locked) {
     const q = st.quest;
-    return `<div class="card">
+    return `<div class="card" id="as-trip">
         <h3 style="margin:0 0 6px">What’s the trip?</h3>
         <div class="fld-group"><label class="fld" for="q-title">Name of the quest</label><input class="input" id="q-title" data-q="title" value="${esc(q.title)}" placeholder="e.g. The Lost Museum" ${dis}></div>
         <div class="fld-group"><label class="fld" for="q-obj">What should students learn?</label><input class="input" id="q-obj" data-q="objective" value="${esc(q.objective)}" placeholder="e.g. Tell the difference between what an object shows and what we guess" ${dis}></div>
@@ -813,7 +813,7 @@
         <ol class="b-how"><li>${Art.icon('lens', 18)}<span><strong>Explore.</strong> Each student becomes the expert on one <em>track</em> (one topic) and investigates it on site with the other experts.</span></li>
           <li>${Art.icon('voices', 18)}<span><strong>Teach.</strong> Back in their team, each expert teaches the others what they found.</span></li>
           <li>${Art.icon('puzzle', 18)}<span><strong>Solve.</strong> The team solves a final puzzle that needs everyone’s part.</span></li></ol></div>
-      <form class="card" data-form="structure">
+      <form class="card" id="as-splits" data-form="structure">
         <h3 style="margin:0 0 6px">How the class splits up</h3>
         <div class="grid-3" style="gap:10px">
           <div class="fld-group"><label class="fld" for="g-tracks">Tracks (topics)</label><input class="input" id="g-tracks" type="number" min="1" max="6" value="${st.quest.structure.tracks === 0 ? 0 : SEED.structure.tracks}" ${dis}></div>
