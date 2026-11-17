@@ -149,6 +149,7 @@ const Engine = (() => {
     s.quest.next = { ...SEED.defaultNext(), ...(s.quest.next || {}) };
     (s.content.collectibles || []).forEach((c) => { if (!c.kind) Object.assign(c, SEED.defaultEarn()); });
     s.contributor.extraPrompts = s.contributor.extraPrompts || [];
+    s.contributor.prompts = s.contributor.prompts || [...SEED.contributor.prompts, ...s.contributor.extraPrompts];
     s.partnerFeedback = s.partnerFeedback || {};
     s.quest.duration = s.quest.duration || 60;
     s.quest.classSize = s.quest.classSize || 20;
@@ -348,10 +349,9 @@ const Engine = (() => {
     addPartnerPrompt(s, { text }) {
       const t = String(text || '').trim();
       if (t.length < 8) return { ok: false, msg: 'Write a full question for the students.' };
-      s.contributor.extraPrompts = s.contributor.extraPrompts || [];
-      if (s.contributor.extraPrompts.length >= 3) return { ok: false, msg: 'Three of your own questions is plenty for one session.' };
-      s.contributor.extraPrompts.push(t);
-      s.contributor.interactionPrompt = SEED.contributor.prompts.length + s.contributor.extraPrompts.length - 1;
+      s.contributor.prompts = s.contributor.prompts || [...SEED.contributor.prompts];
+      s.contributor.prompts.push(t);
+      s.contributor.interactionPrompt = s.contributor.prompts.length - 1;
       audit('collaborator', `Added a conversation question: “${t}”`);
       return { ok: true, msg: 'Question added — students in the conversation track will see it.' };
     },
@@ -363,6 +363,14 @@ const Engine = (() => {
       s.partnerFeedback[home] = { text: t, at: Date.now() };
       audit('collaborator', `Gave feedback on team ${home}’s finale answer.`);
       return { ok: true, msg: `Feedback sent to team ${home}.` };
+    },
+    setPartnerPrompts(s, { prompts }) {
+      const list = (Array.isArray(prompts) ? prompts : []).map((x) => String(x || '').trim()).filter(Boolean).map((x) => x.slice(0, 300));
+      if (!list.length) return { ok: false, msg: 'Keep at least one question.' };
+      s.contributor.prompts = list;
+      s.contributor.interactionPrompt = Math.min(s.contributor.interactionPrompt || 0, list.length - 1);
+      audit('collaborator', `Updated their conversation questions (${list.length}).`);
+      return { ok: true, msg: 'Questions saved.' };
     },
     setInteractionPrompt(s, { index }) {
       s.contributor.interactionPrompt = index;
@@ -503,7 +511,8 @@ const Engine = (() => {
       const i = f.tiles.indexOf(tileId);
       if (i >= 0) f.tiles.splice(i, 1);
       else {
-        if (f.tiles.length >= 5) return { ok: false, msg: 'Five sentences is plenty — remove one first.' };
+        const max = SEED.finale.compose.max || 6;
+        if (f.tiles.length >= max) return { ok: false, msg: `${max} sentences is the limit — remove one first.` };
         f.tiles.push(tileId);
       }
       return { ok: true, silent: true };
@@ -536,13 +545,8 @@ const Engine = (() => {
       const needs = SEED.finale.compose.needs;
       for (const cat of Object.keys(needs)) {
         if ((counts[cat] || 0) < needs[cat]) {
-          const hints = {
-            evidence: 'cite at least two observed objects',
-            perspectives: 'acknowledge varied experiences',
-            uncertainty: 'note one uncertainty',
-            invite: 'invite a visitor question',
-          };
-          return { ok: false, msg: `Your introduction still needs to ${hints[cat]}.` };
+          const hints = { evidence: 'evidence sentence', perspectives: 'sentence about different perspectives', uncertainty: 'sentence naming an uncertainty', invite: 'sentence inviting a question' };
+          return { ok: false, msg: `Your answer needs at least ${needs[cat]} ${hints[cat] || cat}${needs[cat] > 1 ? 's' : ''}.` };
         }
       }
       f.status = 'SUBMITTED';
@@ -555,7 +559,7 @@ const Engine = (() => {
       if (f.status !== 'SUBMITTED') return { ok: false, msg: 'Nothing to review for this team.' };
       if (approve) {
         if (!rubric || SEED.finale.rubric.some((r) => !rubric[r]))
-          return { ok: false, msg: 'Tick all four rubric items to approve.' };
+          return { ok: false, msg: 'Tick every rubric item to approve.' };
         f.status = 'APPROVED';
         f.rubric = rubric;
         audit('teacher', `Approved ${home}’s finale answer.`);
@@ -619,8 +623,8 @@ const Engine = (() => {
     submitReflection(s, { participantId, answers }) {
       if (!['REFLECTION', 'COMPLETE'].includes(s.phase))
         return { ok: false, msg: 'Reflection opens at the end of the session.' };
-      if (!answers[0]?.trim() || !answers[1]?.trim())
-        return { ok: false, msg: 'Answer both reflection prompts.' };
+      if (!Array.isArray(answers) || SEED.reflection.some((q, i) => !String(answers[i] || '').trim()))
+        return { ok: false, msg: 'Answer every reflection question.' };
       s.reflections[participantId] = answers.map((a) => a.trim());
       audit('student', `${SEED.byId[participantId].name} submitted a reflection.`);
       return { ok: true, msg: 'Reflection saved — now look up and join the discussion!' };
@@ -665,7 +669,7 @@ const Engine = (() => {
       s.tracks = Object.fromEntries(SEED.topics.map((x) => [x, tpl === 'blank' ? 'EMPTY' : 'TEMPLATE']));
       s.revisions = {};
       s.sources = tpl === 'lost_museum' ? seedSources() : seedSources().filter((x) => x.kind === 'partner').map((x) => ({ ...x, id: 'S1' }));
-      s.contributor = { text: '', status: 'PENDING', interactionPrompt: 0, extraPrompts: [] };
+      s.contributor = { text: '', status: 'PENDING', interactionPrompt: 0, extraPrompts: [], prompts: [...SEED.contributor.prompts] };
       s.activeQuest = id;
       SEED.useStructure(s.quest.structure); SEED.useContent(s.content);
       resetPlay(s);

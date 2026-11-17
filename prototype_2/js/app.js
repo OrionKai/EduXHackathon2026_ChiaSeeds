@@ -384,7 +384,7 @@
         <p class="hint-note">Observe in person with your group. Never touch or place anything on objects or exhibits.</p>` : ''}
       ${tab === 'discuss' ? `
         <div class="card wash-lavender"><h4>${Art.icon('voices', 18)} Talk it through</h4><p style="margin:0">${esc(m.discuss)}</p></div>
-        ${m.needsFacilitator ? `<div class="card"><div class="eyebrow coral">Today’s question from the community partner</div><p style="margin:0"><strong>${esc([...SEED.contributor.prompts, ...(st.contributor.extraPrompts || [])][st.contributor.interactionPrompt || 0])}</strong></p></div>` : ''}
+        ${m.needsFacilitator ? `<div class="card"><div class="eyebrow coral">Today’s question from the community partner</div><p style="margin:0"><strong>${esc((st.contributor.prompts || SEED.contributor.prompts)[st.contributor.interactionPrompt || 0])}</strong></p></div>` : ''}
         ${m.needsFacilitator ? `
           <div class="card ${st.interactions[me.id] ? 'wash-mint' : 'wash-peach'}">
             <div class="spread"><h4 style="margin:0">${Art.icon('handshake', 18)} Arranged contributor conversation</h4>
@@ -1136,9 +1136,10 @@
           <div class="eyebrow coral">Live facilitation</div>
           <h3>Your conversation prompt</h3>
           <p class="hint-note">Pick one prompt and discuss it with each student in the conversation track in an arranged, supervised conversation.</p>
-          ${[...SEED.contributor.prompts, ...(st.contributor.extraPrompts || [])].map((p, i) => `<button type="button" class="tile-pick" data-a="prompt" data-i="${i}" aria-pressed="${promptIdx === i}">${i >= SEED.contributor.prompts.length ? '<span class="pill mint" style="margin-right:6px">your question</span>' : ''}${esc(p)}</button>`).join('')}
-          <form class="row" data-form="partner-q" style="margin-top:10px"><label class="sr-only" for="pq">Add your own question</label>
-            <input class="input" id="pq" placeholder="Add your own question for students…" style="flex:1;min-width:180px"><button class="btn btn-secondary btn-sm" type="submit">${Art.icon('plus', 15)} Add</button></form>
+          ${(st.contributor.prompts || SEED.contributor.prompts).map((p, i) => `<button type="button" class="tile-pick" data-a="prompt" data-i="${i}" aria-pressed="${promptIdx === i}">${i >= SEED.contributor.prompts.length ? '<span class="pill mint" style="margin-right:6px">your question</span>' : ''}${esc(p)}</button>`).join('')}
+          <details style="margin-top:10px"><summary class="as-chip" style="display:inline-flex">${Art.icon('pencil', 14)} Edit your questions</summary>
+            <form class="stack" data-form="partner-prompts" style="gap:8px;margin-top:10px">${Assistant.listEd('pp', st.contributor.prompts || SEED.contributor.prompts, 'A question for students', 'Add a question')}
+            <button class="btn btn-secondary btn-sm" type="submit" style="align-self:flex-start">Save questions</button></form></details>
           <p class="hint-note" style="margin-top:10px">Your reply is recorded by students as a <em>perspective</em>, never as established fact.</p>
         </div>
         <div class="card">
@@ -1341,6 +1342,7 @@
       form.addEventListener('submit', (e) => {
         e.preventDefault();
         const kind = form.dataset.form;
+        if (kind === 'partner-prompts') { act('setPartnerPrompts', { prompts: Assistant.readList(form, 'pp') }); return; }
         if (kind === 'partner-q') { const r = act('addPartnerPrompt', { text: form.querySelector('#pq').value }); return; }
         if (kind === 'partner-fb') { act('partnerFeedback', { home: form.dataset.home, text: form.querySelector('input').value }); return; }
         if (kind === 'structure') {
@@ -1392,7 +1394,7 @@
           act('submitBonus', { collectibleId: form.dataset.card, answer: form.querySelector('[name="answer"]').value });
         } else if (kind === 'reflection') {
           const me = SEED.byId[S().ui.student];
-          act('submitReflection', { participantId: me.id, answers: [form.querySelector('[name="r0"]').value, form.querySelector('[name="r1"]').value] });
+          act('submitReflection', { participantId: me.id, answers: SEED.reflection.map((q, i) => (form.querySelector(`[name="r${i}"]`) || {}).value || '') });
         } else if (kind === 'contribution') {
           act('saveContribution', { text: form.querySelector('#contrib').value, questId: form.dataset.qid });
         } else if (kind === 'partner') {

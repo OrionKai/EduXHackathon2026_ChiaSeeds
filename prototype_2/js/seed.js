@@ -334,10 +334,8 @@ SEED.buildTrack = (t, f) => {
       refPhoto: typeof f.refPhoto === 'string' && f.refPhoto.startsWith('data:image/') && f.refPhoto.length < 120000 ? f.refPhoto : null,
     },
     label: (f.name || 'Track ' + t).split(/\s+/)[0].replace(/[^\w’'-]/g, '').slice(0, 14) || 'Track ' + t,
-    check: [
-      { id: t.toLowerCase() + '_ok', text: f.checkCorrect || '', correct: true },
-      { id: t.toLowerCase() + '_no', text: f.checkIncorrect || '', correct: false },
-    ],
+    check: (Array.isArray(f.checks) && f.checks.length ? f.checks : [{ text: f.checkCorrect || '', correct: true }, { text: f.checkIncorrect || '', correct: false }])
+      .map((x, i) => ({ id: t.toLowerCase() + '_' + (i + 1), text: String(x.text || '').trim(), correct: !!x.correct })),
   };
 };
 /* Flat fields back out of a track, for the editor. */
@@ -348,6 +346,7 @@ SEED.trackFields = (c, t) => {
     narrative: m.narrative, observe: m.observe, discuss: m.discuss,
     evidence: m.evidenceFields.map((e) => e.label), hints: m.hints, fallback: m.fallback, teachHeadline: m.teachHeadline,
     checkCorrect: (opts.find((o) => o.correct) || {}).text || '', checkIncorrect: (opts.find((o) => !o.correct) || {}).text || '',
+    checks: opts.map((o) => ({ text: o.text, correct: !!o.correct })),
     needsContributor: !!m.needsFacilitator, sourceFact: m.sourceFact, sourceUrl: m.sourceUrl,
     assess: JSON.parse(JSON.stringify(m.assess || SEED.defaultAssess())), refPhoto: m.refPhoto || null,
   };
@@ -359,24 +358,27 @@ SEED.syncFinaleObjects = (c) => {
     gallery: c.missions[t].gallery || '', answer: c.topicMeta[t].tag,
   }));
 };
+SEED.FINALE_CATS = { evidence: 'Evidence sentences', perspectives: 'Different perspectives', uncertainty: 'Naming an uncertainty', invite: 'Inviting a question' };
 SEED.buildFinale = (c, f) => {
+  const list = (v) => (Array.isArray(v) ? v : v ? [v] : []).map((x) => String(x).trim()).filter(Boolean);
   const tiles = [];
-  (f.evidence || []).filter(Boolean).forEach((text, i) => tiles.push({ id: 'e' + (i + 1), cat: 'evidence', text }));
-  if (f.perspectives) tiles.push({ id: 'p1', cat: 'perspectives', text: f.perspectives });
-  if (f.uncertainty) tiles.push({ id: 'u1', cat: 'uncertainty', text: f.uncertainty });
-  if (f.invite) tiles.push({ id: 'i1', cat: 'invite', text: f.invite });
-  if (f.trap) tiles.push({ id: 'x1', cat: 'overclaim', text: f.trap, trap: true });
+  Object.keys(SEED.FINALE_CATS).forEach((cat) => list(f[cat]).forEach((text, i) => tiles.push({ id: cat[0] + (i + 1), cat, text })));
+  list(f.traps || f.trap).forEach((text, i) => tiles.push({ id: 'x' + (i + 1), cat: 'overclaim', text, trap: true }));
   c.finale.title = f.title || c.finale.title || 'Restore the story';
-  c.finale.overclaim = { question: 'Which statement stays within the evidence?', options: [
-    { id: 'cautious', text: f.cautious || '', correct: true }, { id: 'absolute', text: f.overclaim || '', correct: false }] };
-  c.finale.compose.tiles = tiles;
+  const opts = Array.isArray(f.options) && f.options.length ? f.options : [{ text: f.cautious || '', correct: true }, { text: f.overclaim || '', correct: false }];
+  c.finale.overclaim = { question: String(f.question || c.finale.overclaim.question || 'Which statement stays within the evidence?').trim(),
+    options: opts.map((o, i) => ({ id: 'o' + (i + 1), text: String(o.text || '').trim(), correct: !!o.correct })).filter((o) => o.text) };
+  const needs = { ...c.finale.compose.needs, ...(f.needs || {}) };
+  Object.keys(needs).forEach((k) => { needs[k] = Math.max(0, Number(needs[k]) || 0); });
+  c.finale.compose = { ...c.finale.compose, tiles, needs, max: Math.max(1, Number(f.max) || c.finale.compose.max || 6) };
+  if (Array.isArray(f.rubric)) c.finale.rubric = list(f.rubric);
 };
 SEED.finaleFields = (c) => {
   const T = c.finale.compose.tiles, by = (cat) => T.filter((x) => x.cat === cat && !x.trap).map((x) => x.text);
-  const o = c.finale.overclaim.options;
-  return { title: c.finale.title, cautious: (o.find((x) => x.correct) || {}).text || '', overclaim: (o.find((x) => !x.correct) || {}).text || '',
-    evidence: by('evidence'), perspectives: by('perspectives')[0] || '', uncertainty: by('uncertainty')[0] || '', invite: by('invite')[0] || '',
-    trap: (T.find((x) => x.trap) || {}).text || '' };
+  const out = { title: c.finale.title, question: c.finale.overclaim.question, options: c.finale.overclaim.options.map((o) => ({ text: o.text, correct: !!o.correct })),
+    traps: T.filter((x) => x.trap).map((x) => x.text), needs: { ...c.finale.compose.needs }, max: c.finale.compose.max || 6, rubric: [...(c.finale.rubric || [])] };
+  Object.keys(SEED.FINALE_CATS).forEach((cat) => { out[cat] = by(cat); });
+  return out;
 };
 
 /* A blank quest: the Jigsaw structure with every authored field empty. */
@@ -393,7 +395,7 @@ TEMPLATES.blank = (() => {
     overclaim: { question: 'Which statement stays within the evidence?', options: [{ id: 'cautious', text: '', correct: true }, { id: 'absolute', text: '', correct: false }] } };
   SEED.syncFinaleObjects(c);
   c.collectibles = base.collectibles.map((x) => ({ ...x, title: '', activity: '', fact: '', promptLabel: 'Your team’s discovery' }));
-  c.reflection = ['', ''];
+  c.reflection = [''];
   return c;
 })();
 
@@ -407,16 +409,19 @@ SEED.contentProblems = (c) => {
     if (!m.gallery) p.push(`Track ${t}: location`);
     if (!m.observe) p.push(`Track ${t}: what students do`);
     if (m.evidenceFields.filter((e) => e.label).length < 1) p.push(`Track ${t}: at least one evidence prompt`);
-    if (chk.some((o) => !o.text)) p.push(`Track ${t}: teach-back check statements`);
+    if (!chk.length || chk.some((o) => !o.text) || !chk.some((o) => o.correct)) p.push(`Track ${t}: teach-back check statements (at least one correct)`);
     const a = m.assess || SEED.defaultAssess();
     if ((a.quiz || []).some((q) => !q.q || q.o.length < 2 || q.o.some((o) => !o))) p.push(`Track ${t}: complete every quiz question`);
     if (a.verify === 'auto' && !(a.quiz || []).length) p.push(`Track ${t}: automatic verification needs a quiz`);
   });
-  const T = c.finale.compose.tiles, n = (cat) => T.filter((x) => x.cat === cat && !x.trap).length;
-  if (n('evidence') < 2 || !n('perspectives') || !n('uncertainty') || !n('invite') || !T.some((x) => x.trap)) p.push('Finale: evidence, perspective, uncertainty, invitation and overclaim sentences');
-  if (c.finale.overclaim.options.some((o) => !o.text)) p.push('Finale: cautious and overclaiming statements');
+  const T = c.finale.compose.tiles, n = (cat) => T.filter((x) => x.cat === cat && !x.trap).length, needs = c.finale.compose.needs || {};
+  if (Object.keys(needs).some((cat) => n(cat) < needs[cat])) p.push('Finale: enough sentences for each requirement');
+  if (Object.values(needs).reduce((x, y) => x + y, 0) > (c.finale.compose.max || 6)) p.push('Finale: the sentence limit is lower than the requirements');
+  const o = c.finale.overclaim.options;
+  if (!o.some((x) => x.correct) || !o.some((x) => !x.correct)) p.push('Finale: at least one cautious and one overclaiming statement');
+  if (!(c.finale.rubric || []).length) p.push('Finale: at least one rubric item');
   if (c.collectibles.some((x) => !x.title || !x.activity)) p.push('Collectibles: a title and activity for each card');
-  if (c.reflection.some((q) => !q || !q.trim())) p.push('Reflection: two questions');
+  if (!c.reflection.length || c.reflection.some((q) => !q || !q.trim())) p.push('Reflection: at least one question, none empty');
   return p;
 };
 

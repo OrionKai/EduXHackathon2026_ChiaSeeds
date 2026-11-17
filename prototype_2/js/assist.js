@@ -202,71 +202,89 @@ const Assistant = (() => {
   const ta = (id, label, v, rows = 2, ph = '') => `<label class="fld" for="${id}">${label}</label><textarea class="input" id="${id}" rows="${rows}" placeholder="${esc(ph)}">${esc(v)}</textarea>`;
   const inp = (id, label, v, ph = '') => `<label class="fld" for="${id}">${label}</label><input class="input" id="${id}" value="${esc(v)}" placeholder="${esc(ph)}">`;
 
+  /* ---------- open-list editors: add and remove rows in place (typing is never lost) ---------- */
+  const leRow = (v, ph) => `<div class="le-row"><input class="input" data-le-item value="${esc(v)}" placeholder="${esc(ph)}"><button type="button" class="le-x" data-le-rm aria-label="Remove">✕</button></div>`;
+  function listEd(name, items, ph, add) {
+    const rows = (items && items.length ? items : ['']).map((v) => leRow(v, ph)).join('');
+    return `<div class="le" data-le="${name}" data-ph="${esc(ph)}">${rows}<button type="button" class="btn btn-ghost btn-sm le-add" data-le-add>${Art.icon('plus', 14)} ${esc(add)}</button></div>`;
+  }
+  const readList = (root, name) => [...root.querySelectorAll(`[data-le="${name}"] [data-le-item]`)].map((i) => i.value.trim()).filter(Boolean);
+  /* Statements with a "correct" tick (teach-back checks, finale statements). */
+  const lcRow = (x, ph) => `<div class="le-row"><label class="le-ok" title="Correct"><input type="checkbox" data-lc-ok ${x.correct ? 'checked' : ''}> correct</label><input class="input" data-le-item value="${esc(x.text)}" placeholder="${esc(ph)}"><button type="button" class="le-x" data-le-rm aria-label="Remove">✕</button></div>`;
+  function checkListEd(name, items, ph, add) {
+    const rows = (items && items.length ? items : [{ text: '', correct: true }, { text: '', correct: false }]).map((x) => lcRow(x, ph)).join('');
+    return `<div class="le" data-le="${name}" data-lc data-ph="${esc(ph)}">${rows}<button type="button" class="btn btn-ghost btn-sm le-add" data-le-add>${Art.icon('plus', 14)} ${esc(add)}</button></div>`;
+  }
+  const readCheckList = (root, name) => [...root.querySelectorAll(`[data-le="${name}"] .le-row`)].map((r) => ({ text: r.querySelector('[data-le-item]').value.trim(), correct: r.querySelector('[data-lc-ok]').checked })).filter((x) => x.text);
+  /* Quiz: any number of questions, 2–6 options each. */
+  let qzSeq = 0;
+  const qzOpt = (g, v, ok) => `<div class="le-row"><label class="le-ok" title="Correct answer"><input type="radio" name="${g}" ${ok ? 'checked' : ''}> right</label><input class="input" data-qz-opt value="${esc(v)}" placeholder="Option"><button type="button" class="le-x" data-qz-opt-rm aria-label="Remove option">✕</button></div>`;
+  function qzCard(q) {
+    const g = 'qz' + (++qzSeq), o = q && q.o && q.o.length ? q.o : ['', ''];
+    return `<div class="qz-card" data-qz-card><div class="spread"><span class="fld">Question</span><button type="button" class="btn btn-ghost btn-sm" data-qz-rm>Remove question</button></div>
+      <input class="input" data-qz-q value="${esc(q ? q.q : '')}" placeholder="What should students be able to answer at the object?">
+      <div class="stack" style="gap:6px" data-qz-opts data-g="${g}">${o.map((v, k) => qzOpt(g, v, (q ? q.a : 0) === k)).join('')}</div>
+      <button type="button" class="btn btn-ghost btn-sm le-add" data-qz-opt-add>${Art.icon('plus', 14)} Add option</button></div>`;
+  }
+  const readQuiz = (root) => [...root.querySelectorAll('[data-qz-card]')].map((c) => {
+    const rows = [...c.querySelectorAll('[data-qz-opts] .le-row')].map((r) => ({ v: r.querySelector('[data-qz-opt]').value.trim(), ok: r.querySelector('input[type=radio]').checked })).filter((x) => x.v);
+    const q = c.querySelector('[data-qz-q]').value.trim();
+    return q && rows.length >= 2 ? { q, o: rows.map((x) => x.v), a: Math.max(0, rows.findIndex((x) => x.ok)) } : null;
+  }).filter(Boolean);
+
+  const sec = (title, open, body) => `<details class="ed-sec" ${open ? 'open' : ''}><summary>${title}</summary><div class="stack" style="gap:6px;margin-top:8px">${body}</div></details>`;
   function trackEditor(t) {
-    const f = SEED.trackFields(Engine.state.content, t);
-    return `<form class="stack as-editor" style="gap:6px;margin-top:10px" data-as-trackform="${t}">
-      <div class="grid-2" style="gap:8px"><div>${inp('ed-name', 'Track name', f.name, 'e.g. Evidence Detectives')}</div><div>${inp('ed-loc', 'Location', f.location, 'e.g. Gallery 19 · Ancient Egypt')}</div></div>
-      ${inp('ed-key', 'Key object (used in the finale)', f.keyObject, 'e.g. the painted coffin set')}
-      ${ta('ed-narr', 'The question this track asks', f.narrative, 1)}
-      ${ta('ed-obs', 'What students do there', f.observe, 3)}
-      ${ta('ed-disc', 'Discussion question', f.discuss, 2)}
-      ${ta('ed-ev', 'Evidence prompts (one per line)', f.evidence.join('\n'), 3)}
-      ${ta('ed-hints', 'Hints, one per line (never the answer)', f.hints.join('\n'), 2)}
-      ${ta('ed-fb', 'Accessible or backup route', f.fallback, 1)}
-      ${inp('ed-teach', 'What they teach their home team (one line)', f.teachHeadline)}
-      <div class="grid-2" style="gap:8px"><div>${ta('ed-ok', 'Teach-back check: a correct summary', f.checkCorrect, 2)}</div><div>${ta('ed-no', 'Teach-back check: an overclaiming summary', f.checkIncorrect, 2)}</div></div>
-      <label class="toggle"><input type="checkbox" id="ed-partner" ${f.needsContributor ? 'checked' : ''}> Includes an arranged conversation with the community partner</label>
-      ${assessEditor(f.assess)}
+    const f = SEED.trackFields(Engine.state.content, t), a = f.assess, quiz = a.quiz || [];
+    const opt = (id, v, map) => `<select class="input" id="${id}">${Object.entries(map).map(([k, l]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+    return `<form class="stack as-editor" style="gap:8px;margin-top:10px" data-as-trackform="${t}">
+      ${sec('Basics', true, `<div class="grid-2" style="gap:8px"><div>${inp('ed-name', 'Track name', f.name, 'e.g. Evidence Detectives')}</div><div>${inp('ed-loc', 'Location', f.location, 'e.g. Gallery 19')}</div></div>
+        ${inp('ed-key', 'Key object (students photograph it; used in the finale)', f.keyObject)}${ta('ed-narr', 'The question this track asks', f.narrative, 1)}`)}
+      ${sec('At the place', false, `${ta('ed-obs', 'What students do there', f.observe, 3)}${ta('ed-disc', 'Discussion question', f.discuss, 2)}
+        <label class="toggle"><input type="checkbox" id="ed-partner" ${f.needsContributor ? 'checked' : ''}> Includes an arranged conversation with the community partner</label>
+        <span class="fld">Hints (never the answer)</span>${listEd('hints', f.hints, 'A hint that points back to the object', 'Add hint')}
+        ${inp('ed-fb', 'Accessible or backup route', f.fallback)}`)}
+      ${sec('Evidence &amp; quick check', quizOpen, `<span class="fld">Evidence prompts</span>${listEd('ev', f.evidence, 'What students record', 'Add prompt')}
+        <div class="grid-3" style="gap:8px"><div><label class="fld" for="as-ci">Check-in</label>${opt('as-ci', a.checkin, SEED.ASSESS_TEXT.checkin)}</div>
+          <div><label class="fld" for="as-ev">Evidence type</label>${opt('as-ev', a.evidence, SEED.ASSESS_TEXT.evidence)}</div>
+          <div><label class="fld" for="as-ver">Verified by</label>${opt('as-ver', a.verify, SEED.ASSESS_TEXT.verify)}</div></div>
+        <div class="stack" style="gap:4px"><span class="fld">Reference photo for the AI check (optional)</span>
+          ${refDraft ? `<img class="ev-photo" src="${refDraft}" alt="Reference photo">` : '<span class="hint-note">Without one, the AI matches the photo against the key object’s name.</span>'}
+          <label class="btn btn-ghost btn-sm" for="as-ref" style="align-self:flex-start">${refDraft ? 'Replace photo' : 'Add a photo'}</label><input id="as-ref" type="file" accept="image/*" hidden>
+          ${refDraft ? '<button class="btn btn-ghost btn-sm" type="button" data-as-ref-clear style="align-self:flex-start">Remove photo</button>' : ''}</div>
+        <span class="fld">Quick check (multiple choice)</span>
+        <div class="stack" style="gap:8px" data-qz>${(quiz.length ? quiz : quizOpen ? [null] : []).map(qzCard).join('')}</div>
+        <button type="button" class="btn btn-ghost btn-sm le-add" data-qz-add>${Art.icon('plus', 14)} Add question</button>
+        <div class="row"><label class="fld" for="as-pass" style="margin:0">Pass mark (questions right)</label><input class="input" id="as-pass" type="number" min="1" value="${a.pass || 1}" style="width:90px"></div>`)}
+      ${sec('Teach-back', false, `${inp('ed-teach', 'What they teach their home team (one line)', f.teachHeadline)}
+        <span class="fld">Check statements a teammate chooses from (tick the correct ones)</span>${checkListEd('chk', f.checks, 'A summary of what this expert found', 'Add statement')}`)}
       <div class="row"><button class="btn btn-primary btn-sm" type="submit">Save track</button><button class="btn btn-ghost btn-sm" type="button" data-as-edit-cancel>Cancel</button></div></form>`;
   }
-  const opt = (id, v, map) => `<select class="input" id="${id}">${Object.entries(map).map(([k, l]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
-  function assessEditor(a) {
-    const T = SEED.ASSESS_TEXT, quiz = a.quiz || [];
-    const slot = (i) => { const q = quiz[i] || { q: '', o: ['', '', '', ''], a: 0 }; const o = [...q.o, '', '', '', ''].slice(0, 4);
-      return `<fieldset class="as-fs"><legend>Question ${i + 1}${i ? ' (optional)' : ''}</legend>${inp('qz-q' + i, 'Question', q.q)}
-        ${o.map((x, k) => `<label class="quiz-o"><input type="radio" name="qz-a${i}" value="${k}" ${q.a === k ? 'checked' : ''} aria-label="Correct answer"><input class="input" id="qz-o${i}-${k}" value="${esc(x)}" placeholder="Option ${k + 1}${k === 0 ? ' (tick the correct one)' : ''}"></label>`).join('')}</fieldset>`; };
-    return `<fieldset class="as-fs assess"><legend>How this track is assessed</legend>
-      <div class="grid-3" style="gap:8px"><div><label class="fld" for="as-ci">Check-in at the place</label>${opt('as-ci', a.checkin, T.checkin)}</div>
-        <div><label class="fld" for="as-ev">Evidence students submit</label>${opt('as-ev', a.evidence, T.evidence)}</div>
-        <div><label class="fld" for="as-ver">Verified by</label>${opt('as-ver', a.verify, T.verify)}</div></div>
-      <div class="stack" style="gap:4px"><span class="fld">Reference photo for the AI check (optional)</span>
-        ${refDraft ? `<img class="ev-photo" src="${refDraft}" alt="Reference photo">` : '<span class="hint-note">Without one, the AI matches the photo against the key object’s name.</span>'}
-        <label class="btn btn-ghost btn-sm" for="as-ref" style="align-self:flex-start">${refDraft ? 'Replace photo' : 'Add a photo'}</label><input id="as-ref" type="file" accept="image/*" hidden>
-        ${refDraft ? '<button class="btn btn-ghost btn-sm" type="button" data-as-ref-clear style="align-self:flex-start">Remove photo</button>' : ''}</div>
-      <label class="toggle"><input type="checkbox" id="as-qz" ${quiz.length || quizOpen ? 'checked' : ''}> Add a multiple-choice check</label>
-      <div class="stack" style="gap:8px" id="as-qz-box" ${quiz.length || quizOpen ? '' : 'hidden'}>${[0, 1, 2].map(slot).join('')}
-        <label class="fld" for="as-pass">Pass mark (questions right)</label><select class="input" id="as-pass" style="width:auto">${[1, 2, 3].map((n) => `<option value="${n}" ${a.pass === n ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
-    </fieldset>`;
-  }
   function readAssess(f) {
-    const v = (id) => f.querySelector('#' + id).value;
-    const quiz = !f.querySelector('#as-qz').checked ? [] : [0, 1, 2].map((i) => {
-      const q = v('qz-q' + i).trim(), o = [0, 1, 2, 3].map((k) => v(`qz-o${i}-${k}`).trim()).filter(Boolean);
-      const c = f.querySelector(`[name="qz-a${i}"]:checked`);
-      return q && o.length >= 2 ? { q, o, a: Math.min(Number(c ? c.value : 0), o.length - 1) } : null;
-    }).filter(Boolean);
-    return { checkin: v('as-ci'), evidence: v('as-ev'), verify: v('as-ver'), quiz, pass: quiz.length ? Math.min(Number(v('as-pass')), quiz.length) : 0 };
+    const v = (id) => f.querySelector('#' + id).value, quiz = readQuiz(f);
+    return { checkin: v('as-ci'), evidence: v('as-ev'), verify: quiz.length || v('as-ver') !== 'auto' ? v('as-ver') : 'teacher', quiz, pass: quiz.length ? Math.max(1, Math.min(Number(v('as-pass')) || 1, quiz.length)) : 0 };
   }
 
   function finaleEditor(f) {
-    return `<form class="stack as-editor" style="gap:6px;margin-top:10px" data-as-finaleform>
-      ${inp('fe-title', 'Finale title', f.title)}
-      <div class="grid-2" style="gap:8px"><div>${ta('fe-ok', 'Cautious statement (correct)', f.cautious, 2)}</div><div>${ta('fe-no', 'Overclaiming statement (wrong)', f.overclaim, 2)}</div></div>
-      ${ta('fe-ev', 'Evidence sentences, one per line (at least 2)', f.evidence.join('\n'), 3)}
-      ${inp('fe-per', 'A sentence about different perspectives', f.perspectives)}
-      ${inp('fe-unc', 'A sentence naming an uncertainty', f.uncertainty)}
-      ${inp('fe-inv', 'A sentence inviting a question', f.invite)}
-      ${inp('fe-trap', 'A tempting overclaim (students must leave it out)', f.trap)}
+    const cats = Object.entries(SEED.FINALE_CATS);
+    return `<form class="stack as-editor" style="gap:8px;margin-top:10px" data-as-finaleform>
+      ${sec('Basics', true, inp('fe-title', 'Finale title', f.title))}
+      ${sec('Panel 2: spot the overclaim', false, `${inp('fe-q', 'Question', f.question)}
+        <span class="fld">Statements (tick the cautious ones)</span>${checkListEd('fe-opts', f.options, 'A statement', 'Add statement')}`)}
+      ${sec('Panel 3: build the answer', false, `${cats.map(([k, l]) => `<div class="stack" style="gap:4px"><div class="spread"><span class="fld">${l}</span>
+          <label class="row" style="gap:6px;font-size:13px">at least <input class="input" type="number" min="0" data-need="${k}" value="${f.needs[k] || 0}" style="width:70px"></label></div>
+          ${listEd('fe-' + k, f[k], 'A sentence students can choose', 'Add sentence')}</div>`).join('')}
+        <span class="fld">Tempting overclaims (students must leave these out)</span>${listEd('fe-traps', f.traps, 'An overclaiming sentence', 'Add overclaim')}
+        <div class="row"><label class="fld" for="fe-max" style="margin:0">Most sentences a team may pick</label><input class="input" id="fe-max" type="number" min="1" value="${f.max}" style="width:90px"></div>`)}
+      ${sec('Rubric (you tick every item to approve)', false, listEd('fe-rubric', f.rubric, 'A rubric item', 'Add item'))}
       <div class="row"><button class="btn btn-primary btn-sm" type="submit">Save finale</button><button class="btn btn-ghost btn-sm" type="button" data-as-edit-cancel>Cancel</button></div></form>`;
   }
+
   function extrasEditor(c) {
     return `<form class="stack as-editor" style="gap:6px;margin-top:10px" data-as-extrasform>
       ${ta('ex-open', 'Story opening (students read this at the briefing)', c.story.opening, 3)}
-      ${inp('ex-r0', 'Reflection question 1', c.reflection[0] || '')}
-      ${inp('ex-r1', 'Reflection question 2', c.reflection[1] || '')}
+      <span class="fld">Reflection questions</span>${listEd('refl', c.reflection, 'A reflection question', 'Add question')}
       <div class="row"><button class="btn btn-primary btn-sm" type="submit">Save</button><button class="btn btn-ghost btn-sm" type="button" data-as-edit-cancel>Cancel</button></div></form>`;
   }
-
 
   function sourcesCard() {
     const st = Engine.state, locked = st.quest.status === 'PUBLISHED';
@@ -465,7 +483,24 @@ const Assistant = (() => {
   }
 
   /* ---------------- events ---------------- */
+  let delegated = false;
+  function delegate() {
+    if (delegated) return; delegated = true;
+    document.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-le-add],[data-le-rm],[data-qz-add],[data-qz-rm],[data-qz-opt-add],[data-qz-opt-rm]');
+      if (!el) return;
+      e.preventDefault();
+      if (el.matches('[data-le-add]')) { const box = el.closest('[data-le]'), ph = box.dataset.ph || ''; el.insertAdjacentHTML('beforebegin', box.hasAttribute('data-lc') ? lcRow({ text: '', correct: false }, ph) : leRow('', ph)); el.previousElementSibling.querySelector('[data-le-item]').focus(); }
+      else if (el.matches('[data-le-rm]')) { const box = el.closest('[data-le]'); if (box.querySelectorAll('.le-row').length > 1) el.closest('.le-row').remove(); else el.closest('.le-row').querySelector('[data-le-item]').value = ''; }
+      else if (el.matches('[data-qz-add]')) { el.previousElementSibling.insertAdjacentHTML('beforeend', qzCard(null)); }
+      else if (el.matches('[data-qz-rm]')) { el.closest('[data-qz-card]').remove(); }
+      else if (el.matches('[data-qz-opt-add]')) { const box = el.previousElementSibling; if (box.querySelectorAll('.le-row').length >= 6) return window.WQ.toast('Six options is the most.', 'error'); box.insertAdjacentHTML('beforeend', qzOpt(box.dataset.g, '', false)); }
+      else if (el.matches('[data-qz-opt-rm]')) { const box = el.closest('[data-qz-opts]'); if (box.querySelectorAll('.le-row').length <= 2) return window.WQ.toast('A question needs at least two options.', 'error'); el.closest('.le-row').remove(); }
+    });
+  }
+
   function bind(root) {
+    delegate();
     const on = (sel, ev, fn) => root.querySelectorAll(sel).forEach((el) => el.addEventListener(ev, (e) => fn(el, e)));
     on('[data-as-chip]', 'click', (b) => (b.dataset.asChip === 'draft' ? scriptedDraft() : runRev(REVS.find((r) => r.id === b.dataset.asChip))));
     on('[data-as-gen]', 'click', () => {
@@ -490,34 +525,34 @@ const Assistant = (() => {
       img.src = URL.createObjectURL(file);
     });
     on('[data-as-edit-cancel]', 'click', () => { editing = null; quizOpen = false; window.WQ.render(); });
-    on('[data-as-block]', 'click', (b) => { const [tk, g, v] = b.dataset.asBlock.split('|'); const r = toggleBlock(tk, g, v); if (r && !r.ok && r.msg) window.WQ.toast(r.msg, 'error'); window.WQ.render(); if (v === 'quiz' && editing === tk) document.getElementById('as-qz-box')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+    on('[data-as-block]', 'click', (b) => { const [tk, g, v] = b.dataset.asBlock.split('|'); const r = toggleBlock(tk, g, v); if (r && !r.ok && r.msg) window.WQ.toast(r.msg, 'error'); window.WQ.render(); if (v === 'quiz' && editing === tk) document.querySelector('[data-qz]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
     on('[data-as-collform]', 'submit', (f, e) => {
       e.preventDefault();
       const v = (id) => f.querySelector('#' + id).value;
       editing = null;
       window.WQ.act('editCollectible', { collectibleId: f.dataset.asCollform, fields: { title: v('ce-t'), kind: v('ce-k'), track: v('ce-tr'), activity: v('ce-a'), fact: v('ce-f'), hidden: f.querySelector('#ce-h').checked, evolves: f.querySelector('#ce-e').checked } });
     });
-    on('#as-qz', 'change', (c) => { const box = document.getElementById('as-qz-box'); if (box) box.hidden = !c.checked; });
     on('[data-as-trackform]', 'submit', (f, e) => {
       e.preventDefault();
-      const v = (id) => f.querySelector('#' + id).value.trim(), t = f.dataset.asTrackform, old = SEED.trackFields(Engine.state.content, t);
-      editing = null;
-      window.WQ.act('editTrack', { topic: t, fields: { name: v('ed-name'), location: v('ed-loc'), keyObject: v('ed-key'), narrative: v('ed-narr'), observe: v('ed-obs'), discuss: v('ed-disc'),
-        evidence: lines(v('ed-ev')), hints: lines(v('ed-hints')), fallback: v('ed-fb'), teachHeadline: v('ed-teach'), checkCorrect: v('ed-ok'), checkIncorrect: v('ed-no'),
-        needsContributor: f.querySelector('#ed-partner').checked, sourceFact: old.sourceFact, sourceUrl: old.sourceUrl, assess: readAssess(f), refPhoto: refDraft } });
-      refDraft = null; quizOpen = false;
+      const v = (id) => f.querySelector('#' + id).value.trim(), tk = f.dataset.asTrackform, old = SEED.trackFields(Engine.state.content, tk);
+      const fields = { name: v('ed-name'), location: v('ed-loc'), keyObject: v('ed-key'), narrative: v('ed-narr'), observe: v('ed-obs'), discuss: v('ed-disc'),
+        evidence: readList(f, 'ev'), hints: readList(f, 'hints'), fallback: v('ed-fb'), teachHeadline: v('ed-teach'), checks: readCheckList(f, 'chk'),
+        needsContributor: f.querySelector('#ed-partner').checked, sourceFact: old.sourceFact, sourceUrl: old.sourceUrl, assess: readAssess(f), refPhoto: refDraft };
+      editing = null; refDraft = null; quizOpen = false;
+      window.WQ.act('editTrack', { topic: tk, fields });
     });
     on('[data-as-finaleform]', 'submit', (f, e) => {
       e.preventDefault();
-      const v = (id) => f.querySelector('#' + id).value.trim();
+      const fields = { title: f.querySelector('#fe-title').value.trim(), question: f.querySelector('#fe-q').value.trim(), options: readCheckList(f, 'fe-opts'),
+        traps: readList(f, 'fe-traps'), rubric: readList(f, 'fe-rubric'), max: Number(f.querySelector('#fe-max').value) || 6, needs: {} };
+      Object.keys(SEED.FINALE_CATS).forEach((k) => { fields[k] = readList(f, 'fe-' + k); fields.needs[k] = Number(f.querySelector(`[data-need="${k}"]`).value) || 0; });
       editing = null;
-      window.WQ.act('editFinale', { fields: { title: v('fe-title'), cautious: v('fe-ok'), overclaim: v('fe-no'), evidence: lines(v('fe-ev')), perspectives: v('fe-per'), uncertainty: v('fe-unc'), invite: v('fe-inv'), trap: v('fe-trap') } });
+      window.WQ.act('editFinale', { fields });
     });
     on('[data-as-extrasform]', 'submit', (f, e) => {
       e.preventDefault();
-      const v = (id) => f.querySelector('#' + id).value.trim();
       editing = null;
-      window.WQ.act('editExtras', { opening: v('ex-open'), reflection: [v('ex-r0'), v('ex-r1')] });
+      window.WQ.act('editExtras', { opening: f.querySelector('#ex-open').value.trim(), reflection: readList(f, 'refl') });
     });
     on('[data-as-rmsrc]', 'click', (b) => window.WQ.act('removeSource', { id: b.dataset.asRmsrc }));
     on('[data-as-src]', 'submit', (sf, e) => { e.preventDefault(); window.WQ.act('addSource', { title: sf.querySelector('#src-title').value, url: sf.querySelector('#src-url').value, text: sf.querySelector('#src-text').value }); });
@@ -529,5 +564,5 @@ const Assistant = (() => {
     });
   }
 
-  return { chat, board, bind, generate, setSpeed: (v) => { speed = v; }, setMode: (m) => { mode = m; } };
+  return { chat, board, bind, generate, listEd, readList, setSpeed: (v) => { speed = v; }, setMode: (m) => { mode = m; } };
 })();

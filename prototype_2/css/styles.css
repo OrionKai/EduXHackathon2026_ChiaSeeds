@@ -612,3 +612,16 @@ a.brand { text-decoration: none; color: inherit; }
 .exp-sub { border-top: 1px dashed var(--stroke); padding-top: 4px; margin-top: 4px; }
 .exp-sub:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
 .builder-left { position: static !important; }
+
+/* ---------- open-list editors ---------- */
+.le { display: flex; flex-direction: column; gap: 6px; }
+.le-row { display: flex; gap: 6px; align-items: center; }
+.le-row .input { flex: 1; min-width: 0; }
+.le-x { border: 0; background: var(--paper); color: var(--muted); border-radius: 8px; width: 32px; height: 32px; cursor: pointer; flex: none; }
+.le-x:hover { background: var(--peach); color: var(--danger); }
+.le-ok { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); flex: none; }
+.le-ok input { width: auto; }
+.le-add { align-self: flex-start; }
+.qz-card { border: 1px solid var(--stroke); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 6px; background: var(--white); }
+.ed-sec { border: 1px solid var(--stroke); border-radius: 12px; padding: 8px 12px; background: var(--white); }
+.ed-sec > summary { cursor: pointer; font-weight: 700; }
