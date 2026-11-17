@@ -6,7 +6,7 @@
  *   to /api/assistant with nicknames replaced by "Student 1, 2…"; the reply groups possible
  *   misconceptions, each with verbatim quotes and a debrief question. Quotes that don't appear in a
  *   student's answer are dropped. Results are suggestions for the teacher, never grades, never shown
- *   to students. When live AI is off, the example quest uses a scripted analysis of the same answers.
+ *   to students. Live AI only: when it is off, the button says how to turn it on.
  */
 const Insights = (() => {
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -45,24 +45,7 @@ const Insights = (() => {
       .map((p, i) => ({ sid: 'Student ' + (i + 1), pid: p.id,
         text: m.evidenceFields.map((f) => `${f.label}: ${String(st.evidence[p.id].answers[f.key] || '').slice(0, 400)}`).join('\n') }));
   }
-  const sample = (st, t) => (SEED.SAMPLE_INSIGHTS[st.quest.templateId] || {})[t] || null;
   const liveOn = () => typeof Assistant !== 'undefined' && Assistant.getMode() === 'live';
-
-  /* Scripted analysis for the example quest: groups the answers that match known sample answers. */
-  function scripted(st, t, answers) {
-    const b = sample(st, t);
-    const field = SEED.missions[t].evidenceFields.find((f) => f.key === b.field) || {};
-    const byTheme = {};
-    for (const a of answers) {
-      const val = String((st.evidence[a.pid].answers || {})[b.field] || '');
-      const hit = b.answers.find((x) => norm(x.text) === norm(val));
-      if (hit && hit.theme) (byTheme[hit.theme] = byTheme[hit.theme] || []).push({ sid: a.sid, quote: val });
-    }
-    const themes = Object.entries(byTheme).map(([id, q]) => ({ id, ...b.themes[id], students: q.map((x) => x.sid), quotes: q.slice(0, 3) }));
-    const crit = SEED.missions[t].criteria || [];
-    themes.forEach((th) => { th.basis = th.crit != null && crit[th.crit] ? 'Success criterion: ' + crit[th.crit] : th.basis || ''; });
-    return { by: 'scripted', themes, cannot: [], strengths: b.strengths ? [b.strengths] : [], note: `Grouped by matching the “${field.label || 'last'}” answers against the example quest’s known answers.` };
-  }
 
   const apiPost = async (body) => {
     let pass = ''; try { pass = localStorage.getItem('wq-ai-pass') || ''; } catch {}
@@ -80,17 +63,17 @@ const Insights = (() => {
   const basisLine = (st, t, by) => {
     const g = groundOf(st, t), parts = [];
     if (g.criteria.length) parts.push(`${g.criteria.length} success criteri${g.criteria.length === 1 ? 'on' : 'a'}`);
-    if (by !== 'scripted' && g.sources.length) parts.push(`${g.sources.length} approved source${g.sources.length === 1 ? '' : 's'}`);
-    if (g.correct_statement) parts.push(by === 'scripted' ? 'your example answers' : 'your teach-back answer key');
+    if (g.sources.length) parts.push(`${g.sources.length} approved source${g.sources.length === 1 ? '' : 's'}`);
+    if (g.correct_statement) parts.push('your teach-back answer key');
     return parts.length ? `Checked against: ${parts.join(' · ')}` : '';
   };
 
-  async function analyse(topic, how) {
+  async function analyse(topic) {
     const st = Engine.state, answers = answersFor(st, topic);
     if (!answers.length) return window.WQ.toast('No written answers for this track yet.', 'error');
     let result = null;
     busy[topic] = true; window.WQ.render();
-    if (how === 'ai' && liveOn()) {
+    if (liveOn()) {
         try {
         const r = await apiPost({ mode: 'misconceptions', audience: audienceOf(st.quest), track: trackBrief(SEED.missions[topic], st),
           answers: answers.map((a) => ({ id: a.sid, text: a.text })) });
@@ -106,9 +89,8 @@ const Insights = (() => {
         } else if (res.status === 401) window.WQ.toast('Live AI needs the demo passcode (Quest builder → assistant).', 'error');
       } catch { /* network: fall through */ }
     }
-    if (how !== 'ai' && sample(st, topic)) result = scripted(st, topic, answers);
     busy[topic] = false;
-    if (!result) { window.WQ.render(); return window.WQ.toast(how === 'ai' ? 'Live AI didn’t answer — try again, or use the scripted analysis.' : 'Turn on live AI in the Quest builder to analyse this track.', 'error'); }
+    if (!result) { window.WQ.render(); return window.WQ.toast(liveOn() ? 'Live AI didn’t answer — try again in a moment.' : 'Turn on live AI in the Quest builder to analyse answers.', 'error'); }
     chats[ck(topic)] = [];
     result.n = answers.length; result.at = Date.now(); result.basisLine = basisLine(st, topic, result.by);
     result.who = Object.fromEntries(answers.map((a) => [a.sid, a.pid])); // names are never sent to the AI; this map stays on this device
@@ -117,14 +99,13 @@ const Insights = (() => {
 
   function analysisCard(st, t) {
     const a = getA(st, t), n = answersFor(st, t).length;
-    const label = a ? (a.by === 'ai' ? 'AI suggestion — check before acting' : 'Scripted example analysis (demo)') : '';
+    const label = 'AI suggestion — check before acting';
     const name = (sid) => { const p = a && a.who && SEED.byId[a.who[sid]]; return p ? `${esc(sid)} (${esc(st.seats && st.seats[p.id] ? st.seats[p.id].nick : p.name)})` : esc(sid); };
     return `<div class="stack" style="gap:8px">
       <div class="row" style="gap:8px">
-        ${sample(st, t) ? `<button class="btn btn-secondary btn-sm" data-ins="${t}" data-how="scripted" ${busy[t] || !n ? 'disabled' : ''}>${Art.icon('sparkle', 15)} ${busy[t] ? 'Analysing…' : 'Analyse written answers'} (${n})</button><span class="pill plain">scripted · same result every time</span>` : ''}
-        ${liveOn() ? `<button class="btn btn-ghost btn-sm" data-ins="${t}" data-how="ai" ${busy[t] || !n ? 'disabled' : ''}>${Art.icon('sparkle', 15)} Analyse with live AI</button>`
-          : sample(st, t) ? '' : `<span class="hint-note">Turn on live AI in the Quest builder to analyse these ${n} answers.</span>`}
-        ${a ? `<span class="pill ${a.by === 'ai' ? 'lavender' : 'plain'}">${label}</span>` : ''}</div>
+        <button class="btn btn-secondary btn-sm" data-ins="${t}" ${busy[t] || !n || !liveOn() ? 'disabled' : ''}>${Art.icon('sparkle', 15)} ${busy[t] ? 'Analysing…' : a ? 'Analyse again with live AI' : 'Analyse with live AI'} (${n} answer${n === 1 ? '' : 's'})</button>
+        ${liveOn() ? '' : '<span class="hint-note">Live AI is off — switch the assistant’s “AI” button to live in the Quest builder.</span>'}
+        ${a ? `<span class="pill lavender">${label}</span>` : ''}</div>
       ${!groundOf(st, t).criteria.length ? `<p class="hint-note" style="margin:0">${Art.icon('alert', 14)} No success criteria for this track yet — add “What a good answer includes” in the Quest builder so answers are checked against your expectations.</p>` : ''}
       ${a && a.basisLine ? `<p class="hint-note" style="margin:0">${esc(a.basisLine)}</p>` : ''}
       ${a ? (a.themes.length ? a.themes.map((th) => `<div class="ins-theme">
@@ -140,42 +121,29 @@ const Insights = (() => {
     </div>`;
   }
 
-  /* ----- follow-up conversation: chips are scripted (example quest), typed questions go to the live AI ----- */
+  /* ----- follow-up conversation with the live AI (suggestions are just ready-made questions) ----- */
   const chats = {};
   const ck = (t) => Engine.state.activeQuest + ':' + t; // follow-up chats belong to one quest
-  const CHIPS = [['why', 'Why might students think this?'], ['activity', 'Suggest a 5-minute activity for tomorrow'], ['exit', 'Draft an exit-ticket question']];
-  function scriptedReply(st, a, kind) {
-    const fu = SEED.SAMPLE_FOLLOWUPS[st.quest.templateId] || {};
-    const items = a.themes.filter((th) => th.id && fu[th.id]);
-    if (!items.length) return 'Nothing to follow up — no clear misconceptions were found.';
-    const intro = { why: 'Likely reasons:', activity: 'A quick activity for each:', exit: 'Exit-ticket questions:' }[kind];
-    return intro + '\n' + items.map((th) => `• ${th.title}: ${fu[th.id][kind]}`).join('\n');
-  }
+  const CHIPS = ['Why might students think this?', 'Suggest a 5-minute activity for tomorrow', 'Draft an exit-ticket question'];
   function chatBox(st, t, a) {
-    const msgs = chats[ck(t)] || [], chips = a.by === 'scripted' && SEED.SAMPLE_FOLLOWUPS[st.quest.templateId];
+    const msgs = chats[ck(t)] || [], chips = liveOn();
     const pending = msgs.length && msgs[msgs.length - 1].who === 'you';
     return `<div class="ins-chat">
       <div class="eyebrow">Plan the follow-up</div>
-      ${msgs.map((m) => `<div class="ins-msg ${m.who}">${m.who !== 'you' ? `<small class="hint-note">${m.who === 'ai' ? 'AI suggestion' : 'scripted'}</small><br>` : ''}${esc(m.text).replace(/\n/g, '<br>')}</div>`).join('')}
+      ${msgs.map((m) => `<div class="ins-msg ${m.who}">${m.who !== 'you' ? '<small class="hint-note">AI suggestion</small><br>' : ''}${esc(m.text).replace(/\n/g, '<br>')}</div>`).join('')}
       ${pending ? '<p class="hint-note" style="margin:0">Thinking…</p>' : ''}
-      ${chips ? `<div class="row" style="gap:6px">${CHIPS.map(([k, l]) => `<button class="as-chip" type="button" data-ins-chip="${k}" data-topic="${t}" ${pending ? 'disabled' : ''}>${esc(l)}</button>`).join('')}<span class="pill plain">scripted · same reply every time</span></div>` : ''}
+      ${chips ? `<div class="row" style="gap:6px">${CHIPS.map((l, k) => `<button class="as-chip" type="button" data-ins-chip="${k}" data-topic="${t}" ${pending ? 'disabled' : ''}>${esc(l)}</button>`).join('')}</div>` : ''}
       <form class="row" data-ins-form="${t}" style="gap:6px"><label class="sr-only" for="ins-q-${t}">Ask about these answers</label>
-        <input class="input" id="ins-q-${t}" style="flex:1;min-width:160px" maxlength="500" placeholder="${liveOn() ? 'Ask the AI about these answers…' : 'Live AI is off — use the suggestions'}" ${liveOn() && !pending ? '' : 'disabled'}>
+        <input class="input" id="ins-q-${t}" style="flex:1;min-width:160px" maxlength="500" placeholder="${liveOn() ? 'Ask the AI about these answers…' : 'Live AI is off'}" ${liveOn() && !pending ? '' : 'disabled'}>
         <button class="btn btn-secondary btn-sm" type="submit" ${liveOn() && !pending ? '' : 'disabled'}>Ask</button></form>
     </div>`;
   }
-  async function chip(t, kind) {
-    const st = Engine.state, a = getA(st, t); if (!a) return;
-    const msgs = chats[ck(t)] = chats[ck(t)] || [];
-    msgs.push({ who: 'you', text: CHIPS.find((c) => c[0] === kind)[1] }); window.WQ.render();
-    await new Promise((r) => setTimeout(r, 450));
-    msgs.push({ who: 'scripted', text: scriptedReply(st, a, kind) }); window.WQ.render();
-  }
+  const chip = (t, k) => ask(t, CHIPS[Number(k)]);
   async function ask(t, text) {
     const st = Engine.state, a = getA(st, t), q = String(text || '').trim();
     if (!a || !q || !liveOn()) return;
     const msgs = chats[ck(t)] = chats[ck(t)] || [];
-    const history = msgs.filter((m) => m.who !== 'scripted').slice(-6).map((m) => ({ role: m.who === 'you' ? 'user' : 'assistant', content: m.text }));
+    const history = msgs.slice(-6).map((m) => ({ role: m.who === 'you' ? 'user' : 'assistant', content: m.text }));
     msgs.push({ who: 'you', text: q }); window.WQ.render();
     let reply = '';
     try {
@@ -184,7 +152,7 @@ const Insights = (() => {
         findings: a.themes.map((th) => ({ title: th.title, explanation: th.explain })), answers: answers.map((x) => ({ id: x.sid, text: x.text })) });
       reply = r.data && r.data.reply ? r.data.reply : r.status === 401 ? 'Live AI needs the demo passcode (Quest builder → assistant).' : '';
     } catch {}
-    msgs.push({ who: 'ai', text: reply || 'Live AI didn’t answer — try again, or use the suggestions.' }); window.WQ.render();
+    msgs.push({ who: 'ai', text: reply || 'Live AI didn’t answer — try again in a moment.' }); window.WQ.render();
   }
 
   function section(st) {
@@ -203,7 +171,7 @@ const Insights = (() => {
   }
 
   function bind(root) {
-    root.querySelectorAll('[data-ins]').forEach((b) => b.addEventListener('click', () => analyse(b.dataset.ins, b.dataset.how)));
+    root.querySelectorAll('[data-ins]').forEach((b) => b.addEventListener('click', () => analyse(b.dataset.ins)));
     root.querySelectorAll('[data-ins-chip]').forEach((b) => b.addEventListener('click', () => chip(b.dataset.topic, b.dataset.insChip)));
     root.querySelectorAll('[data-ins-form]').forEach((f) => f.addEventListener('submit', (e) => { e.preventDefault(); ask(f.dataset.insForm, f.querySelector('input').value); }));
   }
