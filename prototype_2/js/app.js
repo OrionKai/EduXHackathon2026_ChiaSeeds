@@ -75,7 +75,7 @@
   const DEFAULT_SCREEN = { student: 'adventure', teacher: 'dashboard', collaborator: 'review' };
   const NAV = {
     student: [['adventure', 'sparkle', 'My adventure'], ['map', 'map', 'Quest map'], ['album', 'trophy', 'Class album']],
-    teacher: [['dashboard', 'map', 'Overview'], ['builder', 'pencil', 'Quest builder'], ['teams', 'team', 'Teams'], ['live', 'eye', 'Live session'], ['album', 'trophy', 'Album'], ['report', 'book', 'Report']],
+    teacher: [['dashboard', 'map', 'My quests'], ['builder', 'pencil', 'Quest builder'], ['next', 'arrow', 'Next experience'], ['teams', 'team', 'Teams'], ['live', 'eye', 'Live session'], ['album', 'trophy', 'Album'], ['report', 'book', 'Report']],
     collaborator: [['review', 'pencil', 'Review contribution'], ['facilitate', 'voices', 'Facilitate'], ['work', 'book', 'Student work']],
   };
   const currentRole = () => ROUTES[location.hash.slice(1)] || null;
@@ -284,9 +284,9 @@
       case 'BRIEFING': return briefingScreen(me) + phasePath(st);
       case 'EXPERT': return missionScreen(st, me) + phasePath(st);
       case 'PEER_TEACH': return teachScreen(st, me) + phasePath(st);
-      case 'FINALE': return finaleScreen(st, me) + bonusCardFor(st, me) + phasePath(st);
-      case 'REFLECTION': return reflectionScreen(st, me) + bonusCardFor(st, me) + phasePath(st);
-      case 'COMPLETE': return completeScreen(st, me) + phasePath(st);
+      case 'FINALE': return finaleScreen(st, me) + bonusCardFor(st, me) + nextExperienceCard(st, me) + phasePath(st);
+      case 'REFLECTION': return reflectionScreen(st, me) + bonusCardFor(st, me) + nextExperienceCard(st, me) + phasePath(st);
+      case 'COMPLETE': return completeScreen(st, me) + nextExperienceCard(st, me) + bonusCardFor(st, me) + phasePath(st);
       default: return '';
     }
   }
@@ -575,27 +575,44 @@
   function bonusCardFor(st, me) {
     const card = SEED.collectibles.find((c) => c.home === me.home);
     if (!card) return '';
-    const b = st.bonus[card.id];
-    const claimed = !!st.claims[card.id];
+    const b = st.bonus[card.id], claimed = !!st.claims[card.id];
+    if (card.hidden && !claimed) return '';
+    const rule = card.kind === 'track' ? `Your team’s ${esc(SEED.missions[card.track].name || 'Track ' + card.track)} expert is verified` : esc(SEED.EARN_TEXT[card.kind] || '');
     return `
       <div class="card" style="background:var(--grad-collect)">
-        <div class="spread"><div class="eyebrow sun">Bonus discovery · optional</div>${claimed ? statusChip('CLAIMED') : statusChip(b.status)}</div>
+        <div class="spread"><div class="eyebrow sun">Team collectible · optional</div>${claimed ? statusChip('CLAIMED') : card.kind === 'bonus' ? statusChip(b.status) : '<span class="pill plain">not yet</span>'}</div>
         <div class="grid-2" style="grid-template-columns: 110px 1fr; gap:16px">
           <div class="collect-card ${claimed ? 'claimed' : 'locked'}" style="max-width:110px;cursor:default">${claimed ? Art.collectibleArt[card.id]() : Art.lockedArt()}</div>
           <div>
-            <h3>${esc(card.title)}</h3>
-            <p class="hint-note">${esc(card.activity)} This side quest never blocks the main quest.</p>
+            <h3>${esc(card.title)}${st.evolved[card.id] ? ' <span class="pill sun">Level 2</span>' : ''}</h3>
             ${claimed ? `<p style="margin:0"><strong>Earned for the class album!</strong> ${esc(card.fact)}</p>`
+              : card.kind !== 'bonus' ? `<p class="hint-note" style="margin:0">Earned when: ${rule}.</p>`
               : b.status === 'SUBMITTED' ? `<p style="margin:0">Submitted — awaiting educator approval.</p>`
-              : `<form data-form="bonus" data-card="${card.id}">
-                  <label class="fld" for="bonus-a">${esc(card.promptLabel)}</label>
+              : `<p class="hint-note">${esc(card.activity)} This never blocks the main quest.</p><form data-form="bonus" data-card="${card.id}">
+                  <label class="fld" for="bonus-a">${esc(card.promptLabel || 'Your team’s discovery')}</label>
                   <textarea class="input" id="bonus-a" name="answer" rows="2"></textarea>
                   <div style="margin-top:10px"><button class="btn btn-sun btn-sm" type="submit">${Art.icon('sparkle', 16)} Submit discovery</button></div>
                 </form>`}
+            ${claimed && card.evolves && !st.evolved[card.id] && st.quest.next && st.quest.next.enabled ? `<p class="hint-note" style="margin:6px 0 0">Levels up when your team checks in at the next experience.</p>` : ''}
           </div>
         </div>
       </div>`;
   }
+
+  function nextExperienceCard(st, me) {
+    const n = st.quest.next, ex = st.experience;
+    if (!n || !n.enabled || !n.activity) return '';
+    const here = !!ex.checkins[me.id];
+    return `<div class="card next-exp">
+      <div class="spread"><div class="eyebrow teal">Next real experience</div><span class="pill ${ex.unlocked ? 'mint' : 'plain'}">${here ? 'checked in' : ex.unlocked ? 'unlocked' : 'locked'}</span></div>
+      <h3 style="margin:4px 0">${esc(n.activity)}</h3>
+      <p class="hint-note" style="margin:0">${esc(n.provider)}${n.when ? ' · ' + esc(n.when) : ''}${n.bring ? ' · bring: ' + esc(n.bring) : ''}</p>
+      ${here ? `<p style="margin:8px 0 0">${Art.icon('check', 15)} You’re checked in. Phones away — enjoy it.</p>`
+        : ex.unlocked ? `<button class="btn btn-primary btn-sm" data-a="next-checkin" style="margin-top:8px">${Art.icon('eye', 15)} Check in at the door</button>`
+        : `<p class="hint-note" style="margin:8px 0 0">${n.unlock === 'all' ? 'Unlocks when every home team finishes the quest.' : 'Your teacher unlocks it.'}</p>`}
+    </div>`;
+  }
+
 
   function reflectionScreen(st, me) {
     const done = st.reflections[me.id];
@@ -663,7 +680,7 @@
           const justNow = lastReveal === c.id;
           return `<button type="button" class="collect-card ${claimed ? 'claimed' : 'locked'} ${justNow ? 'just-claimed' : ''}" data-a="card-info" data-card="${c.id}" aria-label="${esc(c.title)}: ${claimed ? 'collected by team ' + c.home : 'not yet discovered'}">
             ${claimed ? Art.collectibleArt[c.id]() + '<span class="holo"></span><span class="claim-stamp">' + Art.icon('check', 15) + '</span>' : Art.lockedArt()}
-            <span class="card-strip"><strong>${claimed ? esc(c.title) : 'Mystery card'}</strong><small>${claimed ? esc(c.category) + ' · team ' + c.home : 'Team ' + c.home + ' · not discovered'}</small></span>
+            <span class="card-strip"><strong>${claimed ? esc(c.title) : c.hidden ? 'Hidden card' : 'Mystery card'}${st.evolved[c.id] ? ' · Lv 2' : ''}</strong><small>${claimed ? esc(c.category) + ' · team ' + c.home : 'Team ' + c.home + (viewer === 'teacher' ? ' · ' + esc(SEED.EARN_TEXT[c.kind] || '') : ' · not discovered')}</small></span>
           </button>`;
         }).join('')}
       </div>
@@ -677,7 +694,8 @@
           </div>
         </div>
       </div>
-      ${viewer === 'student' ? `<p class="hint-note">Each home team earns one card from an optional real-world micro-discovery. Cards never gate the main quest.</p>` : ''}`;
+      ${viewer === 'teacher' && SEED.collectibles.some((c) => c.kind === 'teacher' && !st.claims[c.id]) ? `<div class="row">${SEED.collectibles.filter((c) => c.kind === 'teacher' && !st.claims[c.id]).map((c) => `<button class="btn btn-sun btn-sm" data-a="award-card" data-card="${c.id}">${Art.icon('sparkle', 15)} Award “${esc(c.title)}” to team ${c.home}</button>`).join('')}</div>` : ''}
+      ${viewer === 'student' ? `<p class="hint-note">Each home team can earn one card. Cards never gate the main quest.</p>` : ''}`;
   }
 
   /* ================= teacher ================= */
@@ -699,6 +717,7 @@
           : screen === 'live' ? teacherLive(st)
           : screen === 'album' ? `<div class="stage-wrap stack">${albumScreen(st, 'teacher')}</div>`
           : screen === 'report' ? teacherReport(st)
+          : screen === 'next' ? teacherNext(st)
           : teacherDashboard(st)}
       </div>`;
   }
@@ -747,63 +766,106 @@
 
 
   function teacherBuilder(st) {
-    const q = st.quest;
-    const head = `<div class="spread" style="margin-bottom:12px"><div><div class="eyebrow">Quest builder</div><h2 style="margin:2px 0 0">${esc(q.title || 'Untitled quest')}</h2></div><button class="btn btn-ghost btn-sm" data-a="screen" data-screen="dashboard">${Art.icon('back', 15)} All quests</button></div>`;
-    const step = q.status === 'PUBLISHED' ? 4 : q.draftGenerated ? (st.contributor.status === 'APPROVED' ? 4 : 3) : 1;
+    const q = st.quest, locked = q.status === 'PUBLISHED', dis = locked ? 'disabled' : '';
+    const n = q.next || {};
     return `
-      ${head}
-      <div class="grid-2">
-        <div class="stack">
+      <div class="spread" style="margin-bottom:12px"><div><div class="eyebrow">Quest builder</div><h2 style="margin:2px 0 0">${esc(q.title || 'Untitled quest')}</h2></div>
+        <button class="btn btn-ghost btn-sm" data-a="screen" data-screen="dashboard">${Art.icon('back', 15)} All quests</button></div>
+      <div class="builder-2col">
+        <div class="stack builder-left">
           <div class="card">
-            <div class="wizard-steps" aria-hidden="true">
-              <span class="${step >= 1 ? 'on' : ''}">The Why</span> → <span class="${step >= 2 ? 'on' : ''}">The Where</span> → <span class="${step >= 3 ? 'on' : ''}">The Magic</span> → <span class="${step >= 4 ? 'on' : ''}">The Plan</span>
-            </div>
-            <h2 style="margin-top:8px">Set the scene</h2>
-            <div class="fld-group"><label class="fld" for="q-title">Quest title</label>
-              <input class="input" id="q-title" data-q="title" value="${esc(q.title)}" ${q.status === 'PUBLISHED' ? 'disabled' : ''}></div>
-            <div class="fld-group"><label class="fld" for="q-obj">Learning objective</label>
-              <input class="input" id="q-obj" data-q="objective" value="${esc(q.objective)}" ${q.status === 'PUBLISHED' ? 'disabled' : ''}></div>
+            <h3 style="margin:0 0 6px">Quest settings</h3>
+            <div class="fld-group"><label class="fld" for="q-title">Quest title</label><input class="input" id="q-title" data-q="title" value="${esc(q.title)}" ${dis}></div>
+            <div class="fld-group"><label class="fld" for="q-obj">Learning objective</label><input class="input" id="q-obj" data-q="objective" value="${esc(q.objective)}" ${dis}></div>
+            <div class="fld-group"><label class="fld" for="q-venue">Where will they explore?</label><input class="input" id="q-venue" data-q="venue" value="${esc(q.venue)}" ${dis}></div>
             <div class="grid-2" style="gap:12px">
               <div class="fld-group"><label class="fld" for="q-dur">Session length</label>
-                <select class="input" id="q-dur" data-q="duration" ${q.status === 'PUBLISHED' ? 'disabled' : ''}>${[45, 60, 75].map((m) => `<option value="${m}" ${q.duration === m ? 'selected' : ''}>${m} minutes</option>`).join('')}</select></div>
+                <select class="input" id="q-dur" data-q="duration" ${dis}>${[45, 60, 75].map((m) => `<option value="${m}" ${q.duration === m ? 'selected' : ''}>${m} minutes</option>`).join('')}</select></div>
               <div class="fld-group"><label class="fld" for="q-size">Class size</label>
-                <select class="input" id="q-size" data-q="classSize" ${q.status === 'PUBLISHED' ? 'disabled' : ''}><option value="20" selected>20 students</option></select>
-                <small class="hint-note">Demo seating: 5 home teams × 4 experts</small></div>
+                <select class="input" id="q-size" data-q="classSize" ${dis}><option value="20" selected>20 students</option></select>
+                <small class="hint-note">5 home teams × 4 experts</small></div>
             </div>
-            <div class="fld-group"><label class="fld" for="q-venue">Where will they explore?</label>
-              <input class="input" id="q-venue" data-q="venue" value="${esc(q.venue)}" ${q.status === 'PUBLISHED' ? 'disabled' : ''}></div>
           </div>
-          ${Assistant.panel()}
-          ${q.draftGenerated ? `
-          <div class="card">
-            <div class="spread"><h3>Publish checklist</h3>${statusChip(q.status === 'PUBLISHED' ? 'APPROVED' : st.contributor.status === 'APPROVED' ? 'AVAILABLE' : 'PENDING')}</div>
-            <ul style="margin:0 0 12px;padding-left:20px">
-              <li><label><input type="checkbox" data-a="safety" ${q.safety ? 'checked' : ''} ${q.status === 'PUBLISHED' ? 'disabled' : ''}> Safety, supervision and venue booking confirmed by me</label></li>
-              <li>Approved sources in the library: <strong>${st.sources.length}</strong></li>
-              <li>AI-drafted tracks approved by you: <strong>${SEED.topics.filter((t) => st.tracks[t] === 'APPROVED').length}/4</strong></li>
-              <li>Community contribution approved: <strong>${st.contributor.status === 'APPROVED' ? 'yes' : 'not yet — collaborator must approve'}</strong></li>
-              <li>Published as <strong>DEMO_ONLY</strong> — no real venue permission implied</li>
-            </ul>
-            <button class="btn btn-teal" data-a="publish" ${q.status === 'PUBLISHED' ? 'disabled' : ''}>${q.status === 'PUBLISHED' ? 'Published ✓' : 'Publish demo quest'}</button>
-          </div>` : ''}
+          ${Assistant.chat()}
         </div>
-        <div class="card wash-mint" style="position:sticky;top:14px">
-          <div class="eyebrow teal">Live student preview</div>
-          <div class="preview-phone">
-            <div class="row" style="justify-content:space-between"><strong style="font-family:var(--font-display)">${Art.logo(26)} WorldQuest</strong><span class="pill lavender">Chapter 01</span></div>
-            <h3 id="pv-title" style="margin-top:12px">${esc(q.title)}</h3>
-            <p id="pv-obj" class="hint-note">${esc(q.objective)}</p>
-            <div class="gallery-note" style="margin-bottom:12px"><h4>${Art.icon('map', 16)} <span id="pv-venue">${esc(q.venue)}</span></h4></div>
-            ${q.draftGenerated ? `
-              <div class="row" style="margin-bottom:10px">${SEED.topics.map((t) => topicChip(t)).join('')}</div>
-              <div class="card" style="padding:12px;background:var(--grad-collect);text-align:center">
-                <strong>${Art.icon('puzzle', 16)} ${esc(SEED.finale.title)}</strong><br><small>One collaborative escape-room finale needs all four perspectives</small>
-              </div>` : `<p class="hint-note" style="margin:0">Generate a draft to see the Jigsaw map appear here.</p>`}
-          </div>
-          <p class="hint-note" style="margin:12px 0 0;text-align:center">Edit the inputs — the preview updates live.</p>
+        <div class="stack builder-right">
+          ${Assistant.board()}
+          <section class="card" id="sec-next"><div class="spread"><h3 style="margin:0">${Art.icon('arrow', 18)} Next real experience</h3>${n.enabled ? `<span class="pill ${n.status === 'accepted' ? 'mint' : 'peach'}">${n.status === 'accepted' ? 'booked' : n.status === 'none' ? 'not requested' : 'awaiting provider'}</span>` : '<span class="pill plain">off</span>'}</div>
+            <p class="hint-note" style="margin:6px 0 10px">${n.enabled ? `${esc(n.activity)} · ${esc(n.provider)}${n.when ? ' · ' + esc(n.when) : ''}. Unlocks ${n.unlock === 'all' ? 'when every team finishes' : 'when you unlock it'}.` : 'After the quest, students apply what they learned with a real-world partner, e.g. a drawing class or a workshop.'}</p>
+            <button class="btn btn-secondary btn-sm" data-a="screen" data-screen="next">${n.enabled ? 'Manage booking' : 'Set one up'}</button></section>
+          <section class="card" id="sec-publish">
+            <div class="spread"><h3 style="margin:0">Publish</h3>${statusChip(locked ? 'APPROVED' : 'PENDING')}</div>
+            <ul style="margin:10px 0 12px;padding-left:20px">
+              <li>Quest content complete: <strong>${SEED.contentProblems(st.content).length ? SEED.contentProblems(st.content).length + ' to do' : 'yes'}</strong></li>
+              <li>Tracks approved by you: <strong>${SEED.topics.filter((t) => st.tracks[t] === 'APPROVED').length}/4</strong></li>
+              <li>Community partner approved their contribution: <strong>${st.contributor.status === 'APPROVED' ? 'yes' : 'not yet'}</strong></li>
+              <li><label><input type="checkbox" data-a="safety" ${q.safety ? 'checked' : ''} ${dis}> Safety, supervision and venue booking confirmed by me</label></li>
+            </ul>
+            <button class="btn btn-teal" data-a="publish" ${dis}>${locked ? 'Published ✓' : 'Publish to students'}</button>
+          </section>
         </div>
       </div>`;
   }
+
+  /* ---------------- next real experience (educator) ---------------- */
+  function teacherNext(st) {
+    const n = { ...st.quest.next }, ex = st.experience, locked = st.quest.status === 'PUBLISHED';
+    const stage = n.status === 'accepted' ? 3 : n.status === 'none' ? 1 : 2;
+    const draft = st.ui.bookingDraft != null ? st.ui.bookingDraft : n.request;
+    const checked = Object.keys(ex.checkins);
+    const code = 'WQ-NEXT-' + String(st.activeQuest).toUpperCase();
+    return `
+      <div class="spread" style="margin-bottom:12px"><div><div class="eyebrow">${esc(st.quest.title)}</div><h2 style="margin:2px 0 0">Next real experience</h2></div>
+        <label class="toggle"><input type="checkbox" data-a="next-enable" ${n.enabled ? 'checked' : ''}> Include one</label></div>
+      <p class="hint-note" style="margin:-4px 0 14px">The quest is the bridge, not the destination: after it, the class applies what they learned with a real partner. Each team’s collectible levels up when they check in.</p>
+      ${!n.enabled ? '' : `
+      <div class="grid-2">
+        <form class="card stack" data-form="next" style="gap:6px">
+          <h3 style="margin:0">The experience</h3>
+          <label class="fld" for="nx-act">Activity</label><input class="input" id="nx-act" value="${esc(n.activity)}" placeholder="e.g. Still-life drawing class">
+          <div class="grid-2" style="gap:8px"><div><label class="fld" for="nx-prov">Provider</label><input class="input" id="nx-prov" value="${esc(n.provider)}"></div>
+            <div><label class="fld" for="nx-org">Organisation</label><input class="input" id="nx-org" value="${esc(n.org)}"></div></div>
+          <label class="fld" for="nx-when">When</label><input class="input" id="nx-when" value="${esc(n.when)}">
+          <label class="fld" for="nx-bring">Students bring</label><input class="input" id="nx-bring" value="${esc(n.bring)}">
+          <label class="fld" for="nx-fb">If the provider cancels</label><input class="input" id="nx-fb" value="${esc(n.fallback)}">
+          <label class="fld" for="nx-unlock">Unlocks</label><select class="input" id="nx-unlock"><option value="all" ${n.unlock === 'all' ? 'selected' : ''}>When every home team has finished the quest</option><option value="manual" ${n.unlock === 'manual' ? 'selected' : ''}>When I unlock it</option></select>
+          <button class="btn btn-secondary btn-sm" type="submit" style="align-self:flex-start;margin-top:6px">Save</button>
+        </form>
+        <div class="stack">
+          <div class="card stack" style="gap:8px">
+            <div class="spread"><h3 style="margin:0">Booking</h3><div class="pipe">${['Request', 'Provider replies', 'Booked'].map((t, i) => `<span class="pipe-s ${i + 1 < stage || n.status === 'accepted' ? 'done' : i + 1 === stage ? 'on' : ''}"><b>${i + 1}</b>${t}</span>`).join('<i></i>')}</div></div>
+            ${n.status === 'none' ? `
+              <button class="as-chip" type="button" data-a="draft-booking" style="align-self:flex-start">${Art.icon('sparkle', 14)} Draft the request</button>
+              <label class="fld" for="nx-req">Message to ${esc(n.provider || 'the provider')}</label><textarea class="input" id="nx-req" rows="7">${esc(draft)}</textarea>
+              <button class="btn btn-primary btn-sm" data-a="send-booking" style="align-self:flex-start">${Art.icon('arrow', 15)} Send request</button>`
+              : `<div class="mail">${esc(n.request)}</div>`}
+            ${n.status === 'counter' ? `<div class="hint-note">${esc(n.provider)} suggests <strong>${esc(n.counterWhen)}</strong>.</div><button class="btn btn-primary btn-sm" data-a="accept-counter" style="align-self:flex-start">Accept new date</button>` : ''}
+            <p class="hint-note" style="margin:0">Emails and payment happen outside WorldQuest; only you can confirm the booking here.</p>
+          </div>
+          <div class="card stack" style="gap:8px;background:var(--paper)">
+            <div class="spread"><h3 style="margin:0">Provider’s view</h3><span class="pill plain">simulated</span></div>
+            ${n.status === 'none' ? '<p class="hint-note" style="margin:0">Nothing sent yet.</p>'
+              : n.status === 'sent' ? `<div class="mail">${esc(n.request)}</div><div class="row"><button class="btn btn-teal btn-sm" data-a="provider-accept">${Art.icon('check', 15)} Accept</button><button class="btn btn-ghost btn-sm" data-a="provider-counter">Suggest another date</button></div>`
+              : `<p class="hint-note" style="margin:0">${n.status === 'accepted' ? 'Accepted — booking confirmed.' : 'Waiting for the teacher.'}</p>`}
+          </div>
+        </div>
+      </div>
+      <div class="grid-2" style="margin-top:16px">
+        <div class="card stack" style="gap:8px">
+          <div class="spread"><h3 style="margin:0">On the day</h3><span class="pill ${ex.unlocked ? 'mint' : 'plain'}">${ex.unlocked ? 'unlocked' : 'locked'}</span></div>
+          <p class="hint-note" style="margin:0">${ex.unlocked ? (ex.reason ? 'Unlocked early: “' + esc(ex.reason) + '”.' : 'Unlocked for the class.') : n.unlock === 'all' ? `Unlocks automatically when every home team’s finale is approved (${SEED.homeGroups.filter((h) => st.finale[h].status === 'APPROVED').length}/5 so far).` : 'You unlock it when you’re ready.'}</p>
+          ${!ex.unlocked && n.status === 'accepted' ? `<div class="row"><input class="input" id="nx-reason" placeholder="${n.unlock === 'all' ? 'Reason to unlock early' : 'Note (optional)'}" style="flex:1;min-width:160px"><button class="btn btn-primary btn-sm" data-a="unlock-next">Unlock now</button></div>` : ''}
+          ${n.status !== 'accepted' ? '<p class="hint-note" style="margin:0">Confirm the booking first.</p>' : ''}
+          <p style="margin:0"><strong>${checked.length}</strong> checked in${checked.length ? ': ' + checked.map((id) => esc(who(SEED.byId[id]))).join(', ') : ''}</p>
+        </div>
+        <div class="card stack" style="gap:8px;align-items:flex-start">
+          <h3 style="margin:0">Door check-in code</h3>
+          <p class="hint-note" style="margin:0">Print it for the provider’s door. Students scan it on arrival; their team’s collectible levels up.</p>
+          <div class="qr-box" data-qrtext="${code}"></div><span class="mono">${code}</span>
+        </div>
+      </div>`}`;
+  }
+
 
   function teacherTeams(st) {
     const viewExpert = st.ui.teamView === 'expert';
@@ -866,6 +928,9 @@
           <p class="hint-note" style="margin:10px 0 0">${esc(SEED.phaseMeta[st.phase].desc)} ${st.phase === 'LOBBY' && st.quest.status !== 'PUBLISHED' ? '· Publish the quest first (Quest builder).' : ''}</p>
         </div>
 
+        ${st.quest.next && st.quest.next.enabled ? `<div class="card"><div class="spread"><h3>${Art.icon('arrow', 18)} Next experience: ${esc(st.quest.next.activity)}</h3><span class="pill ${st.experience.unlocked ? 'mint' : 'plain'}">${st.experience.unlocked ? Object.keys(st.experience.checkins).length + ' checked in' : 'locked'}</span></div>
+          <p class="hint-note" style="margin:4px 0 0">${st.experience.unlocked ? 'Students check in by scanning the door code; you can also check someone in.' : 'Unlocks ' + (st.quest.next.unlock === 'all' ? 'when every team’s finale is approved' : 'when you unlock it') + '.'} <button class="btn btn-ghost btn-sm" data-a="screen" data-screen="next">Manage</button></p>
+          ${st.experience.unlocked ? `<div class="row" style="margin-top:6px">${Object.keys(st.seats).filter((id) => !st.experience.checkins[id]).map((id) => `<button class="btn btn-secondary btn-sm" data-a="teacher-checkin" data-pid="${id}">Check in ${esc(who(SEED.byId[id]))}</button>`).join('')}</div>` : ''}</div>` : ''}
         ${Object.keys(st.checkinPhotos).length ? `<div class="card"><div class="spread"><h3>${Art.icon('eye', 18)} Check-in photos</h3><span class="pill lavender">${Object.keys(st.checkinPhotos).length} to confirm</span></div>
           <div class="grid-3">${Object.entries(st.checkinPhotos).map(([pid, c]) => { const p = SEED.byId[pid]; return `<div class="queue-row" style="display:block"><strong>${esc(who(p))}</strong> · ${esc(SEED.missions[p.topic].name)}
             <p class="hint-note" style="margin:2px 0">Should show: ${esc(SEED.keyObjectOf(p.topic))}</p><img class="ev-photo" src="${c.photo}" alt="Check-in photo from ${esc(who(p))}">${c.reason ? `<p class="hint-note" style="margin:0">AI: ${esc(c.reason)}</p>` : ''}
@@ -1103,6 +1168,23 @@
           case 'help': return act('requestHelp', { participantId: S().ui.student });
           case 'resolve-help': return act('resolveHelp', { id: el.dataset.id });
           case 'qr-cards': return StationCards.open();
+          case 'next-enable': return act('setNext', { fields: { enabled: el.checked } }), render();
+          case 'draft-booking': {
+            const n = S().quest.next;
+            S().ui.bookingDraft = `Hello ${n.provider || 'there'},\n\nMy class (${S().quest.classSize} students, ages 13–16) is finishing a quest on “${S().quest.title}”. Afterwards we’d love to come to you for: ${n.activity || 'a short workshop'}${n.when ? ', on ' + n.when : ''}.\n\nStudents will bring: ${n.bring || 'their notes from the quest'}. Two staff will supervise. Could you confirm availability, timing and any cost?\n\nThank you,\nThe class teacher`;
+            render(); return;
+          }
+          case 'send-booking': { const t = (document.getElementById('nx-req') || {}).value; const r = act('sendBooking', { text: t }); if (r.ok) S().ui.bookingDraft = null; return; }
+          case 'provider-accept': return act('providerReply', { accept: true });
+          case 'provider-counter': return act('providerReply', { accept: false, when: 'Fri 4 Dec, 10–11:30am' });
+          case 'accept-counter': return act('acceptCounter');
+          case 'unlock-next': return act('unlockExperience', { reason: (document.getElementById('nx-reason') || {}).value || '' });
+          case 'award-card': return act('awardCollectible', { collectibleId: el.dataset.card });
+          case 'next-checkin': {
+            const me = SEED.byId[S().ui.student];
+            return Scanner.open({ title: 'Scan the code at the door', hint: 'It’s on the provider’s door. No camera? Ask your teacher to check you in.', onCode: (c) => act('experienceCheckIn', { participantId: me.id, code: c }).ok });
+          }
+          case 'teacher-checkin': return act('experienceCheckIn', { participantId: el.dataset.pid, byTeacher: true });
           case 'show-code': return JoinCode.open(sessionCode(), S().quest.title);
           case 'demo-toggle': S().ui.demoOpen = !S().ui.demoOpen; render(); return;
           case 'safety': return act('updateQuest', { field: 'safety', value: el.checked }), render();
@@ -1213,6 +1295,7 @@
     root.querySelectorAll('form[data-form="evidence"] input[type=radio]').forEach((r) => r.addEventListener('change', () => {
       const id = S().ui.student, d = (S().ui.drafts[id] = S().ui.drafts[id] || {}); d[r.name] = r.value;
     }));
+    root.querySelectorAll('[data-qrtext]').forEach((q) => { if (window.QRCode && !q.firstChild) new QRCode(q, { text: q.dataset.qrtext, width: 150, height: 150, colorDark: '#20264B', colorLight: '#FFFFFF' }); });
     if (typeof Assistant !== 'undefined') Assistant.bind(root);
 
     // live preview typing in the quest builder (silent updates, targeted DOM refresh)
@@ -1231,6 +1314,11 @@
         const kind = form.dataset.form;
         if (kind === 'partner-q') { const r = act('addPartnerPrompt', { text: form.querySelector('#pq').value }); return; }
         if (kind === 'partner-fb') { act('partnerFeedback', { home: form.dataset.home, text: form.querySelector('input').value }); return; }
+        if (kind === 'next') {
+          const v = (id) => form.querySelector('#' + id).value;
+          act('setNext', { fields: { activity: v('nx-act'), provider: v('nx-prov'), org: v('nx-org'), when: v('nx-when'), bring: v('nx-bring'), fallback: v('nx-fb'), unlock: v('nx-unlock') } });
+          return;
+        }
         if (kind === 'session') {
           const code = form.querySelector('#demo-session').value.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
           if (code) location.href = location.pathname + '?session=' + encodeURIComponent(code) + location.hash;
@@ -1247,6 +1335,7 @@
             location.href = location.pathname + '?session=' + encodeURIComponent(code) + '#student';
             return;
           }
+          armTilt();
           const r = act('joinClass', { nick });
           if (r.ok) { markJoined(r.pid, nick); act('setStudent', { id: r.pid }); }
           return;
@@ -1345,6 +1434,21 @@
   });
   window.WQ = { act, toast, render };
   addEventListener('hashchange', () => { window.scrollTo(0, 0); render(); });
+  let tiltArmed = false, upSince = 0;
+  function armTilt() {
+    try { if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') DeviceOrientationEvent.requestPermission().catch(() => {}); } catch {}
+    if (tiltArmed) return; tiltArmed = true;
+    addEventListener('deviceorientation', (e) => {
+      if (e.beta == null || currentRole() !== 'student') return;
+      const up = Math.abs(e.beta) > 140;
+      if (!up) { upSince = 0; return; }
+      upSince = upSince || Date.now();
+      if (Date.now() - upSince < 700) return;
+      upSince = Date.now() + 60000;
+      const me = SEED.byId[S().ui.student], card = SEED.collectibles.find((c) => c.home === me.home && c.kind === 'egg');
+      if (joinedHere(S()) && card && !S().claims[card.id]) act('foundEgg', { participantId: me.id });
+    });
+  }
   function finishPendingJoin() {
     let p = null; try { p = JSON.parse(localStorage.getItem('wq-pending-join') || 'null'); } catch {}
     if (!p || p.code !== sessionCode()) return;

@@ -581,3 +581,26 @@ a.brand { text-decoration: none; color: inherit; }
 .join-code { font-size: clamp(40px, 9vw, 72px); font-weight: 700; letter-spacing: .08em; color: var(--violet-deep); }
 .topbar .demo-fab { box-shadow: none; padding: 7px 12px; }
 .demo-drawer { top: calc(64px + env(safe-area-inset-top, 0px)); bottom: auto; }
+
+/* ---------- builder sections, blocks, collectibles, next experience ---------- */
+.builder-2col { display: grid; grid-template-columns: minmax(300px, 400px) minmax(0, 1fr); gap: 18px; align-items: start; }
+.builder-left { position: sticky; top: 12px; }
+@media (max-width: 1100px) { .builder-2col { grid-template-columns: 1fr; } .builder-left { position: static; } }
+.blocks { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 12px; background: var(--paper); }
+.blk-group { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: center; }
+@media (max-width: 600px) { .blk-group { grid-template-columns: 1fr; } }
+.blk-label { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.blk-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.blk { font: 600 12.5px var(--font-body); padding: 6px 10px; border-radius: 8px; border: 1.5px dashed var(--stroke); background: var(--white); color: var(--muted); cursor: pointer; }
+.blk.on { border-style: solid; border-color: var(--violet); background: var(--lavender); color: var(--violet-deep); }
+.blk:disabled { cursor: default; opacity: .75; }
+.coll-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.coll-item { border: 1px solid var(--stroke); border-radius: 14px; padding: 12px; background: var(--white); display: flex; flex-direction: column; }
+.pipe { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pipe i { width: 14px; height: 2px; background: var(--stroke); }
+.pipe-s { display: flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.pipe-s b { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: var(--paper); font-size: 11px; }
+.pipe-s.on { color: var(--ink); } .pipe-s.on b { background: var(--violet); color: #fff; } .pipe-s.done b { background: var(--teal); color: #fff; }
+.mail { white-space: pre-wrap; font-size: 14px; background: var(--white); border: 1px solid var(--stroke); border-radius: 12px; padding: 12px; }
+.next-exp { border: 2px solid var(--teal); }
+.qr-box img, .qr-box canvas { display: block; }

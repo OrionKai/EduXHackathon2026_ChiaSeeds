@@ -14,7 +14,7 @@
 const Engine = (() => {
   const STORAGE_KEY = 'worldquest-prototype2-v1';
   const QUEST_KEYS = ['quest', 'content', 'tracks', 'revisions', 'sources', 'contributor'];
-  const PLAY_KEYS = ['phase', 'evidence', 'peerTeach', 'finale', 'bonus', 'claims', 'master', 'reflections', 'seats', 'checkins', 'checkinPhotos', 'help', 'partnerFeedback', 'interactions'];
+  const PLAY_KEYS = ['phase', 'evidence', 'peerTeach', 'finale', 'bonus', 'claims', 'master', 'reflections', 'seats', 'checkins', 'checkinPhotos', 'help', 'partnerFeedback', 'interactions', 'experience', 'evolved'];
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
   /* ---------- initial state ---------- */
@@ -60,6 +60,8 @@ const Engine = (() => {
         id: 'q_lm',
         templateId: 'lost_museum',
         partner: { ...SEED.partnerDefaults },
+        next: { ...SEED.defaultNext(), enabled: true, activity: 'Still-life drawing class: draw a memorable object from the museum trip', provider: 'Riverside Art Studio', org: 'Example provider (simulated)',
+          when: 'Thu 3 Dec, 2–3:30pm', bring: 'Your team’s finale answer and field notes', fallback: 'In-class drawing session with the art department' },
         draftGenerated: true,
       },
       contributor: {
@@ -84,6 +86,8 @@ const Engine = (() => {
       partnerFeedback: {}, // home -> { text, at } from the community collaborator on the team's finale
       checkins: {}, // participantId -> { at, via: 'QR' | 'CODE' | 'PHOTO_AI' | 'PHOTO_TEACHER' | 'SIMULATED' }
       checkinPhotos: {}, // participantId -> { photo, at, reason } waiting for the educator
+      experience: { unlocked: false, reason: '', checkins: {} }, // the next real experience for this class run
+      evolved: {}, // collectibleId -> true once its team checked in at the next experience
       help: [], // { id, pid, at, open }
       tracks: { A: 'TEMPLATE', B: 'TEMPLATE', C: 'TEMPLATE', D: 'TEMPLATE' }, // TEMPLATE | EMPTY | AI | REVISED | EDITED | APPROVED
       revisions: {}, // topic -> note from an AI revision
@@ -135,6 +139,10 @@ const Engine = (() => {
     s.trackEdits = s.trackEdits || {};
     s.seats = s.seats || {};
     s.checkinPhotos = s.checkinPhotos || {};
+    s.experience = s.experience || { unlocked: false, reason: '', checkins: {} };
+    s.evolved = s.evolved || {};
+    s.quest.next = { ...SEED.defaultNext(), ...(s.quest.next || {}) };
+    (s.content.collectibles || []).forEach((c) => { if (!c.kind) Object.assign(c, SEED.defaultEarn()); });
     s.contributor.extraPrompts = s.contributor.extraPrompts || [];
     s.partnerFeedback = s.partnerFeedback || {};
     s.quest.duration = s.quest.duration || 60;
@@ -555,6 +563,7 @@ const Engine = (() => {
       const card = SEED.collectibles.find((c) => c.id === collectibleId);
       if (!card) return { ok: false };
       const b = s.bonus[collectibleId];
+      if (card.kind && card.kind !== 'bonus') return { ok: false, msg: 'This card is earned another way.' };
       if (s.claims[collectibleId]) return { ok: false, msg: 'This card has already been earned.' };
       if (b.status === 'SUBMITTED') return { ok: false, msg: 'Already submitted — awaiting educator approval.' };
       if (!answer || !answer.trim()) return { ok: false, msg: 'Write your team’s discovery first.' };
@@ -566,6 +575,20 @@ const Engine = (() => {
       return { ok: true, msg: 'Discovery submitted — awaiting educator approval.' };
     },
 
+    awardCollectible(s, { collectibleId }) {
+      const card = SEED.collectibles.find((c) => c.id === collectibleId);
+      if (!card) return { ok: false };
+      if (s.claims[collectibleId]) return { ok: false, msg: 'Already claimed.' };
+      return claim(s, card, 'teacher', 'awarded by the educator');
+    },
+    foundEgg(s, { participantId }) {
+      const p = SEED.byId[participantId];
+      if (!p || !['EXPERT', 'PEER_TEACH', 'FINALE'].includes(s.phase)) return { ok: false };
+      const card = SEED.collectibles.find((c) => c.home === p.home && c.kind === 'egg');
+      if (!card || s.claims[card.id]) return { ok: false };
+      return claim(s, card, 'student', `${p.name} looked up and found it`);
+    },
+
     /* Idempotent claim: approving twice, or two racing approvals, yields one claim;
        the master award is granted exactly once, inside the same action. */
     approveBonus(s, { collectibleId }) {
@@ -575,20 +598,7 @@ const Engine = (() => {
       const b = s.bonus[collectibleId];
       if (b.status !== 'SUBMITTED') return { ok: false, msg: 'No submitted discovery to approve.' };
       b.status = 'CLAIMED';
-      s.claims[collectibleId] = { home: card.home, at: Date.now() };
-      audit('teacher', `Approved ${card.title} — claimed for ${card.home}.`);
-      let masterNow = false;
-      if (!s.master && SEED.collectibles.every((c) => s.claims[c.id])) {
-        s.master = { at: Date.now() };
-        masterNow = true;
-        audit('system', 'Guardian of Stories master award unlocked (exactly once).');
-      }
-      return {
-        ok: true,
-        msg: `${card.title} added to the class album!`,
-        reveal: collectibleId,
-        master: masterNow,
-      };
+      return claim(s, card, 'teacher', 'bonus discovery approved');
     },
 
     markMasterSeen(s) {
@@ -641,7 +651,7 @@ const Engine = (() => {
       const t = String(title || '').trim() || (tpl === 'blank' ? 'Untitled quest' : content.title);
       content.title = t;
       s.quest = { id, title: t, objective: tpl === 'lost_museum' ? 'Interpret evidence from multiple perspectives' : '', venue: tpl === 'lost_museum' ? 'The Fitzwilliam Museum, Cambridge' : '',
-        duration: 60, classSize: 20, status: 'DRAFT', draftGenerated: true, safety: false, templateId: tpl, partner: { ...SEED.partnerDefaults } };
+        duration: 60, classSize: 20, status: 'DRAFT', draftGenerated: true, safety: false, templateId: tpl, partner: { ...SEED.partnerDefaults }, next: SEED.defaultNext() };
       s.content = content;
       s.tracks = Object.fromEntries(SEED.topics.map((x) => [x, tpl === 'blank' ? 'EMPTY' : 'TEMPLATE']));
       s.revisions = {};
@@ -803,6 +813,88 @@ const Engine = (() => {
       return { ok: true, msg: `${p.name} will retake the photo.` };
     },
 
+    /* ----- collectibles (educator) ----- */
+    editCollectible(s, { collectibleId, fields }) {
+      if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Published quests are frozen.' };
+      const c = s.content.collectibles.find((x) => x.id === collectibleId);
+      if (!c) return { ok: false };
+      const f = fields || {};
+      ['title', 'activity', 'fact'].forEach((k) => { if (typeof f[k] === 'string') c[k] = f[k].trim().slice(0, 200); });
+      if (SEED.EARN_TEXT[f.kind]) c.kind = f.kind;
+      if (SEED.topics.includes(f.track)) c.track = f.track;
+      if (typeof f.hidden === 'boolean') c.hidden = f.hidden;
+      if (typeof f.evolves === 'boolean') c.evolves = f.evolves;
+      audit('teacher', `Edited collectible “${c.title || c.id}”.`);
+      return { ok: true, msg: 'Collectible saved.' };
+    },
+    setAssess(s, { topic, patch }) {
+      if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Published quests are frozen.' };
+      const m = s.content.missions[topic];
+      if (!m) return { ok: false };
+      m.assess = { ...SEED.defaultAssess(), ...(m.assess || {}), ...(patch || {}) };
+      if (patch && typeof patch.partner === 'boolean') { m.needsFacilitator = patch.partner; delete m.assess.partner; }
+      if (m.assess.verify === 'auto' && !(m.assess.quiz || []).length) m.assess.verify = 'teacher';
+      s.tracks[topic] = s.tracks[topic] === 'EMPTY' ? 'EMPTY' : 'EDITED';
+      return { ok: true, silent: true };
+    },
+
+    /* ----- the next real experience: booking, unlock, check-in ----- */
+    setNext(s, { fields }) {
+      const n = (s.quest.next = { ...SEED.defaultNext(), ...(s.quest.next || {}) });
+      const f = fields || {};
+      ['activity', 'provider', 'org', 'when', 'bring', 'fallback'].forEach((k) => { if (typeof f[k] === 'string') n[k] = f[k].trim().slice(0, 300); });
+      if (typeof f.enabled === 'boolean') n.enabled = f.enabled;
+      if (['all', 'manual'].includes(f.unlock)) n.unlock = f.unlock;
+      return { ok: true, msg: 'Next experience saved.' };
+    },
+    sendBooking(s, { text }) {
+      const n = s.quest.next;
+      if (!n || !n.enabled || !n.activity || !n.provider) return { ok: false, msg: 'Add the activity and provider first.' };
+      const t = String(text || '').trim();
+      if (t.length < 20) return { ok: false, msg: 'Write the request first.' };
+      n.request = t.slice(0, 2000); n.status = 'sent';
+      audit('teacher', `Sent a booking request to ${n.provider}.`);
+      return { ok: true, msg: 'Request sent (from your school email in the full product).' };
+    },
+    providerReply(s, { accept, when }) {
+      const n = s.quest.next;
+      if (!n || n.status !== 'sent') return { ok: false };
+      if (accept) { n.status = 'accepted'; audit('system', `${n.provider} accepted the booking (simulated provider).`); return { ok: true, msg: `${n.provider} accepted — booked.` }; }
+      n.status = 'counter'; n.counterWhen = String(when || 'another date').slice(0, 120);
+      audit('system', `${n.provider} suggested ${n.counterWhen} (simulated provider).`);
+      return { ok: true, msg: `${n.provider} suggested another date.` };
+    },
+    acceptCounter(s) {
+      const n = s.quest.next;
+      if (!n || n.status !== 'counter') return { ok: false };
+      n.when = n.counterWhen; n.status = 'accepted';
+      audit('teacher', `Accepted the new date: ${n.when}.`);
+      return { ok: true, msg: `Booked for ${n.when}.` };
+    },
+    unlockExperience(s, { reason }) {
+      const n = s.quest.next;
+      if (!n || !n.enabled) return { ok: false };
+      if (n.status !== 'accepted') return { ok: false, msg: 'Confirm the booking with the provider first.' };
+      if (s.experience.unlocked) return { ok: false, msg: 'Already unlocked.' };
+      const r = String(reason || '').trim();
+      if (n.unlock === 'all' && !allFinished(s) && r.length < 3) return { ok: false, msg: 'Not every team has finished — add a reason to unlock early.' };
+      s.experience.unlocked = true; s.experience.reason = r;
+      audit('teacher', `Unlocked the next experience${r ? ' early: ' + r : ''}.`);
+      return { ok: true, msg: 'Next experience unlocked for the class.' };
+    },
+    experienceCheckIn(s, { participantId, code, byTeacher }) {
+      const p = SEED.byId[participantId];
+      if (!p || !s.experience.unlocked) return { ok: false, msg: 'The next experience isn’t unlocked yet.' };
+      if (!byTeacher && String(code || '').trim().toUpperCase() !== 'WQ-NEXT-' + String(s.activeQuest).toUpperCase()) return { ok: false, msg: 'That isn’t the check-in code for this experience.' };
+      if (s.experience.checkins[participantId]) return { ok: true, silent: true };
+      s.experience.checkins[participantId] = Date.now();
+      const card = SEED.collectibles.find((c) => c.home === p.home);
+      let evolved = false;
+      if (card && card.evolves && s.claims[card.id] && !s.evolved[card.id]) { s.evolved[card.id] = true; evolved = true; }
+      audit(byTeacher ? 'teacher' : 'student', `${p.name} checked in at the next experience${evolved ? ' — ' + card.title + ' levelled up' : ''}.`);
+      return { ok: true, msg: evolved ? `Checked in — your team’s ${card.title} levelled up!` : 'Checked in. Enjoy!' };
+    },
+
     /* ----- help: always one tap away ----- */
     requestHelp(s, { participantId }) {
       const p = SEED.byId[participantId];
@@ -890,6 +982,37 @@ const Engine = (() => {
 
   /* ---------- dispatch ---------- */
 
+  /* ---------- collectibles: one claim path, used by approvals and automatic rules ---------- */
+  function claim(s, card, actor, why) {
+    s.claims[card.id] = { home: card.home, at: Date.now() };
+    if (s.bonus[card.id]) s.bonus[card.id].status = 'CLAIMED';
+    audit(actor, `${card.title || 'Collectible'} claimed for ${card.home} (${why}).`);
+    let masterNow = false;
+    if (!s.master && SEED.collectibles.every((c) => s.claims[c.id])) {
+      s.master = { at: Date.now() };
+      masterNow = true;
+      audit('system', `${SEED.master.title} unlocked for the class (exactly once).`);
+    }
+    return { ok: true, msg: `${card.title || 'A card'} added to the class album!`, reveal: card.id, master: masterNow };
+  }
+  const allFinished = (s) => SEED.homeGroups.every((h) => s.finale[h].status === 'APPROVED');
+  function autoRules(s) {
+    SEED.collectibles.forEach((c) => {
+      if (s.claims[c.id]) return;
+      const team = SEED.homeMembers(c.home);
+      const met = c.kind === 'finale' ? s.finale[c.home].status === 'APPROVED'
+        : c.kind === 'experts' ? team.every((p) => s.evidence[p.id].status === 'VERIFIED')
+        : c.kind === 'track' ? (() => { const p = SEED.expertOf(c.home, c.track); return p && s.evidence[p.id].status === 'VERIFIED'; })()
+        : false;
+      if (met) claim(s, c, 'system', SEED.EARN_TEXT[c.kind].toLowerCase());
+    });
+    const n = s.quest.next;
+    if (n && n.enabled && n.unlock === 'all' && n.status === 'accepted' && !s.experience.unlocked && allFinished(s)) {
+      s.experience.unlocked = true;
+      audit('system', 'Every team finished — the next experience unlocked.');
+    }
+  }
+
   /* UI-only actions are per device and never shared with other devices. */
   const UI_ACTIONS = new Set(['setRole', 'setStudent', 'setScreen', 'setLookUp', 'markMasterSeen']);
   let commitHook = null; // set by sync.js: called after a shared action succeeds locally
@@ -899,6 +1022,7 @@ const Engine = (() => {
     if (!action) return { ok: false, msg: 'Unknown action: ' + type };
     const result = action(state, payload) || { ok: true };
     if (result.ok) {
+      if (!UI_ACTIONS.has(type)) autoRules(state);
       if (!UI_ACTIONS.has(type) && state.library) snapInto(state);
       emit({ type, payload, result });
       if (commitHook && !opts.replay && !UI_ACTIONS.has(type)) commitHook(type, payload, result);

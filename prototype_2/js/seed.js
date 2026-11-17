@@ -436,3 +436,16 @@ SEED.keyObjectOf = (t) => {
   const m = SEED.missions[t];
   return m.keyObject || (SEED.finale.objects.find((o) => o.answer === SEED.topicMeta[t].tag) || {}).label || m.name || 'the object';
 };
+
+/* Collectibles: each home team's card has a rule for how it is earned.
+   bonus = team submits the bonus activity and the educator approves it (the original behaviour)
+   finale = the team's finale is approved · experts = all four of the team's experts are verified
+   track = the team's expert for one track is verified · egg = hidden: a phone tilted up at the location
+   teacher = the educator awards it by hand */
+SEED.EARN_TEXT = { bonus: 'Team bonus activity, approved by the educator', finale: 'The team’s finale is approved', experts: 'All four of the team’s experts are verified',
+  track: 'The team’s expert for one track is verified', egg: 'Hidden easter egg: a phone tilted up at the location', teacher: 'The educator awards it' };
+SEED.defaultEarn = () => ({ kind: 'bonus', track: 'A', hidden: false, evolves: true });
+TEMPLATES.lost_museum.collectibles.forEach((c) => Object.assign(c, SEED.defaultEarn()));
+TEMPLATES.blank.collectibles.forEach((c) => Object.assign(c, SEED.defaultEarn()));
+/* The next real experience after the quest (booked with a provider, unlocked for the class). */
+SEED.defaultNext = () => ({ enabled: false, activity: '', provider: '', org: '', when: '', bring: '', fallback: '', unlock: 'all', status: 'none', request: '', counterWhen: '' });

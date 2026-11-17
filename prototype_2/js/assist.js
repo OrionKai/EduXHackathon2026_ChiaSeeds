@@ -12,6 +12,7 @@ const Assistant = (() => {
   const msgs = [{ who: 'ai', text: 'Hi! I draft only from the approved sources in your library. Add anything else I should use, then tell me what the quest is for.' }];
   let editing = null; // 'A'..'D' | 'finale' | 'extras'
   let refDraft = null; // reference photo being edited for the open track
+  let quizOpen = false;
   let busy = false, speed = 1, confirmGen = false;
   let mode = (() => { try { return localStorage.getItem('wq-ai-mode') || 'live'; } catch { return 'live'; } })();
   let needPass = false, lastNotice = '';
@@ -62,7 +63,7 @@ const Assistant = (() => {
       ${m.cites && m.cites.length ? `<div class="row" style="gap:4px;margin-top:6px">${m.cites.map((c) => `<button class="as-cite" data-as-cite="${c}" type="button">${c}</button>`).join('')}</div>` : ''}</div>`;
   }
 
-  function panel() {
+  function chat() {
     const st = Engine.state, cs = chips(), locked = st.quest.status === 'PUBLISHED';
     return `
       <div class="card as-card">
@@ -79,51 +80,123 @@ const Assistant = (() => {
           <input class="input" id="as-in" placeholder="${mode === 'live' ? 'Ask for a change, e.g. “make Track B shorter”' : 'Live AI is off — edit by hand below'}" autocomplete="off" ${busy ? 'disabled' : ''}>
           <button class="btn btn-primary btn-sm" type="submit" ${busy ? 'disabled' : ''}>Send</button></form>
         <p class="hint-note" style="margin:0">AI drafts at design time only. Gameplay never calls AI, so the quest keeps working offline.</p>
-      </div>
-      ${sourcesCard()}
-      ${contentCard(st)}`;
+      </div>`;
+  }
+  function board() {
+    const st = Engine.state;
+    return `${sourcesCard()}${tracksSection(st)}${finaleSection(st)}${collectiblesSection(st)}${storySection(st)}`;
   }
 
   const LABEL = { TEMPLATE: ['st-available', 'From template'], EMPTY: ['st-locked', 'To write'], AI: ['st-submitted', 'AI draft'], REVISED: ['st-submitted', 'AI revised'], EDITED: ['st-submitted', 'Edited by you'], APPROVED: ['st-verified', 'Approved'] };
 
-  function contentCard(st) {
+  /* Each track is built from blocks the educator mixes and matches. */
+  const BLOCKS = [
+    { group: 'Check-in', opts: [['photo_ai', 'Photo · AI checks'], ['photo_teacher', 'Photo · you check'], ['qr', 'QR clue card'], ['none', 'No check-in']], get: (a) => a.checkin, set: (v) => ({ checkin: v }) },
+    { group: 'At the place', multi: true, opts: [['observe', 'Observe'], ['partner', 'Partner conversation'], ['discuss', 'Discuss']] },
+    { group: 'Evidence', multi: true, opts: [['notes', 'Field notes'], ['photo', 'Photo']] },
+    { group: 'Quick check', multi: true, opts: [['quiz', 'Multiple-choice quiz']] },
+    { group: 'Verified by', opts: [['teacher', 'You'], ['partner', 'Community partner'], ['auto', 'Automatic (quiz)']], get: (a) => a.verify, set: (v) => ({ verify: v }) },
+  ];
+  function blocksHTML(t, m, locked) {
+    const a = m.assess || SEED.defaultAssess(), quiz = (a.quiz || []).length > 0;
+    const on = { observe: true, discuss: true, partner: !!m.needsFacilitator, notes: a.evidence !== 'photo', photo: a.evidence !== 'notes', quiz };
+    return `<div class="blocks">${BLOCKS.map((g) => `<div class="blk-group"><span class="blk-label">${g.group}</span><div class="blk-row">${g.opts.map(([v, l]) => {
+      const active = g.multi ? on[v] : g.get(a) === v;
+      const fixed = v === 'observe' || v === 'discuss';
+      const disabled = locked || fixed || (v === 'auto' && !quiz);
+      return `<button type="button" class="blk ${active ? 'on' : ''}" data-as-block="${t}|${g.group}|${v}" ${disabled ? 'disabled' : ''} title="${fixed ? 'Always part of a Jigsaw track' : v === 'auto' && !quiz ? 'Add a quiz first' : ''}">${esc(l)}</button>`;
+    }).join('')}</div></div>`).join('')}</div>`;
+  }
+  function toggleBlock(t, group, v) {
+    const m = SEED.missions[t], a = m.assess || SEED.defaultAssess();
+    if (group === 'Check-in') return Engine.dispatch('setAssess', { topic: t, patch: { checkin: v } });
+    if (group === 'Verified by') return Engine.dispatch('setAssess', { topic: t, patch: { verify: v } });
+    if (v === 'partner') return Engine.dispatch('setAssess', { topic: t, patch: { partner: !m.needsFacilitator } });
+    if (v === 'notes' || v === 'photo') {
+      const notes = a.evidence !== 'photo', photo = a.evidence !== 'notes';
+      const n = v === 'notes' ? !notes : notes, p = v === 'photo' ? !photo : photo;
+      if (!n && !p) return { ok: false, msg: 'Keep at least one kind of evidence.' };
+      return Engine.dispatch('setAssess', { topic: t, patch: { evidence: n && p ? 'notes_photo' : p ? 'photo' : 'notes' } });
+    }
+    if (v === 'quiz') {
+      if ((a.quiz || []).length) return Engine.dispatch('setAssess', { topic: t, patch: { quiz: [], pass: 0, verify: a.verify === 'auto' ? 'teacher' : a.verify } });
+      editing = t; refDraft = m.refPhoto || null; quizOpen = true; return { ok: true };
+    }
+    return { ok: false };
+  }
+
+  function tracksSection(st) {
     const locked = st.quest.status === 'PUBLISHED';
     const probs = SEED.contentProblems(st.content);
     const n = SEED.topics.filter((t) => st.tracks[t] === 'APPROVED').length;
-    const f = SEED.finaleFields(st.content);
-    const coll = st.content.collectibles;
     return `
-      <div class="card" id="as-content">
-        <div class="spread"><h3 style="margin:0">${Art.icon('map', 18)} Quest content</h3><span class="row" style="gap:6px"><span class="pill lavender">${n}/4 tracks approved</span>${probs.length ? `<span class="pill peach">${probs.length} to complete</span>` : '<span class="pill mint">complete</span>'}</span></div>
-        <p class="hint-note" style="margin:6px 0 10px">Four expert tracks, each investigated by one member of every home team, plus a finale that needs all four.</p>
+      <section class="card" id="as-content">
+        <div class="spread"><h3 style="margin:0">${Art.icon('map', 18)} Expert tracks</h3><span class="row" style="gap:6px"><span class="pill lavender">${n}/4 approved</span>${probs.length ? `<span class="pill peach">${probs.length} to complete</span>` : '<span class="pill mint">complete</span>'}</span></div>
+        <p class="hint-note" style="margin:6px 0 10px">One member of every home team investigates each track, then teaches the others. Mix and match the blocks each track uses.</p>
         <div class="stack" style="gap:10px">
           ${SEED.topics.map((t) => {
             const m = SEED.missions[t], [cls, txt] = LABEL[st.tracks[t]] || LABEL.EDITED, tp = probs.filter((x) => x.startsWith(`Track ${t}:`));
             return `<div class="as-track" id="as-track-${t}">
               <div class="spread"><div class="row" style="gap:8px"><span class="topic-chip ${SEED.topicMeta[t].color}">${Art.icon(SEED.topicMeta[t].icon, 14)}${t}</span><strong>${esc(m.name || 'Untitled track')}</strong></div>
                 <span class="status-chip ${cls}">${txt}</span></div>
-              <p class="hint-note" style="margin:6px 0">${m.gallery ? esc(m.gallery) + ' · ' : ''}${esc(m.narrative || m.observe || 'Nothing written yet.')} ${srcFor(t) ? `<button class="as-cite" type="button" data-as-cite="${srcFor(t)}">${srcFor(t)}</button>` : ''}${m.needsFacilitator && partnerSrc() ? ` <span class="pill plain">partner conversation</span>` : ''}</p>
-              <div class="row" style="gap:4px;margin:0 0 6px">${(() => { const a = m.assess || SEED.defaultAssess(), T = SEED.ASSESS_TEXT; return [a.checkin === 'qr' ? 'QR check-in' : 'no check-in', T.evidence[a.evidence], a.quiz && a.quiz.length ? `quiz ${a.pass}/${a.quiz.length}` : '', T.verify[a.verify]].filter(Boolean).map((x) => `<span class="pill plain">${esc(x)}</span>`).join(''); })()}</div>
-              ${tp.length ? `<p class="hint-note" style="margin:0 0 6px;color:var(--danger)">Missing: ${tp.map((x) => esc(x.split(': ')[1])).join(', ')}</p>` : ''}
+              <p class="hint-note" style="margin:6px 0">${m.gallery ? esc(m.gallery) + ' · ' : ''}${esc(m.narrative || m.observe || 'Nothing written yet.')} ${srcFor(t) ? `<button class="as-cite" type="button" data-as-cite="${srcFor(t)}">${srcFor(t)}</button>` : ''}</p>
+              ${blocksHTML(t, m, locked)}
+              ${tp.length ? `<p class="hint-note" style="margin:6px 0;color:var(--danger)">Missing: ${tp.map((x) => esc(x.split(': ')[1])).join(', ')}</p>` : ''}
               ${st.revisions[t] ? `<p class="as-note">${Art.icon('pencil', 14)} ${esc(st.revisions[t])}</p>` : ''}
-              ${locked ? '' : `<div class="row" style="gap:6px">${st.tracks[t] === 'APPROVED' ? '' : `<button class="btn btn-teal btn-sm" type="button" data-as-approve="${t}">${Art.icon('check', 14)} Approve</button>`}
-                <button class="btn btn-ghost btn-sm" type="button" data-as-edit="${t}">${editing === t ? 'Close' : 'Edit'}</button>
+              ${locked ? '' : `<div class="row" style="gap:6px;margin-top:6px">${st.tracks[t] === 'APPROVED' ? '' : `<button class="btn btn-teal btn-sm" type="button" data-as-approve="${t}">${Art.icon('check', 14)} Approve</button>`}
+                <button class="btn btn-ghost btn-sm" type="button" data-as-edit="${t}">${editing === t ? 'Close' : 'Edit details'}</button>
                 ${mode === 'live' ? `<button class="btn btn-ghost btn-sm" type="button" data-as-ask="${t}">Ask AI to change</button>` : ''}</div>`}
               ${editing === t && !locked ? trackEditor(t) : ''}
             </div>`;
           }).join('')}
-          <div class="as-track" id="as-finale">
-            <div class="spread"><strong>${Art.icon('puzzle', 15)} Finale: ${esc(st.content.finale.title || 'Untitled')}</strong>${locked ? '' : `<button class="btn btn-ghost btn-sm" type="button" data-as-edit="finale">${editing === 'finale' ? 'Close' : 'Edit'}</button>`}</div>
-            <p class="hint-note" style="margin:6px 0 0">Locked until every track in a home team is verified and taught. Match each key object to its perspective (${st.content.finale.objects.map((o) => esc(o.label || '—')).join(' · ')}), spot the overclaim, then build a short answer from ${f.evidence.length} evidence sentences.</p>
-            ${editing === 'finale' && !locked ? finaleEditor(f) : ''}
-          </div>
-          <div class="as-track" id="as-extras">
-            <div class="spread"><strong>${Art.icon('trophy', 15)} Story, collectibles &amp; reflection</strong>${locked ? '' : `<button class="btn btn-ghost btn-sm" type="button" data-as-edit="extras">${editing === 'extras' ? 'Close' : 'Edit'}</button>`}</div>
-            <p class="hint-note" style="margin:6px 0 0">${coll.filter((c) => c.title).length}/5 collectibles · ${st.content.reflection.filter(Boolean).length}/2 reflection questions · ${st.content.story.opening ? 'story written' : 'no story yet'}</p>
-            ${editing === 'extras' && !locked ? extrasEditor(st.content) : ''}
-          </div>
         </div>
-      </div>`;
+      </section>`;
+  }
+
+  function finaleSection(st) {
+    const locked = st.quest.status === 'PUBLISHED', f = SEED.finaleFields(st.content);
+    return `<section class="card" id="as-finale">
+      <div class="spread"><h3 style="margin:0">${Art.icon('puzzle', 18)} Finale: ${esc(st.content.finale.title || 'Untitled')}</h3>${locked ? '' : `<button class="btn btn-ghost btn-sm" type="button" data-as-edit="finale">${editing === 'finale' ? 'Close' : 'Edit'}</button>`}</div>
+      <p class="hint-note" style="margin:6px 0 0">Locked until every track in a home team is verified and taught. Teams match each key object to its perspective (${st.content.finale.objects.map((o) => esc(o.label || '—')).join(' · ')}), spot the overclaim, then build a short answer from ${f.evidence.length} evidence sentences.</p>
+      ${editing === 'finale' && !locked ? finaleEditor(f) : ''}
+    </section>`;
+  }
+
+  function collectiblesSection(st) {
+    const locked = st.quest.status === 'PUBLISHED';
+    return `<section class="card" id="as-collectibles">
+      <div class="spread"><h3 style="margin:0">${Art.icon('trophy', 18)} Collectibles</h3><span class="pill plain">optional · never block the quest</span></div>
+      <p class="hint-note" style="margin:6px 0 10px">One card per home team; all five unlock the class award (${esc(SEED.master.title)}). Choose how each one is earned.</p>
+      <div class="coll-grid">${st.content.collectibles.map((c) => editing === 'c:' + c.id && !locked ? collEditor(c) : `<div class="coll-item">
+        <div class="row" style="gap:10px;flex-wrap:nowrap"><div class="collect-card claimed" style="width:64px;min-width:64px;cursor:default">${Art.collectibleArt[c.id] ? Art.collectibleArt[c.id]() : ''}</div>
+          <div style="min-width:0"><strong>${esc(c.title || 'Untitled card')}</strong><br><small class="hint-note">Team ${c.home}</small></div></div>
+        <p class="hint-note" style="margin:6px 0 4px"><strong>Earned when:</strong> ${c.kind === 'track' ? `the team’s ${esc(SEED.missions[c.track].name || 'Track ' + c.track)} expert is verified` : esc((SEED.EARN_TEXT[c.kind] || '').toLowerCase())}</p>
+        ${c.kind === 'bonus' && c.activity ? `<p class="hint-note" style="margin:0 0 4px">Activity: ${esc(c.activity)}</p>` : ''}
+        <div class="row" style="gap:4px">${c.hidden ? '<span class="pill plain">hidden until found</span>' : ''}${c.evolves ? '<span class="pill plain">levels up at the next experience</span>' : ''}</div>
+        ${locked ? '' : `<button class="btn btn-ghost btn-sm" type="button" data-as-edit="c:${c.id}" style="margin-top:6px">Edit</button>`}
+      </div>`).join('')}</div>
+    </section>`;
+  }
+  function collEditor(c) {
+    return `<form class="coll-item stack as-editor" style="gap:6px" data-as-collform="${c.id}">
+      ${inp('ce-t', 'Name', c.title)}
+      <label class="fld" for="ce-k">Earned when</label><select class="input" id="ce-k">${Object.entries(SEED.EARN_TEXT).map(([k, l]) => `<option value="${k}" ${c.kind === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
+      <label class="fld" for="ce-tr">Track (for “one track verified”)</label><select class="input" id="ce-tr">${SEED.topics.map((t) => `<option value="${t}" ${c.track === t ? 'selected' : ''}>${t} · ${esc(SEED.missions[t].name || 'Track ' + t)}</option>`).join('')}</select>
+      ${inp('ce-a', 'Bonus activity (for “team bonus activity”)', c.activity)}
+      ${inp('ce-f', 'Fact shown when earned', c.fact)}
+      <label class="toggle"><input type="checkbox" id="ce-h" ${c.hidden ? 'checked' : ''}> Hidden until found</label>
+      <label class="toggle"><input type="checkbox" id="ce-e" ${c.evolves ? 'checked' : ''}> Levels up at the next experience</label>
+      <div class="row"><button class="btn btn-primary btn-sm" type="submit">Save</button><button class="btn btn-ghost btn-sm" type="button" data-as-edit-cancel>Cancel</button></div></form>`;
+  }
+
+  function storySection(st) {
+    const locked = st.quest.status === 'PUBLISHED', c = st.content;
+    return `<section class="card" id="as-extras">
+      <div class="spread"><h3 style="margin:0">${Art.icon('book', 18)} Story &amp; reflection</h3>${locked ? '' : `<button class="btn btn-ghost btn-sm" type="button" data-as-edit="extras">${editing === 'extras' ? 'Close' : 'Edit'}</button>`}</div>
+      <p class="hint-note" style="margin:6px 0 0">${c.story.opening ? esc(c.story.opening) : 'No story yet.'}</p>
+      <ol class="hint-note" style="margin:6px 0 0;padding-left:18px">${c.reflection.map((q) => `<li>${esc(q || '—')}</li>`).join('')}</ol>
+      ${editing === 'extras' && !locked ? extrasEditor(c) : ''}
+    </section>`;
   }
 
   const ta = (id, label, v, rows = 2, ph = '') => `<label class="fld" for="${id}">${label}</label><textarea class="input" id="${id}" rows="${rows}" placeholder="${esc(ph)}">${esc(v)}</textarea>`;
@@ -160,8 +233,8 @@ const Assistant = (() => {
         ${refDraft ? `<img class="ev-photo" src="${refDraft}" alt="Reference photo">` : '<span class="hint-note">Without one, the AI matches the photo against the key object’s name.</span>'}
         <label class="btn btn-ghost btn-sm" for="as-ref" style="align-self:flex-start">${refDraft ? 'Replace photo' : 'Add a photo'}</label><input id="as-ref" type="file" accept="image/*" hidden>
         ${refDraft ? '<button class="btn btn-ghost btn-sm" type="button" data-as-ref-clear style="align-self:flex-start">Remove photo</button>' : ''}</div>
-      <label class="toggle"><input type="checkbox" id="as-qz" ${quiz.length ? 'checked' : ''}> Add a multiple-choice check</label>
-      <div class="stack" style="gap:8px" id="as-qz-box" ${quiz.length ? '' : 'hidden'}>${[0, 1, 2].map(slot).join('')}
+      <label class="toggle"><input type="checkbox" id="as-qz" ${quiz.length || quizOpen ? 'checked' : ''}> Add a multiple-choice check</label>
+      <div class="stack" style="gap:8px" id="as-qz-box" ${quiz.length || quizOpen ? '' : 'hidden'}>${[0, 1, 2].map(slot).join('')}
         <label class="fld" for="as-pass">Pass mark (questions right)</label><select class="input" id="as-pass" style="width:auto">${[1, 2, 3].map((n) => `<option value="${n}" ${a.pass === n ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
     </fieldset>`;
   }
@@ -189,13 +262,11 @@ const Assistant = (() => {
   function extrasEditor(c) {
     return `<form class="stack as-editor" style="gap:6px;margin-top:10px" data-as-extrasform>
       ${ta('ex-open', 'Story opening (students read this at the briefing)', c.story.opening, 3)}
-      ${c.collectibles.map((x, i) => `<fieldset class="as-fs"><legend>Collectible ${i + 1} · team ${esc(x.home)}</legend>
-        <div class="grid-2" style="gap:8px"><div>${inp('ex-t' + i, 'Name', x.title)}</div><div>${inp('ex-f' + i, 'Fact shown when earned', x.fact)}</div></div>
-        ${inp('ex-a' + i, 'Bonus activity', x.activity)}</fieldset>`).join('')}
       ${inp('ex-r0', 'Reflection question 1', c.reflection[0] || '')}
       ${inp('ex-r1', 'Reflection question 2', c.reflection[1] || '')}
       <div class="row"><button class="btn btn-primary btn-sm" type="submit">Save</button><button class="btn btn-ghost btn-sm" type="button" data-as-edit-cancel>Cancel</button></div></form>`;
   }
+
 
   function sourcesCard() {
     const st = Engine.state, locked = st.quest.status === 'PUBLISHED';
@@ -417,7 +488,14 @@ const Assistant = (() => {
         refDraft = cv.toDataURL('image/jpeg', 0.6); window.WQ.render(); };
       img.src = URL.createObjectURL(file);
     });
-    on('[data-as-edit-cancel]', 'click', () => { editing = null; window.WQ.render(); });
+    on('[data-as-edit-cancel]', 'click', () => { editing = null; quizOpen = false; window.WQ.render(); });
+    on('[data-as-block]', 'click', (b) => { const [tk, g, v] = b.dataset.asBlock.split('|'); const r = toggleBlock(tk, g, v); if (r && !r.ok && r.msg) window.WQ.toast(r.msg, 'error'); window.WQ.render(); if (v === 'quiz' && editing === tk) document.getElementById('as-qz-box')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+    on('[data-as-collform]', 'submit', (f, e) => {
+      e.preventDefault();
+      const v = (id) => f.querySelector('#' + id).value;
+      editing = null;
+      window.WQ.act('editCollectible', { collectibleId: f.dataset.asCollform, fields: { title: v('ce-t'), kind: v('ce-k'), track: v('ce-tr'), activity: v('ce-a'), fact: v('ce-f'), hidden: f.querySelector('#ce-h').checked, evolves: f.querySelector('#ce-e').checked } });
+    });
     on('#as-qz', 'change', (c) => { const box = document.getElementById('as-qz-box'); if (box) box.hidden = !c.checked; });
     on('[data-as-trackform]', 'submit', (f, e) => {
       e.preventDefault();
@@ -426,7 +504,7 @@ const Assistant = (() => {
       window.WQ.act('editTrack', { topic: t, fields: { name: v('ed-name'), location: v('ed-loc'), keyObject: v('ed-key'), narrative: v('ed-narr'), observe: v('ed-obs'), discuss: v('ed-disc'),
         evidence: lines(v('ed-ev')), hints: lines(v('ed-hints')), fallback: v('ed-fb'), teachHeadline: v('ed-teach'), checkCorrect: v('ed-ok'), checkIncorrect: v('ed-no'),
         needsContributor: f.querySelector('#ed-partner').checked, sourceFact: old.sourceFact, sourceUrl: old.sourceUrl, assess: readAssess(f), refPhoto: refDraft } });
-      refDraft = null;
+      refDraft = null; quizOpen = false;
     });
     on('[data-as-finaleform]', 'submit', (f, e) => {
       e.preventDefault();
@@ -438,7 +516,7 @@ const Assistant = (() => {
       e.preventDefault();
       const v = (id) => f.querySelector('#' + id).value.trim();
       editing = null;
-      window.WQ.act('editExtras', { opening: v('ex-open'), collectibles: [0, 1, 2, 3, 4].map((i) => ({ title: v('ex-t' + i), fact: v('ex-f' + i), activity: v('ex-a' + i) })), reflection: [v('ex-r0'), v('ex-r1')] });
+      window.WQ.act('editExtras', { opening: v('ex-open'), reflection: [v('ex-r0'), v('ex-r1')] });
     });
     on('[data-as-rmsrc]', 'click', (b) => window.WQ.act('removeSource', { id: b.dataset.asRmsrc }));
     on('[data-as-src]', 'submit', (sf, e) => { e.preventDefault(); window.WQ.act('addSource', { title: sf.querySelector('#src-title').value, url: sf.querySelector('#src-url').value, text: sf.querySelector('#src-text').value }); });
@@ -450,5 +528,5 @@ const Assistant = (() => {
     });
   }
 
-  return { panel, bind, generate, setSpeed: (v) => { speed = v; }, setMode: (m) => { mode = m; } };
+  return { chat, board, bind, generate, setSpeed: (v) => { speed = v; }, setMode: (m) => { mode = m; } };
 })();
