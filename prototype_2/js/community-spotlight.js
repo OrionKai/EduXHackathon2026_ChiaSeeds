@@ -1,5 +1,70 @@
 /* Isolated concept dashboard. All people and participation data are illustrative. */
 const CommunitySpotlight = (() => {
+  const EVENT_KEY = 'worldquest-partner-spotlight-event-v1';
+  const esc = (v) => String(v || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const defaultEvent = { title: 'Community Stories Open Day', date: '', time: '', location: '', content: 'Bring a question. Share a local story.' };
+  const cleanEvent = (value) => Object.fromEntries(Object.keys(defaultEvent).map((key) => [key, typeof value?.[key] === 'string' ? value[key].slice(0, key === 'content' ? 600 : 160) : '']));
+  let draft = { ...defaultEvent }, published = null, preview = false;
+  try {
+    const saved = JSON.parse(localStorage.getItem(EVENT_KEY) || 'null');
+    if (saved?.draft) draft = cleanEvent(saved.draft);
+    if (saved?.published) published = cleanEvent(saved.published);
+  } catch { /* The editor also works without browser storage. */ }
+  function saveEvent() {
+    try { localStorage.setItem(EVENT_KEY, JSON.stringify({ draft, published })); return true; } catch { return false; }
+  }
+  function eventCard(event) {
+    return `<div class="stack"><strong>${esc(event.title)}</strong>
+      ${event.date ? `<div class="row"><span class="pill mint">${esc(event.date)}</span>${event.time ? `<span class="pill plain">${esc(event.time)}</span>` : ''}</div>` : ''}
+      ${event.location ? `<p style="margin:0"><strong>Where:</strong> ${esc(event.location)}</p>` : ''}
+      <p style="margin:0;white-space:pre-wrap">${esc(event.content)}</p></div>`;
+  }
+  function eventEditor() {
+    const field = (key, label, type, required = true) => `<div class="fld-group"><label class="fld" for="spotlight-${key}">${label}</label><input class="input" id="spotlight-${key}" name="${key}" type="${type}" value="${esc(draft[key])}" maxlength="160" ${required ? 'required' : ''}></div>`;
+    return `<details class="partner-disclosure"><summary>${published ? 'Edit event' : 'Create your event'}</summary>
+      <form class="stack" data-spotlight-event style="margin-top:10px">
+        ${field('title', 'Event title', 'text')}
+        <div class="grid-2">${field('date', 'Date', 'date')}${field('time', 'Time (local, optional)', 'time', false)}</div>
+        ${field('location', 'Location', 'text')}
+        <div class="fld-group"><label class="fld" for="spotlight-content">What will happen?</label><textarea class="input" id="spotlight-content" name="content" rows="3" maxlength="600" required>${esc(draft.content)}</textarea></div>
+        <button class="btn btn-secondary" type="submit">Preview event</button>
+        <p class="hint-note" style="margin:0">Demo only: publish on this browser, without sharing to other users.</p>
+      </form>
+    </details>
+    ${preview ? `<section class="card stack" aria-label="Event preview"><span class="pill peach">Preview · Not published</span>${eventCard(draft)}<button type="button" class="btn btn-teal" data-spotlight-publish>Publish event (local demo)</button></section>` : ''}
+    <p class="hint-note" data-spotlight-status role="status" style="margin:0"></p>`;
+  }
+  function bind(root) {
+    const form = root.querySelector('[data-spotlight-event]');
+    if (!form) return;
+    const read = () => cleanEvent(Object.fromEntries(Object.keys(defaultEvent).map((key) => [key, form.elements.namedItem(key).value.trim()])));
+    form.addEventListener('input', () => {
+      draft = read();
+      preview = false;
+      const oldPreview = root.querySelector('[aria-label="Event preview"]');
+      if (oldPreview) oldPreview.remove();
+      saveEvent();
+    });
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!form.reportValidity()) return;
+      draft = read();
+      if (!draft.title || !draft.location || !draft.content) {
+        root.querySelector('[data-spotlight-status]').textContent = 'Please add a title, location and activity description.';
+        return;
+      }
+      preview = true;
+      saveEvent();
+      window.WQ.render();
+    });
+    root.querySelector('[data-spotlight-publish]')?.addEventListener('click', () => {
+      published = { ...draft };
+      preview = false;
+      const stored = saveEvent();
+      window.WQ.render();
+      window.WQ.toast(stored ? 'Published on this browser only. No external post was sent.' : 'Published for this session only. Browser storage is unavailable.', 'success');
+    });
+  }
   const visits = [
     { name: 'Object stories', students: 12, conversations: 3 },
     { name: 'Local memories', students: 16, conversations: 4 },
@@ -58,9 +123,11 @@ const CommunitySpotlight = (() => {
       <div class="grid-2">
         <section class="card wash-mint stack">
           <div class="eyebrow teal">Beyond this quest</div><h3>Meet again, offline.</h3>
-          <div class="spotlight-event">${Art.icon('voices', 28)}<div><strong>Community Stories Open Day</strong><p style="margin:0">Bring a question. Share a local story.</p></div></div>
+          <span class="pill ${published ? 'mint' : 'plain'}">${published ? 'Published · Local demo' : 'Example invitation'}</span>
+          <div class="spotlight-event">${Art.icon('voices', 28)}${eventCard(published || defaultEvent)}</div>
           <div class="row"><span class="pill mint">Listen</span><span class="pill mint">Explore</span><span class="pill mint">Connect</span></div>
-          <p class="hint-note" style="margin:0">Example invitation · No event scheduled</p>
+          <p class="hint-note" style="margin:0">${published ? 'Visible on this browser only. No booking or external publishing.' : 'Example invitation · No event scheduled'}</p>
+          ${eventEditor()}
         </section>
         <section class="card stack">
           <div class="eyebrow">Share your contribution</div><h3>A story worth passing on.</h3>
@@ -69,7 +136,7 @@ const CommunitySpotlight = (() => {
               <div class="eyebrow">WorldQuest · Community Spotlight</div><h2>Local knowledge.<br>Shared discoveries.</h2>
               <strong>Neighbourhood Stories Collective</strong>
               <div class="grid-3"><div><h3>${visits.length}</h3>visits</div><div><h3>${total('students')}</h3>students</div><div><h3>${total('conversations')}</h3>conversations</div></div>
-              <div class="card"><strong>Let's meet beyond the screen.</strong><p style="margin:6px 0 0">Community Stories Open Day</p></div>
+              <div class="card"><strong>Let's meet beyond the screen.</strong>${eventCard(published || defaultEvent)}</div>
               <span class="hint-note">Fictional partner · Sample data &amp; invitation</span>
             </div>
           </details>
@@ -78,5 +145,5 @@ const CommunitySpotlight = (() => {
       </div>
     </div>`;
   }
-  return { render };
+  return { render, bind };
 })();

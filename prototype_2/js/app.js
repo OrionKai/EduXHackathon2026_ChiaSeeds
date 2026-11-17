@@ -1120,6 +1120,7 @@
     if (typeof Journey !== 'undefined') Journey.bind(root);
     root.querySelectorAll('[data-fwrite]').forEach((t) => t.addEventListener('change', () => { const me = SEED.byId[S().ui.student]; Engine.dispatch('finaleWrite', { home: me.home, stepId: t.dataset.fwrite, text: t.value }); }));
     if (typeof Partner !== 'undefined') Partner.bind(root);
+    if (typeof CommunitySpotlight !== 'undefined') CommunitySpotlight.bind(root);
     root.querySelectorAll('[data-a]').forEach((el) => {
       const a = el.dataset.a;
       if (a === 'pq-sel') { el.addEventListener('change', () => { S().ui.pq = el.value; render(); }); return; }
