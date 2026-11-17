@@ -23,10 +23,10 @@ const Engine = (() => {
   function useDefaults() { SEED.useStructure(SEED.defaultStructure()); SEED.useContent(null); }
   /* A valid Jigsaw shape, or the reason it isn't. */
   function structureProblem(t, n, g) {
-    if (!(t >= 3 && t <= 6)) return 'Choose 3 to 6 tracks.';
-    if (!(n >= t && n <= 60)) return `Class size must be between ${t} and 60.`;
+    if (!(t >= 1 && t <= 6)) return 'Choose 1 to 6 tracks.';
+    if (!(n >= Math.max(t, 2) && n <= 60)) return `Class size must be between ${Math.max(t, 2)} and 60.`;
     const teams = Math.ceil(n / t), last = n - (teams - 1) * t;
-    if (last === 1) return `With ${n} students the last home team would have just one student, who couldn’t be taught. Try ${n - 1} or ${n + 1}.`;
+    if (t >= 2 && last === 1) return `With ${n} students the last home team would have just one student, who couldn’t be taught. Try ${n - 1} or ${n + 1}.`;
     if (!(g >= 1 && g <= teams)) return `Expert groups can be 1 to ${teams} students.`;
     return '';
   }
@@ -380,6 +380,7 @@ const Engine = (() => {
       const probs = SEED.contentProblems(s.content);
       if (probs.length) return { ok: false, msg: `Not ready yet (${probs.length} to do): ${probs[0]}.` };
       if (!s.quest.safety) return { ok: false, msg: 'Confirm the safety and supervision plan first.' };
+      if (SEED.topics.length < 2) return { ok: false, msg: 'Add at least 2 tracks so students can teach each other.' };
       if (SEED.topics.some((t) => s.tracks[t] !== 'APPROVED'))
         return { ok: false, msg: 'Approve every expert track first — nothing reaches students unapproved.' };
       s.quest.status = 'PUBLISHED';
@@ -832,6 +833,31 @@ const Engine = (() => {
       return { ok: true, msg: 'Partner details saved.' };
     },
 
+    /* Remove one track; later tracks move up a letter (their content, status and notes move with them). */
+    removeTrack(s, { topic }) {
+      if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Published quests are frozen — create a new quest to change it.' };
+      if (s.phase !== 'LOBBY') return { ok: false, msg: 'End the live session first.' };
+      const L = SEED.topics.slice(), i = L.indexOf(topic), st = s.quest.structure;
+      if (i < 0 || L.length <= 1) return { ok: false, msg: 'A quest needs at least one track.' };
+      const t = L.length - 1, n = Math.max(st.classSize, 2), g = Math.min(st.expertGroup, Math.ceil(n / t));
+      const bad = structureProblem(t, n, g);
+      if (bad) return { ok: false, msg: bad };
+      const c = s.content, gone = c.missions[topic].name || 'track ' + topic;
+      for (let k = i; k < L.length - 1; k++) {
+        const to = L[k], from = L[k + 1], codes = { stationCode: c.missions[to].stationCode };
+        c.missions[to] = { ...c.missions[from], ...codes, topic: to, id: 'expert_' + to.toLowerCase() };
+        c.topicMeta[to] = { ...c.topicMeta[to], name: c.topicMeta[from].name, label: c.topicMeta[from].label };
+        c.peerTeaching.checkOptions[to] = c.peerTeaching.checkOptions[from];
+        s.tracks[to] = s.tracks[from]; s.revisions[to] = s.revisions[from];
+      }
+      const last = L[L.length - 1];
+      delete c.missions[last]; delete c.peerTeaching.checkOptions[last]; delete s.tracks[last]; delete s.revisions[last];
+      (c.collectibles || []).forEach((x) => { if (x.kind === 'track') { const j = L.indexOf(x.track); if (x.track === topic) Object.assign(x, SEED.defaultEarn()); else if (j > i) x.track = L[j - 1]; } });
+      const r = actions.setStructure(s, { tracks: t, classSize: n, expertGroup: g });
+      if (!r.ok) return r;
+      audit('teacher', `Removed the track “${gone}”.`);
+      return { ok: true, msg: `Removed “${gone}”. ${t} track${t === 1 ? '' : 's'} left.` };
+    },
     setStructure(s, { tracks, classSize, expertGroup }) {
       if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Published quests are frozen — create a new quest to change the groups.' };
       if (s.phase !== 'LOBBY') return { ok: false, msg: 'End the live session first.' };

@@ -432,6 +432,7 @@ TEMPLATES.blank = (() => {
 SEED.contentProblems = (c) => {
   const p = [];
   if (!c.title || !c.title.trim()) p.push('Give the quest a title');
+  if (SEED.topics.length < 2) p.push('Add at least 2 tracks so students can teach each other');
   SEED.topics.forEach((t) => {
     const m = c.missions[t], chk = c.peerTeaching.checkOptions[t] || [];
     if (!m.name) p.push(`Track ${t}: name`);
@@ -508,8 +509,8 @@ function buildRoster() {
   __roster = { topics, list, homes, byId: Object.fromEntries(list.map((p) => [p.id, p])) };
 }
 SEED.useStructure = (st) => {
-  const t = Math.max(3, Math.min(6, Number(st && st.tracks) || 4));
-  const n = Math.max(t, Math.min(60, Number(st && st.classSize) || 20));
+  const t = Math.max(1, Math.min(6, Number(st && st.tracks) || 4));
+  const n = Math.max(t, 2, Math.min(60, Number(st && st.classSize) || 20));
   const g = Math.max(1, Number(st && st.expertGroup) || 5);
   if (__roster && t === __structure.tracks && n === __structure.classSize && g === __structure.expertGroup) return;
   __structure = { tracks: t, classSize: n, expertGroup: g };

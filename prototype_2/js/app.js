@@ -231,7 +231,7 @@
       case 'EXPERT': {
         const at = a.checkin === 'none' || !!st.checkins[me.id];
         const submitted = ev.status === 'SUBMITTED' || ev.status === 'VERIFIED';
-        const how = a.checkin === 'qr' ? ' and scan the clue card' : String(a.checkin).startsWith('photo') ? ` and photograph <strong>${esc(SEED.keyObjectOf(me.topic))}</strong>` : '';
+        const how = a.checkin === 'qr' ? ' and scan the clue card' : String(a.checkin).startsWith('photo') ? ` and photograph <strong>${esc(SEED.keyObjectOf(me.topic))}</strong>${a.qr ? ' (or scan the clue card)' : ''}` : '';
         const list = [[at, !at, st.checkinPhotos[me.id] ? 'Wait for your teacher to confirm your photo' : `Go to <strong>${place}</strong> with your expert group${how}`],
           [at && (st.ui.missionTab === 'record' || submitted), at && !submitted, 'Look closely and talk it through — phone away'],
           [submitted, at && !submitted, `Submit your evidence (${esc(SEED.ASSESS_TEXT.evidence[a.evidence]).toLowerCase()}${a.quiz && a.quiz.length ? ' + quick check' : ''})`],
@@ -423,7 +423,7 @@
       <p style="margin:0 0 10px">Go to <strong>${esc(m.gallery)}</strong>, find <strong>${esc(SEED.keyObjectOf(me.topic))}</strong> and take a photo of it — the object only, no people.</p>
       ${pending ? `<img class="ev-photo" src="${pending.photo}" alt="Your check-in photo"><p class="hint-note" style="margin:0">${Art.icon('clock', 14)} Waiting for your teacher to confirm.${pending.reason ? ' ' + esc(pending.reason) : ''}</p>`
         : st.ui.photoCheck === me.id ? `<p class="hint-note" style="margin:0">${Art.icon('sparkle', 14)} Checking your photo…</p>`
-        : `<label class="btn btn-primary" for="ci-photo">${Art.icon('eye', 17)} Photograph the object</label><input id="ci-photo" type="file" accept="image/*" capture="environment" hidden>
+        : `<label class="btn btn-primary" for="ci-photo">${Art.icon('eye', 17)} Photograph the object</label>${a.qr ? ` <button class="btn btn-secondary" data-a="scan-station">${Art.icon('map', 17)} Scan the clue card instead</button>` : ''}<input id="ci-photo" type="file" accept="image/*" capture="environment" hidden>
            <p class="hint-note" style="margin:8px 0 0">${a.checkin === 'photo_ai' ? 'An AI checks it matches the object; if it’s unsure, your teacher decides. The photo isn’t kept after the check.' : 'Your teacher confirms the photo.'}</p>`}
     </div>`;
   }
@@ -755,11 +755,12 @@
           </div>` : (() => { const d = SEED.defaultStructure(); return `<form class="stack" data-form="new-quest" style="gap:8px;margin-top:10px">
             <p class="hint-note" style="margin:0">Step 2 of 2 · How will the class be split? You can change this later in Quest settings.</p>
             <div class="grid-3" style="gap:10px">
-              <div class="fld-group"><label class="fld" for="g-tracks">Perspectives (expert tracks)</label><input class="input" id="g-tracks" type="number" min="3" max="6" value="${d.tracks}"></div>
+              <div class="fld-group"><label class="fld" for="g-tracks">Tracks to start with</label><input class="input" id="g-tracks" type="number" min="1" max="6" value="${st.ui.nqTpl === 'blank' ? 1 : d.tracks}"></div>
               <div class="fld-group"><label class="fld" for="g-size">Students in the class</label><input class="input" id="g-size" type="number" min="3" max="60" value="${d.classSize}"></div>
               <div class="fld-group"><label class="fld" for="g-exp">Students per expert group</label><input class="input" id="g-exp" type="number" min="1" max="30" value="${d.expertGroup}"></div>
             </div>
-            <p class="hint-note" style="margin:0" id="g-summary">${structSummary(d.tracks, d.classSize, d.expertGroup)}</p>
+            <p class="hint-note" style="margin:0" id="g-summary">${structSummary(st.ui.nqTpl === 'blank' ? 1 : d.tracks, d.classSize, d.expertGroup)}</p>
+            <p class="hint-note" style="margin:0">You can add or remove tracks any time in the builder.</p>
             ${st.ui.nqTpl === 'lost_museum' ? '<p class="hint-note" style="margin:0">The example has 4 written tracks; with more, the extra tracks start empty.</p>' : ''}
             <div class="row"><button class="btn btn-primary" type="submit">Create quest</button><button class="btn btn-ghost" type="button" data-a="nq-back">Back</button></div>
           </form>`; })()}</div>` : ''}
@@ -809,7 +810,7 @@
           <form class="card" data-form="structure">
             <h3 style="margin:0 0 6px">Groups</h3>
             <div class="grid-3" style="gap:10px">
-              <div class="fld-group"><label class="fld" for="g-tracks">Expert tracks</label><input class="input" id="g-tracks" type="number" min="3" max="6" value="${SEED.structure.tracks}" ${dis}></div>
+              <div class="fld-group"><label class="fld" for="g-tracks">Expert tracks</label><input class="input" id="g-tracks" type="number" min="1" max="6" value="${SEED.structure.tracks}" ${dis}></div>
               <div class="fld-group"><label class="fld" for="g-size">Class size</label><input class="input" id="g-size" type="number" min="3" max="60" value="${SEED.structure.classSize}" ${dis}></div>
               <div class="fld-group"><label class="fld" for="g-exp">Expert group size</label><input class="input" id="g-exp" type="number" min="1" max="30" value="${SEED.structure.expertGroup}" ${dis}></div>
             </div>
@@ -851,6 +852,7 @@
   /* ---------------- next real experience (educator) ---------------- */
   function structSummary(t, n, g) {
     t = Number(t); n = Number(n); g = Number(g);
+    if (t < 2) return `${t} track so far — add at least one more before publishing, so students can teach each other.`;
     const teams = Math.ceil(n / t), last = n - (teams - 1) * t;
     return `${teams} home teams of ${t}${last < t ? ` (the last has ${last})` : ''} · each track has ${teams} experts, visiting in groups of ${g} (${Math.ceil(teams / g)} group${Math.ceil(teams / g) > 1 ? 's' : ''} per station)`;
   }
