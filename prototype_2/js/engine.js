@@ -30,6 +30,47 @@ const Engine = (() => {
     if (!(g >= 1 && g <= teams)) return `Expert groups can be 1 to ${teams} students.`;
     return '';
   }
+  /* ---------- the class journey: an ordered programme of quests, real experiences and classroom sessions ---------- */
+  const STEP_TYPES = ['quest', 'experience', 'class'];
+  let stepSeq = 0;
+  function newStep(s, type) {
+    const st = { id: 'j' + Date.now().toString(36) + (stepSeq++), type, title: '', when: '', where: '', opens: 'after', date: '', opened: false, reason: '', done: false, checkins: {}, note: '' };
+    if (type === 'quest') st.questId = s.activeQuest;
+    if (type === 'experience') st.exp = { activity: '', provider: '', org: '', bring: '', fallback: '', staff: '2', status: 'none', request: '', counterWhen: '' };
+    return st;
+  }
+  function defaultJourney(s) {
+    const n = { ...SEED.defaultNext(), ...((s.quest && s.quest.next) || {}) };
+    const q = { ...newStep(s, 'quest'), id: 'j1', opens: 'start' };
+    const x = { ...newStep(s, 'experience'), id: 'j2', title: n.activity, when: n.when, where: n.org,
+      exp: { activity: n.activity, provider: n.provider, org: n.org, bring: n.bring, fallback: n.fallback, staff: n.staff || '2', status: n.status || 'none', request: n.request || '', counterWhen: n.counterWhen || '' } };
+    const c = { ...newStep(s, 'class'), id: 'j3', title: 'Back in class: debrief', note: 'Use the Report’s “Misconceptions to address” to plan it.' };
+    return { steps: n.enabled === false && !n.activity ? [q, c] : [q, x, c] };
+  }
+  const todayISO = () => new Date().toISOString().slice(0, 10);
+  function stepTitle(s, st) {
+    if (!st) return '';
+    if (st.type === 'quest') { const r = st.questId === s.activeQuest ? s.quest : s.library[st.questId] && s.library[st.questId].quest; return r ? r.title || 'Untitled quest' : 'Choose a quest'; }
+    if (st.type === 'experience') return st.title || st.exp.activity || 'Real experience';
+    return st.title || 'Classroom session';
+  }
+  /* done | open | waiting (experience not booked yet) | locked, with the reason students and teachers see */
+  function stepState(s, i) {
+    const steps = s.journey.steps, st = steps[i];
+    if (!st) return { state: 'locked', why: '' };
+    if (st.done) return { state: 'done', why: '' };
+    const prev = steps[i - 1];
+    let open = i === 0 || st.opens === 'start', why = '';
+    if (!open && st.opens === 'after') { open = !!(prev && prev.done); why = `Opens when “${stepTitle(s, prev)}” is done`; }
+    if (!open && st.opens === 'manual') why = 'Opens when the teacher opens it';
+    if (!open && st.opens === 'date') { open = !!st.date && st.date <= todayISO(); why = st.date ? `Opens on ${st.date}` : 'Opens on a date (not set yet)'; }
+    if (st.opened) open = true;
+    if (open && st.type === 'experience' && st.exp.status !== 'accepted') return { state: 'waiting', why: 'Waiting for the booking to be confirmed' };
+    return open ? { state: 'open', why: st.opened && st.reason ? 'Opened early: ' + st.reason : '' } : { state: 'locked', why };
+  }
+  const findStep = (s, id) => (s.journey.steps.find((x) => x.id === id) || null);
+  const firstExperience = (s) => s.journey.steps.find((x) => x.type === 'experience') || null;
+
   /* Wrong picks are kept (counts only) so the educator can see common misconceptions. */
   const miss = (s, key) => { s.misses = s.misses || {}; s.misses[key] = (s.misses[key] || 0) + 1; };
   function freshState() {
@@ -132,6 +173,7 @@ const Engine = (() => {
     const f = freshState();
     syncRoster(f);
     snapInto(f);
+    f.journey = defaultJourney(f);
     return f;
   }
 
@@ -172,6 +214,7 @@ const Engine = (() => {
     SEED.collectibles.forEach((c) => { if (!s.bonus[c.id]) s.bonus[c.id] = { status: 'AVAILABLE', answer: '', simulated: false }; });
     s.analysis = s.analysis || {};
     s.quest.next = { ...SEED.defaultNext(), ...(s.quest.next || {}) };
+    if (!s.journey || !Array.isArray(s.journey.steps) || !s.journey.steps.length) s.journey = defaultJourney(s);
     (s.content.collectibles || []).forEach((c) => { if (!c.kind) Object.assign(c, SEED.defaultEarn()); });
     s.contributor.extraPrompts = s.contributor.extraPrompts || [];
     s.contributor.prompts = s.contributor.prompts || [...SEED.contributor.prompts, ...s.contributor.extraPrompts];
@@ -270,6 +313,8 @@ const Engine = (() => {
 
     pendingFinales: () => SEED.homeGroups.filter((h) => state.finale[h].status === 'SUBMITTED'),
 
+    stepState: (i) => stepState(state, i),
+    stepTitle: (st) => stepTitle(state, st),
     pendingBonus: () => SEED.collectibles.filter((c) => (state.bonus[c.id] || {}).status === 'SUBMITTED'),
 
     phaseIndex: () => SEED.phases.indexOf(state.phase),
@@ -303,6 +348,7 @@ const Engine = (() => {
       useDefaults(); // seats must come from the default quest's groups, not the last quest's
       state = freshState();
       syncRoster(state);
+      state.journey = defaultJourney(state);
       SEED.useStructure(state.quest.structure); SEED.useContent(state.content);
       snapInto(state);
       audit('system', 'Demo reset to seeded state.');
@@ -961,51 +1007,100 @@ const Engine = (() => {
       if (['all', 'manual'].includes(f.unlock)) n.unlock = f.unlock;
       return { ok: true, msg: 'Next experience saved.' };
     },
-    sendBooking(s, { text }) {
-      const n = s.quest.next;
-      if (!n || !n.enabled || !n.activity || !n.provider) return { ok: false, msg: 'Add the activity and provider first.' };
+    /* ----- the class journey (educator) ----- */
+    addStep(s, { type, at }) {
+      if (!STEP_TYPES.includes(type)) return { ok: false };
+      const st = newStep(s, type);
+      if (type === 'quest') { const used = new Set(s.journey.steps.filter((x) => x.type === 'quest').map((x) => x.questId)); const free = Object.keys(s.library).find((k) => !used.has(k)); st.questId = free || s.activeQuest; }
+      const i = Math.max(0, Math.min(Number.isInteger(at) ? at : s.journey.steps.length, s.journey.steps.length));
+      s.journey.steps.splice(i, 0, st);
+      if (i === 0 && s.journey.steps[1] && s.journey.steps[1].opens === 'start') s.journey.steps[1].opens = 'after';
+      if (i === 0) st.opens = 'start';
+      audit('teacher', `Added a ${type === 'class' ? 'classroom session' : type} step to the journey.`);
+      return { ok: true, msg: 'Step added — fill in the details.', id: st.id };
+    },
+    updateStep(s, { id, fields }) {
+      const st = findStep(s, id), f = fields || {};
+      if (!st) return { ok: false };
+      ['title', 'when', 'where', 'note'].forEach((k) => { if (typeof f[k] === 'string') st[k] = f[k].trim().slice(0, 200); });
+      if (['start', 'after', 'manual', 'date'].includes(f.opens)) st.opens = f.opens;
+      if (typeof f.date === 'string') st.date = /^\d{4}-\d{2}-\d{2}$/.test(f.date) ? f.date : '';
+      if (st.type === 'quest' && f.questId) { if (!s.library[f.questId] && f.questId !== s.activeQuest) return { ok: false, msg: 'Quest not found.' }; st.questId = f.questId; }
+      if (st.type === 'experience') ['activity', 'provider', 'org', 'bring', 'fallback', 'staff'].forEach((k) => { if (typeof f[k] === 'string') st.exp[k] = f[k].trim().slice(0, 300); });
+      if (st.type === 'experience' && !st.title) st.title = st.exp.activity;
+      return { ok: true, msg: 'Step saved.' };
+    },
+    removeStep(s, { id }) {
+      if (s.journey.steps.length <= 1) return { ok: false, msg: 'A journey needs at least one step.' };
+      const i = s.journey.steps.findIndex((x) => x.id === id);
+      if (i < 0) return { ok: false };
+      const [gone] = s.journey.steps.splice(i, 1);
+      if (i === 0 && s.journey.steps[0]) s.journey.steps[0].opens = 'start';
+      audit('teacher', `Removed “${stepTitle(s, gone)}” from the journey.`);
+      return { ok: true, msg: 'Step removed.' };
+    },
+    moveStep(s, { id, dir }) {
+      const steps = s.journey.steps, i = steps.findIndex((x) => x.id === id), j = i + (dir < 0 ? -1 : 1);
+      if (i < 0 || j < 0 || j >= steps.length) return { ok: false };
+      [steps[i], steps[j]] = [steps[j], steps[i]];
+      steps.forEach((x, k) => { if (k === 0) x.opens = 'start'; else if (x.opens === 'start') x.opens = 'after'; });
+      return { ok: true, silent: true };
+    },
+    openStep(s, { id, reason }) {
+      const i = s.journey.steps.findIndex((x) => x.id === id), st = s.journey.steps[i];
+      if (!st) return { ok: false };
+      if (st.type === 'experience' && st.exp.status !== 'accepted') return { ok: false, msg: 'Confirm the booking with the provider first.' };
+      const now = stepState(s, i);
+      if (now.state === 'open' || now.state === 'done') return { ok: false, msg: 'This step is already open.' };
+      const r = String(reason || '').trim();
+      if (st.opens === 'after' && r.length < 3) return { ok: false, msg: 'The step before isn’t done yet — add a short reason to open this one early.' };
+      st.opened = true; st.reason = r;
+      audit('teacher', `Opened “${stepTitle(s, st)}”${r ? ' early: ' + r : ''}.`);
+      return { ok: true, msg: `“${stepTitle(s, st)}” is open for the class.` };
+    },
+    markStepDone(s, { id, done }) {
+      const st = findStep(s, id);
+      if (!st) return { ok: false };
+      st.done = done !== false;
+      audit('teacher', `Marked “${stepTitle(s, st)}” as ${st.done ? 'done' : 'not done'}.`);
+      return { ok: true, msg: st.done ? `“${stepTitle(s, st)}” done — the next step can open.` : 'Marked as not done.' };
+    },
+    sendBooking(s, { id, text }) {
+      const st = id ? findStep(s, id) : firstExperience(s), n = st && st.exp;
+      if (!n || !n.activity || !n.provider) return { ok: false, msg: 'Add the activity and provider first.' };
       const t = String(text || '').trim();
       if (t.length < 20) return { ok: false, msg: 'Write the request first.' };
       n.request = t.slice(0, 2000); n.status = 'sent';
       audit('teacher', `Sent a booking request to ${n.provider}.`);
       return { ok: true, msg: 'Request sent (from your school email in the full product).' };
     },
-    providerReply(s, { accept, when }) {
-      const n = s.quest.next;
+    providerReply(s, { id, accept, when }) {
+      const st = id ? findStep(s, id) : firstExperience(s), n = st && st.exp;
       if (!n || n.status !== 'sent') return { ok: false };
       if (accept) { n.status = 'accepted'; audit('system', `${n.provider} accepted the booking (simulated provider).`); return { ok: true, msg: `${n.provider} accepted — booked.` }; }
       n.status = 'counter'; n.counterWhen = String(when || 'another date').slice(0, 120);
       audit('system', `${n.provider} suggested ${n.counterWhen} (simulated provider).`);
       return { ok: true, msg: `${n.provider} suggested another date.` };
     },
-    acceptCounter(s) {
-      const n = s.quest.next;
+    acceptCounter(s, { id } = {}) {
+      const st = id ? findStep(s, id) : firstExperience(s), n = st && st.exp;
       if (!n || n.status !== 'counter') return { ok: false };
-      n.when = n.counterWhen; n.status = 'accepted';
-      audit('teacher', `Accepted the new date: ${n.when}.`);
-      return { ok: true, msg: `Booked for ${n.when}.` };
+      st.when = n.counterWhen; n.status = 'accepted';
+      audit('teacher', `Accepted the new date: ${st.when}.`);
+      return { ok: true, msg: `Booked for ${st.when}.` };
     },
-    unlockExperience(s, { reason }) {
-      const n = s.quest.next;
-      if (!n || !n.enabled) return { ok: false };
-      if (n.status !== 'accepted') return { ok: false, msg: 'Confirm the booking with the provider first.' };
-      if (s.experience.unlocked) return { ok: false, msg: 'Already unlocked.' };
-      const r = String(reason || '').trim();
-      if (n.unlock === 'all' && !allFinished(s) && r.length < 3) return { ok: false, msg: 'Not every team has finished — add a reason to unlock early.' };
-      s.experience.unlocked = true; s.experience.reason = r;
-      audit('teacher', `Unlocked the next experience${r ? ' early: ' + r : ''}.`);
-      return { ok: true, msg: 'Next experience unlocked for the class.' };
-    },
-    experienceCheckIn(s, { participantId, code, byTeacher }) {
+    experienceCheckIn(s, { participantId, code, byTeacher, stepId }) {
       const p = SEED.byId[participantId];
-      if (!p || !s.experience.unlocked) return { ok: false, msg: 'The next experience isn’t unlocked yet.' };
-      if (!byTeacher && String(code || '').trim().toUpperCase() !== 'WQ-NEXT-' + String(s.activeQuest).toUpperCase()) return { ok: false, msg: 'That isn’t the check-in code for this experience.' };
-      if (s.experience.checkins[participantId]) return { ok: true, silent: true };
-      s.experience.checkins[participantId] = Date.now();
+      const i = s.journey.steps.findIndex((x) => x.type === 'experience' && (stepId ? x.id === stepId : ['open'].includes(stepState(s, s.journey.steps.indexOf(x)).state)));
+      const st = s.journey.steps[i];
+      if (!p || !st || stepState(s, i).state !== 'open') return { ok: false, msg: 'This experience isn’t open yet.' };
+      if (!byTeacher && String(code || '').trim().toUpperCase() !== ('WQ-' + st.id).toUpperCase()) return { ok: false, msg: 'That isn’t the check-in code for this experience.' };
+      if (st.checkins[participantId]) return { ok: true, silent: true };
+      st.checkins[participantId] = Date.now();
       const card = SEED.collectibles.find((c) => c.home === p.home);
       let evolved = false;
       if (card && card.evolves && s.claims[card.id] && !s.evolved[card.id]) { s.evolved[card.id] = true; evolved = true; }
-      audit(byTeacher ? 'teacher' : 'student', `${p.name} checked in at the next experience${evolved ? ' — ' + card.title + ' levelled up' : ''}.`);
+      audit(byTeacher ? 'teacher' : 'student', `${p.name} checked in at ${stepTitle(s, st)}${evolved ? ' — ' + card.title + ' levelled up' : ''}.`);
       return { ok: true, msg: evolved ? `Checked in — your team’s ${card.title} levelled up!` : 'Checked in. Enjoy!' };
     },
 
@@ -1131,10 +1226,11 @@ const Engine = (() => {
         : false;
       if (met) claim(s, c, 'system', SEED.EARN_TEXT[c.kind].toLowerCase());
     });
-    const n = s.quest.next;
-    if (n && n.enabled && n.unlock === 'all' && n.status === 'accepted' && !s.experience.unlocked && allFinished(s)) {
-      s.experience.unlocked = true;
-      audit('system', 'Every team finished — the next experience unlocked.');
+    for (const st of (s.journey && s.journey.steps) || []) {
+      if (st.type === 'quest' && !st.done && st.questId === s.activeQuest && (s.phase === 'COMPLETE' || allFinished(s))) {
+        st.done = true;
+        audit('system', `Every team finished “${s.quest.title}” — the next step in the journey can open.`);
+      }
     }
   }
 
@@ -1168,6 +1264,7 @@ const Engine = (() => {
   function freshShared() {
     useDefaults();
     const { ui, ...rest } = freshState();
+    rest.journey = defaultJourney(rest);
     return rest;
   }
 

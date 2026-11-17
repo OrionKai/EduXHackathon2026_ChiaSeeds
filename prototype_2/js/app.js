@@ -79,7 +79,7 @@
   const DEFAULT_SCREEN = { student: 'adventure', teacher: 'dashboard', collaborator: 'review' };
   const NAV = {
     student: [['adventure', 'sparkle', 'My adventure'], ['map', 'map', 'Quest map'], ['album', 'trophy', 'Class album']],
-    teacher: [['dashboard', 'map', 'My quests'], ['builder', 'pencil', 'Quest builder'], ['next', 'arrow', 'Next experience'], ['teams', 'team', 'Teams'], ['live', 'eye', 'Live session'], ['album', 'trophy', 'Class album'], ['report', 'book', 'Report']],
+    teacher: [['dashboard', 'map', 'My quests'], ['builder', 'pencil', 'Quest builder'], ['next', 'arrow', 'Journey'], ['teams', 'team', 'Teams'], ['live', 'eye', 'Live session'], ['album', 'trophy', 'Class album'], ['report', 'book', 'Report']],
     collaborator: [['review', 'pencil', 'Review contribution'], ['facilitate', 'voices', 'Facilitate'], ['work', 'book', 'Student work']],
   };
   const currentRole = () => ROUTES[location.hash.slice(1)] || null;
@@ -292,9 +292,9 @@
       case 'BRIEFING': return briefingScreen(me) + phasePath(st);
       case 'EXPERT': return missionScreen(st, me) + phasePath(st);
       case 'PEER_TEACH': return teachScreen(st, me) + phasePath(st);
-      case 'FINALE': return finaleScreen(st, me) + bonusCardFor(st, me) + nextExperienceCard(st, me) + phasePath(st);
-      case 'REFLECTION': return reflectionScreen(st, me) + bonusCardFor(st, me) + nextExperienceCard(st, me) + phasePath(st);
-      case 'COMPLETE': return completeScreen(st, me) + nextExperienceCard(st, me) + bonusCardFor(st, me) + phasePath(st);
+      case 'FINALE': return finaleScreen(st, me) + bonusCardFor(st, me) + Journey.student(st, me) + phasePath(st);
+      case 'REFLECTION': return reflectionScreen(st, me) + bonusCardFor(st, me) + Journey.student(st, me) + phasePath(st);
+      case 'COMPLETE': return completeScreen(st, me) + Journey.student(st, me) + bonusCardFor(st, me) + phasePath(st);
       default: return '';
     }
   }
@@ -627,25 +627,12 @@
                   <textarea class="input" id="bonus-a" name="answer" rows="2"></textarea>
                   <div style="margin-top:10px"><button class="btn btn-sun btn-sm" type="submit">${Art.icon('sparkle', 16)} Submit discovery</button></div>
                 </form>`}
-            ${claimed && card.evolves && !st.evolved[card.id] && st.quest.next && st.quest.next.enabled ? `<p class="hint-note" style="margin:6px 0 0">Levels up when your team checks in at the next experience.</p>` : ''}
+            ${claimed && card.evolves && !st.evolved[card.id] && st.journey.steps.some((x) => x.type === 'experience') ? `<p class="hint-note" style="margin:6px 0 0">Levels up when your team checks in at the next experience.</p>` : ''}
           </div>
         </div>
       </div>`;
   }
 
-  function nextExperienceCard(st, me) {
-    const n = st.quest.next, ex = st.experience;
-    if (!n || !n.enabled || !n.activity) return '';
-    const here = !!ex.checkins[me.id];
-    return `<div class="card next-exp">
-      <div class="spread"><div class="eyebrow teal">Next experience</div><span class="pill ${ex.unlocked ? 'mint' : 'plain'}">${here ? 'checked in' : ex.unlocked ? 'unlocked' : 'locked'}</span></div>
-      <h3 style="margin:4px 0">${esc(n.activity)}</h3>
-      <p class="hint-note" style="margin:0">${esc(n.provider)}${n.when ? ' · ' + esc(n.when) : ''}${n.bring ? ' · bring: ' + esc(n.bring) : ''}</p>
-      ${here ? `<p style="margin:8px 0 0">${Art.icon('check', 15)} You’re checked in. Phones away — enjoy it.</p>`
-        : ex.unlocked ? `<button class="btn btn-primary btn-sm" data-a="next-checkin" style="margin-top:8px">${Art.icon('eye', 15)} Check in at the door</button>`
-        : `<p class="hint-note" style="margin:8px 0 0">${n.unlock === 'all' ? 'Unlocks when every home team finishes the quest.' : 'Your teacher unlocks it.'}</p>`}
-    </div>`;
-  }
 
 
   function reflectionScreen(st, me) {
@@ -680,6 +667,7 @@
   function questMap(st, me) {
     return `
       ${pageHead(esc(SEED.title), 'Quest map')}
+      ${Journey.strip(st)}
       ${phasePath(st)}
       <div class="card wash-lavender">
         <div class="eyebrow">Learning with others</div>
@@ -742,7 +730,7 @@
           : screen === 'live' ? teacherLive(st)
           : screen === 'album' ? `<div class="stage-wrap stack">${albumScreen(st, 'teacher')}</div>`
           : screen === 'report' ? teacherReport(st)
-          : screen === 'next' ? teacherNext(st)
+          : screen === 'next' ? Journey.teacher(st)
           : teacherDashboard(st)}
       </div>`;
   }
@@ -845,9 +833,7 @@
         </div>
         <div class="stack builder-right">
           ${Assistant.board()}
-          <section class="card" id="sec-next"><div class="spread"><h3 style="margin:0">${Art.icon('arrow', 18)} Next experience</h3>${n.enabled ? `<span class="pill ${n.status === 'accepted' ? 'mint' : 'peach'}">${n.status === 'accepted' ? 'booked' : n.status === 'none' ? 'not requested' : 'awaiting provider'}</span>` : '<span class="pill plain">off</span>'}</div>
-            <p class="hint-note" style="margin:6px 0 10px">${n.enabled ? `${esc(n.activity)} · ${esc(n.provider)}${n.when ? ' · ' + esc(n.when) : ''}. Unlocks ${n.unlock === 'all' ? 'when every team finishes' : 'when you unlock it'}.` : 'After the quest, students apply what they learned with a real-world partner, e.g. a drawing class or a workshop.'}</p>
-            <button class="btn btn-secondary btn-sm" data-a="screen" data-screen="next">${n.enabled ? 'Manage booking' : 'Set one up'}</button></section>
+          ${Journey.builderCard(st)}
           <section class="card" id="sec-publish">
             <div class="spread"><h3 style="margin:0">Publish</h3>${statusChip(locked ? 'APPROVED' : 'PENDING')}</div>
             <ul style="margin:10px 0 12px;padding-left:20px">
@@ -869,64 +855,6 @@
     return `${teams} home teams of ${t}${last < t ? ` (the last has ${last})` : ''} · each track has ${teams} experts, visiting in groups of ${g} (${Math.ceil(teams / g)} group${Math.ceil(teams / g) > 1 ? 's' : ''} per station)`;
   }
 
-  function teacherNext(st) {
-    const n = { ...st.quest.next }, ex = st.experience, locked = st.quest.status === 'PUBLISHED';
-    const stage = n.status === 'accepted' ? 3 : n.status === 'none' ? 1 : 2;
-    const draft = st.ui.bookingDraft != null ? st.ui.bookingDraft : n.request;
-    const checked = Object.keys(ex.checkins);
-    const code = 'WQ-NEXT-' + String(st.activeQuest).toUpperCase();
-    return `
-      ${pageHead(esc(st.quest.title), 'Next experience', `<label class="toggle"><input type="checkbox" data-a="next-enable" ${n.enabled ? 'checked' : ''}> Include one</label>`)}
-      <p class="hint-note" style="margin:-4px 0 14px">The quest is the bridge, not the destination: after it, the class applies what they learned with a real partner. Each team’s collectible levels up when they check in.</p>
-      ${!n.enabled ? '' : `
-      <div class="grid-2">
-        <form class="card stack" data-form="next" style="gap:6px">
-          <h3 style="margin:0">The experience</h3>
-          <label class="fld" for="nx-act">Activity</label><input class="input" id="nx-act" value="${esc(n.activity)}" placeholder="e.g. Still-life drawing class">
-          <div class="grid-2" style="gap:8px"><div><label class="fld" for="nx-prov">Provider</label><input class="input" id="nx-prov" value="${esc(n.provider)}"></div>
-            <div><label class="fld" for="nx-org">Organisation</label><input class="input" id="nx-org" value="${esc(n.org)}"></div></div>
-          <label class="fld" for="nx-when">When</label><input class="input" id="nx-when" value="${esc(n.when)}">
-          <label class="fld" for="nx-bring">Students bring</label><input class="input" id="nx-bring" value="${esc(n.bring)}">
-          <label class="fld" for="nx-fb">If the provider cancels</label><input class="input" id="nx-fb" value="${esc(n.fallback)}">
-          <label class="fld" for="nx-staff">Supervising adults</label><input class="input" id="nx-staff" value="${esc(n.staff || '')}" style="max-width:120px">
-          <label class="fld" for="nx-unlock">Unlocks</label><select class="input" id="nx-unlock"><option value="all" ${n.unlock === 'all' ? 'selected' : ''}>When every home team has finished the quest</option><option value="manual" ${n.unlock === 'manual' ? 'selected' : ''}>When I unlock it</option></select>
-          <button class="btn btn-secondary btn-sm" type="submit" style="align-self:flex-start;margin-top:6px">Save</button>
-        </form>
-        <div class="stack">
-          <div class="card stack" style="gap:8px">
-            <div class="spread"><h3 style="margin:0">Booking</h3><div class="pipe">${['Request', 'Provider replies', 'Booked'].map((t, i) => `<span class="pipe-s ${i + 1 < stage || n.status === 'accepted' ? 'done' : i + 1 === stage ? 'on' : ''}"><b>${i + 1}</b>${t}</span>`).join('<i></i>')}</div></div>
-            ${n.status === 'none' ? `
-              <button class="as-chip" type="button" data-a="draft-booking" style="align-self:flex-start">${Art.icon('pencil', 14)} Start from a template</button>
-              <label class="fld" for="nx-req">Message to ${esc(n.provider || 'the provider')}</label><textarea class="input" id="nx-req" rows="7">${esc(draft)}</textarea>
-              <button class="btn btn-primary btn-sm" data-a="send-booking" style="align-self:flex-start">${Art.icon('arrow', 15)} Send request</button>`
-              : `<div class="mail">${esc(n.request)}</div>`}
-            ${n.status === 'counter' ? `<div class="hint-note">${esc(n.provider)} suggests <strong>${esc(n.counterWhen)}</strong>.</div><button class="btn btn-primary btn-sm" data-a="accept-counter" style="align-self:flex-start">Accept new date</button>` : ''}
-            <p class="hint-note" style="margin:0">Emails and payment happen outside WorldQuest; only you can confirm the booking here.</p>
-          </div>
-          <div class="card stack" style="gap:8px;background:var(--paper)">
-            <div class="spread"><h3 style="margin:0">Provider’s view</h3><span class="pill plain">simulated</span></div>
-            ${n.status === 'none' ? '<p class="hint-note" style="margin:0">Nothing sent yet.</p>'
-              : n.status === 'sent' ? `<div class="mail">${esc(n.request)}</div><div class="row"><button class="btn btn-teal btn-sm" data-a="provider-accept">${Art.icon('check', 15)} Accept</button></div>
-              <div class="row"><input class="input" id="nx-counter" placeholder="Or suggest another date" style="flex:1;min-width:150px"><button class="btn btn-ghost btn-sm" data-a="provider-counter">Suggest</button></div>`
-              : `<p class="hint-note" style="margin:0">${n.status === 'accepted' ? 'Accepted — booking confirmed.' : 'Waiting for the teacher.'}</p>`}
-          </div>
-        </div>
-      </div>
-      <div class="grid-2" style="margin-top:16px">
-        <div class="card stack" style="gap:8px">
-          <div class="spread"><h3 style="margin:0">On the day</h3><span class="pill ${ex.unlocked ? 'mint' : 'plain'}">${ex.unlocked ? 'unlocked' : 'locked'}</span></div>
-          <p class="hint-note" style="margin:0">${ex.unlocked ? (ex.reason ? 'Unlocked early: “' + esc(ex.reason) + '”.' : 'Unlocked for the class.') : n.unlock === 'all' ? `Unlocks automatically when every home team’s finale is approved (${SEED.homeGroups.filter((h) => st.finale[h].status === 'APPROVED').length}/${SEED.homeGroups.length} so far).` : 'You unlock it when you’re ready.'}</p>
-          ${!ex.unlocked && n.status === 'accepted' ? `<div class="row"><input class="input" id="nx-reason" placeholder="${n.unlock === 'all' ? 'Reason to unlock early' : 'Note (optional)'}" style="flex:1;min-width:160px"><button class="btn btn-primary btn-sm" data-a="unlock-next">Unlock now</button></div>` : ''}
-          ${n.status !== 'accepted' ? '<p class="hint-note" style="margin:0">Confirm the booking first.</p>' : ''}
-          <p style="margin:0"><strong>${checked.length}</strong> checked in${checked.length ? ': ' + checked.map((id) => esc(who(SEED.byId[id]))).join(', ') : ''}</p>
-        </div>
-        <div class="card stack" style="gap:8px;align-items:flex-start">
-          <h3 style="margin:0">Door check-in code</h3>
-          <p class="hint-note" style="margin:0">Print it for the provider’s door. Students scan it on arrival; their team’s collectible levels up.</p>
-          <div class="qr-box" data-qrtext="${code}"></div><span class="mono">${code}</span>
-        </div>
-      </div>`}`;
-  }
 
 
   function teacherTeams(st) {
@@ -987,9 +915,7 @@
           <p class="hint-note" style="margin:10px 0 0">${esc(SEED.phaseMeta[st.phase].desc)} ${st.phase === 'LOBBY' && st.quest.status !== 'PUBLISHED' ? '· Publish the quest first (Quest builder).' : ''}</p>
         </div>
 
-        ${st.quest.next && st.quest.next.enabled ? `<div class="card"><div class="spread"><h3>${Art.icon('arrow', 18)} Next experience: ${esc(st.quest.next.activity)}</h3><span class="pill ${st.experience.unlocked ? 'mint' : 'plain'}">${st.experience.unlocked ? Object.keys(st.experience.checkins).length + ' checked in' : 'locked'}</span></div>
-          <p class="hint-note" style="margin:4px 0 0">${st.experience.unlocked ? 'Students check in by scanning the door code; you can also check someone in.' : 'Unlocks ' + (st.quest.next.unlock === 'all' ? 'when every team’s finale is approved' : 'when you unlock it') + '.'} <button class="btn btn-ghost btn-sm" data-a="screen" data-screen="next">Manage</button></p>
-          ${st.experience.unlocked ? `<div class="row" style="margin-top:6px">${Object.keys(st.seats).filter((id) => !st.experience.checkins[id]).map((id) => `<button class="btn btn-secondary btn-sm" data-a="teacher-checkin" data-pid="${id}">Check in ${esc(who(SEED.byId[id]))}</button>`).join('')}</div>` : ''}</div>` : ''}
+        ${Journey.liveCard(st)}
         ${Object.keys(st.checkinPhotos).length ? `<div class="card"><div class="spread"><h3>${Art.icon('eye', 18)} Check-in photos</h3><span class="pill lavender">${Object.keys(st.checkinPhotos).length} to confirm</span></div>
           <div class="grid-3">${Object.entries(st.checkinPhotos).map(([pid, c]) => { const p = SEED.byId[pid]; return `<div class="queue-row" style="display:block"><strong>${esc(who(p))}</strong> · ${esc(SEED.missions[p.topic].name)}
             <p class="hint-note" style="margin:2px 0">Should show: ${esc(SEED.keyObjectOf(p.topic))}</p><img class="ev-photo" src="${c.photo}" alt="Check-in photo from ${esc(who(p))}">${c.reason ? `<p class="hint-note" style="margin:0">AI: ${esc(c.reason)}</p>` : ''}
@@ -1205,6 +1131,7 @@
 
   function bind() {
     if (typeof Insights !== 'undefined') Insights.bind(root);
+    if (typeof Journey !== 'undefined') Journey.bind(root);
     root.querySelectorAll('[data-a]').forEach((el) => {
       const a = el.dataset.a;
       if (a === 'pq-sel') { el.addEventListener('change', () => { S().ui.pq = el.value; render(); }); return; }
@@ -1223,24 +1150,7 @@
           case 'help': return act('requestHelp', { participantId: S().ui.student });
           case 'resolve-help': return act('resolveHelp', { id: el.dataset.id });
           case 'qr-cards': return StationCards.open();
-          case 'next-enable': return act('setNext', { fields: { enabled: el.checked } }), render();
-          case 'draft-booking': {
-            const n = S().quest.next;
-            const au = S().quest.audience || SEED.defaultAudience();
-            S().ui.bookingDraft = `Hello ${n.provider || 'there'},\n\nMy group (${SEED.participants.length} ${SEED.AUDIENCES[au.kind].toLowerCase()} learners${au.ages ? ', ages ' + au.ages : ''}) is finishing a quest on “${S().quest.title}”. Afterwards we’d love to come to you for: ${n.activity || 'a short workshop'}${n.when ? ', on ' + n.when : ''}.\n\nThey will bring: ${n.bring || 'their notes from the quest'}.${n.staff ? ' ' + n.staff + ' adults will supervise.' : ''} Could you confirm availability, timing and any cost?\n\nThank you`;
-            render(); return;
-          }
-          case 'send-booking': { const t = (document.getElementById('nx-req') || {}).value; const r = act('sendBooking', { text: t }); if (r.ok) S().ui.bookingDraft = null; return; }
-          case 'provider-accept': return act('providerReply', { accept: true });
-          case 'provider-counter': { const w = ((document.getElementById('nx-counter') || {}).value || '').trim(); if (!w) return toast('Type the date the provider suggests.', 'error'); return act('providerReply', { accept: false, when: w }); }
-          case 'accept-counter': return act('acceptCounter');
-          case 'unlock-next': return act('unlockExperience', { reason: (document.getElementById('nx-reason') || {}).value || '' });
           case 'award-card': return act('awardCollectible', { collectibleId: el.dataset.card });
-          case 'next-checkin': {
-            const me = SEED.byId[S().ui.student];
-            return Scanner.open({ title: 'Scan the code at the door', hint: 'It’s on the provider’s door. No camera? Ask your teacher to check you in.', onCode: (c) => act('experienceCheckIn', { participantId: me.id, code: c }).ok });
-          }
-          case 'teacher-checkin': return act('experienceCheckIn', { participantId: el.dataset.pid, byTeacher: true });
           case 'show-code': return JoinCode.open(sessionCode(), S().quest.title);
           case 'demo-toggle': S().ui.demoOpen = !S().ui.demoOpen; render(); return;
           case 'safety': return act('updateQuest', { field: 'safety', value: el.checked }), render();
@@ -1389,11 +1299,6 @@
           act('setStructure', { tracks: v('g-tracks'), classSize: v('g-size'), expertGroup: v('g-exp') });
           return;
         }
-        if (kind === 'next') {
-          const v = (id) => form.querySelector('#' + id).value;
-          act('setNext', { fields: { activity: v('nx-act'), provider: v('nx-prov'), org: v('nx-org'), when: v('nx-when'), bring: v('nx-bring'), fallback: v('nx-fb'), staff: v('nx-staff'), unlock: v('nx-unlock') } });
-          return;
-        }
         if (kind === 'session') {
           const code = form.querySelector('#demo-session').value.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
           if (code) location.href = location.pathname + '?session=' + encodeURIComponent(code) + location.hash;
@@ -1512,7 +1417,7 @@
     }
     render();
   });
-  window.WQ = { act, toast, render };
+  window.WQ = { act, toast, render, pageHead };
   addEventListener('hashchange', () => { window.scrollTo(0, 0); render(); });
   let tiltArmed = false, upSince = 0;
   function armTilt() {

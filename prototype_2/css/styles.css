@@ -673,3 +673,26 @@ a.brand { text-decoration: none; color: inherit; }
 .matrix td.l { border-color: #CFE7A6; background: #F6FBEC; }
 .mission-hero.sky { background: linear-gradient(135deg, #E3F2FF, #F5FAFF 70%); }
 .mission-hero.lime { background: linear-gradient(135deg, #EEF8DD, #FAFDF4 70%); }
+
+/* ---------- class journey ---------- */
+.journey { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.j-step { display: grid; grid-template-columns: 36px 1fr; gap: 12px; align-items: start; position: relative; }
+.j-step::before { content: ''; position: absolute; left: 17px; top: 36px; bottom: -14px; width: 2px; background: var(--stroke); }
+.j-dot { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--white); border: 2px solid var(--stroke); color: var(--muted); z-index: 1; }
+.j-step.j-open .j-dot { border-color: var(--violet); color: var(--violet-deep); background: var(--lavender); }
+.j-step.j-done .j-dot { border-color: #3BB89A; color: #fff; background: #3BB89A; }
+.j-step.j-waiting .j-dot { border-color: #F2B28F; }
+.j-step.j-open .j-card { border: 2px solid var(--violet); }
+.j-actions { margin-top: 10px; gap: 6px; }
+.j-move { margin-left: auto; display: inline-flex; gap: 4px; }
+.j-add { margin-left: 48px; }
+.j-add .btn { opacity: .8; }
+.j-addcard { padding: 12px 14px; }
+.j-strip { list-style: none; margin: 8px 0 0; padding: 0; display: flex; gap: 8px; overflow-x: auto; }
+.j-s { flex: 1 0 140px; display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: 12px; background: var(--paper); color: var(--muted); }
+.j-s span { display: flex; flex-direction: column; }
+.j-s strong { color: var(--ink); font-size: 14px; }
+.j-s small { font-size: 12px; }
+.j-s.open { background: var(--lavender); color: var(--violet-deep); }
+.j-s.done { color: var(--success); }
+@media (max-width: 700px) { .j-move { margin-left: 0; } .j-add { margin-left: 0; } }
