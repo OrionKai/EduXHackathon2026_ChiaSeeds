@@ -30,7 +30,7 @@ const Assistant = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const lines = (v) => String(v || '').split('\n').map((x) => x.trim()).filter(Boolean);
 
-  const SRC = () => Engine.state.sources.map((s) => (s.kind === 'partner' ? { ...s, fact: Engine.state.contributor.text, partner: true } : { ...s, fact: s.text }));
+  const SRC = () => Engine.state.sources.map((s) => (s.kind === 'partner' ? { ...s, fact: [Engine.state.contributor.text, Engine.state.contributor.avoid ? 'Handle with care: ' + Engine.state.contributor.avoid : ''].filter(Boolean).join(' '), partner: true } : { ...s, fact: s.text }));
   const srcFor = (t) => (Engine.state.sources.find((s) => s.url && s.url === SEED.missions[t].sourceUrl) || { id: '' }).id;
   const partnerSrc = () => (Engine.state.sources.find((s) => s.kind === 'partner') || { id: '' }).id;
   const isTemplate = () => (Engine.state.content.meta || {}).id === 'lost_museum';
@@ -38,6 +38,20 @@ const Assistant = (() => {
 
   /* Scripted revisions exist only for the Lost Museum template (they are written for its content). */
   const REVS = [
+    { id: 'rq', topic: 'B', chip: 'Track B: switch to multiple choice', prompt: 'Change Track B to be assessed with a multiple-choice check, verified automatically.',
+      note: '3-question multiple-choice check from the Gallery 20 page (pass 2/3), verified automatically.',
+      patch: { assess: { quiz: [
+        { q: 'Whose sarcophagus lid is in Gallery 20?', o: ['Ramesses III', 'Nespawershefyt', 'Tutankhamun', 'Cleopatra'], a: 0 },
+        { q: 'According to the gallery page, who gave the lid to the museum?', o: ['G. B. Belzoni', 'A local farmer', 'The British Army', 'It isn’t recorded'], a: 0 },
+        { q: 'Which question can the lid alone NOT answer?', o: ['How ordinary workers were remembered', 'What it is made of', 'How big it is', 'What is carved on it'], a: 0 }], pass: 2, verify: 'auto' } },
+      reply: 'Track B now uses a 3-question multiple-choice check built only from the Gallery 20 page [S2]. Students who get 2 of 3 right are verified automatically; the last question checks they know what the lid can’t tell us.' },
+    { id: 'rh', topic: 'A', chip: 'Track A: add a harder question', prompt: 'Add a harder multiple-choice question to Track A about the limits of the evidence.',
+      note: 'Quick check now has 3 questions, including one about the limits of the evidence (pass 2/3).',
+      patch: { assess: { quiz: [
+        { q: 'Which of these is an observation, not an interpretation?', o: ['The lid has painted decoration', 'Everyone in ancient Egypt had a coffin like this', 'The owner must have been very rich', 'One artist made the whole set'], a: 0 },
+        { q: 'According to the gallery page, when was the coffin set given to the museum?', o: ['1822', '1923', '1700', '2001'], a: 0 },
+        { q: 'Why can’t this coffin set tell us how most Egyptians were buried?', o: ['It is one high-status burial, so it may not be typical', 'Its paint has faded', 'It is in a museum now', 'It has no writing on it'], a: 0 }], pass: 2, verify: 'auto' } },
+      reply: 'Added a harder question to Track A’s quick check: it asks why one coffin can’t stand for everyone [S1]. Students need 2 of 3 to be verified automatically.' },
     { id: 'ra', topic: 'A', chip: 'Track A: add a quick check', prompt: 'Add a short multiple-choice check to Track A and verify it automatically if students pass.',
       note: 'Added a 2-question check (pass 2/2), verified automatically.',
       patch: { assess: { quiz: [
@@ -48,7 +62,7 @@ const Assistant = (() => {
       note: 'Instructions shortened to about a 12-year-old reading level.',
       patch: { observe: 'Find two different kinds of object, like a painted pot and a coin. Write down what you see on each one.' },
       reply: 'Done. Track C now uses shorter instructions at about a 12-year-old reading level. The evidence it asks for hasn’t changed, so the finale still works.' },
-    { id: 'rd', topic: 'D', chip: 'Track D: if the contributor is busy', prompt: 'What happens in Track D if the community contributor is busy?',
+    { id: 'rd', topic: 'D', chip: 'Track D: if the partner is busy', prompt: 'What happens in Track D if the community partner is busy?',
       note: 'Fallback added: labelled prompt card and a staggered schedule (max 5 students at a time).',
       patch: { fallback: 'If the contributor is busy: use the partner’s prompt card at the gallery door (clearly labelled), then talk to them later. No more than 5 students at a time.' },
       reply: 'I added a fallback for Track D: a clearly labelled prompt card built from the partner’s approved questions, and a staggered schedule so no more than 5 students reach them at once.' },
@@ -150,7 +164,7 @@ const Assistant = (() => {
             const m = SEED.missions[t], [cls, txt] = LABEL[st.tracks[t]] || LABEL.EDITED, tp = probs.filter((x) => x.startsWith(`Track ${t}:`));
             return `<div class="as-track" id="as-track-${t}">
               <div class="spread"><div class="row" style="gap:8px"><span class="topic-chip ${SEED.topicMeta[t].color}">${Art.icon(SEED.topicMeta[t].icon, 14)}${t}</span><strong>${esc(m.name || 'Untitled track')}</strong></div>
-                <span class="status-chip ${cls}">${txt}</span></div>
+                <span class="row" style="gap:6px">${(st.contributor.requests || []).some((r) => r.item === 'track:' + t && r.status === 'open') ? '<span class="pill peach">Partner suggestion</span>' : ''}<span class="status-chip ${cls}">${txt}</span></span></div>
               <p class="hint-note" style="margin:6px 0">${m.gallery ? esc(m.gallery) + ' · ' : ''}${esc(m.narrative || m.observe || 'Nothing written yet.')} ${srcFor(t) ? `<button class="as-cite" type="button" data-as-cite="${srcFor(t)}">${srcFor(t)}</button>` : ''}</p>
               ${blocksHTML(t, m, locked)}
               ${tp.length ? `<p class="hint-note" style="margin:6px 0;color:var(--danger)">Missing: ${tp.map((x) => esc(x.split(': ')[1])).join(', ')}</p>` : ''}

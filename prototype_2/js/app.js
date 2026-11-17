@@ -76,11 +76,11 @@
   const ROUTES = { student: 'student', educator: 'teacher', partner: 'collaborator' };
   const ROUTE_OF = { student: 'student', teacher: 'educator', collaborator: 'partner' };
   const ROLE_LABEL = { student: 'Student', teacher: 'Educator', collaborator: 'Community partner' };
-  const DEFAULT_SCREEN = { student: 'adventure', teacher: 'dashboard', collaborator: 'review' };
+  const DEFAULT_SCREEN = { student: 'adventure', teacher: 'dashboard', collaborator: 'overview' };
   const NAV = {
     student: [['adventure', 'sparkle', 'My adventure'], ['map', 'map', 'Quest map'], ['album', 'trophy', 'Class album']],
     teacher: [['dashboard', 'map', 'My quests'], ['builder', 'pencil', 'Quest builder'], ['next', 'arrow', 'Journey'], ['teams', 'team', 'Teams'], ['live', 'eye', 'Live session'], ['album', 'trophy', 'Class album'], ['report', 'book', 'Report']],
-    collaborator: [['review', 'pencil', 'Review contribution'], ['facilitate', 'voices', 'Facilitate'], ['work', 'book', 'Student work']],
+    collaborator: [['overview', 'map', 'Overview'], ['contribution', 'pencil', 'My contribution'], ['review', 'eye', 'Review the quest'], ['facilitate', 'voices', 'On the day'], ['work', 'book', 'Student work']],
   };
   const currentRole = () => ROUTES[location.hash.slice(1)] || null;
   /* Presenter controls stay off student phones unless the link asks for them (?demo=1 or a ?fast= demo link). */
@@ -99,7 +99,8 @@
     } else {
       if (st.ui.role !== role) { st.ui.role = role; st.ui.screen = null; st.ui.lookUp = false; }
       const screen = role === 'student' && !joinedHere(st) ? 'adventure' : st.ui.screen || DEFAULT_SCREEN[role];
-      const badge = (id) => (id === 'facilitate' && sel.pendingInteractions().length ? ` <span class="pill peach">${sel.pendingInteractions().length}</span>` : id === 'live' && st.help.some((h) => h.open) ? ` <span class="pill peach">help</span>` : '');
+      const pp = role === 'collaborator' ? sel.partnerProgress() : null;
+      const badge = (id) => (id === 'review' && pp && !pp.signedOff && pp.contributed && pp.reviewed < pp.items.length ? ` <span class="pill peach">${pp.items.length - pp.reviewed}</span>` : id === 'facilitate' && sel.pendingInteractions().length ? ` <span class="pill peach">${sel.pendingInteractions().length}</span>` : id === 'live' && st.help.some((h) => h.open) ? ` <span class="pill peach">help</span>` : '');
       root.innerHTML = `
       <div class="shell role-${role}${demoOn() ? ' demo-on' : ''}">
         <aside class="sidebar">
@@ -178,7 +179,7 @@
         <div class="demo-sec"><span class="eyebrow">Shortcuts</span>
           <div class="row"><button class="btn btn-secondary btn-sm" data-a="sim-class">Seed classmates</button><button class="btn btn-secondary btn-sm" data-a="sim-bonus">Seed discoveries</button><button class="btn btn-secondary btn-sm" data-a="tamper">Tamper test</button></div></div>
         <div class="demo-sec"><span class="eyebrow">Running order</span>
-          <ol class="hint-note" style="margin:0;padding-left:18px"><li>Partner approves their contribution</li><li>Educator drafts, approves tracks, publishes</li><li>Live session → advance phases; students join with the class code</li></ol></div>
+          <ol class="hint-note" style="margin:0;padding-left:18px"><li>Partner reviews the quest and signs off</li><li>Educator drafts, approves tracks, publishes</li><li>Live session → advance phases; students join with the class code</li></ol></div>
         <button class="btn btn-danger-ghost btn-sm" data-a="reset">Reset demo data (everyone on this class code)</button>
       </div>` : ''}
     </div>`;
@@ -402,7 +403,7 @@
             ${st.interactions[me.id] ? statusChip('VERIFIED') : statusChip('SUBMITTED')}</div>
             <p style="margin:8px 0 0">${st.interactions[me.id]
               ? 'Your conversation with the community partner is verified — record their perspective in step 3.'
-              : `Meet the approved community partner (<em>${esc(st.quest.partner.name)}</em>). They confirm it from their own device.`}</p>
+              : `Meet the community partner (<em>${esc(Partner.label(st.quest, st.contributor))}</em>). They confirm it from their own device.`}</p>
           </div>` : ''}` : ''}
       ${tab === 'record' ? (st.checkins[me.id] || (m.assess && m.assess.checkin === 'none') ? recordForm(st, me, m, ev) : checkinCard(st, me, m, true)) : ''}`;
   }
@@ -778,12 +779,7 @@
         <div class="grid-3">
           <div class="card wash-mint"><div class="eyebrow teal">Students joined</div><h2 style="font-size:40px">${Object.keys(st.seats).length}<small style="font-size:20px">/${SEED.participants.length}</small></h2><p style="margin:0">with class code <span class="mono">${esc(code)}</span></p></div>
           <div class="card wash-peach"><div class="eyebrow coral">Pending reviews</div><h2 style="font-size:40px">${String(pend).padStart(2, '0')}</h2><p style="margin:0">${pend ? 'Evidence, finales or discoveries waiting in the live room.' : 'Nothing waiting — all clear.'}</p></div>
-          <form class="card" data-form="partner">
-            <div class="spread"><div class="eyebrow">Community partner for this quest</div>${statusChip(st.contributor.status)}</div>
-            <label class="fld" for="pt-name">Name</label><input class="input" id="pt-name" value="${esc(st.quest.partner.name)}">
-            <label class="fld" for="pt-org">Organisation</label><input class="input" id="pt-org" value="${esc(st.quest.partner.org)}">
-            <button class="btn btn-secondary btn-sm" type="submit" style="margin-top:8px">Save partner</button>
-          </form>
+          ${Partner.educatorCard(st)}
         </div>
       </div>`;
   }
@@ -833,6 +829,7 @@
           </div>
         </div>
         <div class="stack builder-right">
+          ${Partner.requestsCard(st)}
           ${Assistant.board()}
           ${Journey.builderCard(st)}
           <section class="card" id="sec-publish">
@@ -840,7 +837,7 @@
             <ul style="margin:10px 0 12px;padding-left:20px">
               <li>Quest content complete: <strong>${SEED.contentProblems(st.content).length ? SEED.contentProblems(st.content).length + ' to do' : 'yes'}</strong></li>
               <li>Tracks approved by you: <strong>${SEED.topics.filter((t) => st.tracks[t] === 'APPROVED').length}/${SEED.topics.length}</strong></li>
-              <li>Community partner approved their contribution: <strong>${st.contributor.status === 'APPROVED' ? 'yes' : 'not yet'}</strong></li>
+              <li>Community partner signed off: <strong>${st.contributor.status === 'APPROVED' ? 'yes' : (() => { const p = sel.partnerProgress(); return p.open ? p.open + ' suggestion(s) to answer' : `not yet (${p.reviewed}/${p.items.length} reviewed)`; })()}</strong></li>
               <li><label><input type="checkbox" data-a="safety" ${q.safety ? 'checked' : ''} ${dis}> Safety, supervision and venue booking confirmed by me</label></li>
             </ul>
             <button class="btn btn-teal" data-a="publish" ${dis}>${locked ? 'Published ✓' : 'Publish to students'}</button>
@@ -917,6 +914,7 @@
           <p class="hint-note" style="margin:10px 0 0">${esc(SEED.phaseMeta[st.phase].desc)} ${st.phase === 'LOBBY' && st.quest.status !== 'PUBLISHED' ? '· Publish the quest first (Quest builder).' : ''}</p>
         </div>
 
+        ${Partner.flagsCard(st)}
         ${Journey.liveCard(st)}
         ${Object.keys(st.checkinPhotos).length ? `<div class="card"><div class="spread"><h3>${Art.icon('eye', 18)} Check-in photos</h3><span class="pill lavender">${Object.keys(st.checkinPhotos).length} to confirm</span></div>
           <div class="grid-3">${Object.entries(st.checkinPhotos).map(([pid, c]) => { const p = SEED.byId[pid]; return `<div class="queue-row" style="display:block"><strong>${esc(who(p))}</strong> · ${esc(SEED.missions[p.topic].name)}
@@ -1015,50 +1013,17 @@
   /* ================= collaborator ================= */
 
   function collaboratorView(st) {
-    const screen = st.ui.screen || 'review';
-    const pqId = st.ui.pq && st.library[st.ui.pq] ? st.ui.pq : st.activeQuest;
+    const TITLES = { overview: 'Overview', contribution: 'My contribution', review: 'Review the quest', facilitate: 'On the day', work: 'Student work' };
+    const screen = TITLES[st.ui.screen] ? st.ui.screen : 'overview';
+    const questLevel = ['overview', 'contribution', 'review'].includes(screen);
+    const pqId = questLevel && st.ui.pq && st.library[st.ui.pq] ? st.ui.pq : st.activeQuest;
     const pq = pqId === st.activeQuest ? st.quest : st.library[pqId].quest;
-    const pendD = sel.pendingInteractions();
+    const picker = questLevel && Object.keys(st.library).length > 1 ? `<label class="sr-only" for="pq-sel">Quest</label><select class="input" id="pq-sel" data-a="pq-sel" style="width:auto;min-width:200px">${Object.entries(st.library).map(([id, r]) => `<option value="${id}" ${id === pqId ? 'selected' : ''}>${esc((id === st.activeQuest ? st.quest : r.quest).title)}${id === st.activeQuest ? ' (this class)' : ''}</option>`).join('')}</select>` : '';
     return `
       <div class="stack">
-        ${screen === 'review'
-          ? pageHead(`Community partner · ${esc(pq.title)}`, 'Review contribution', `<label class="sr-only" for="pq-sel">Quest</label><select class="input" id="pq-sel" data-a="pq-sel" style="width:auto;min-width:200px">${Object.entries(st.library).map(([id, r]) => `<option value="${id}" ${id === pqId ? 'selected' : ''}>${esc((id === st.activeQuest ? st.quest : r.quest).title)}${id === st.activeQuest ? ' (this class)' : ''}</option>`).join('')}</select>`, 'coral')
-          : pageHead(`Community partner · ${esc(st.quest.title)}`, screen === 'facilitate' ? 'Facilitate' : 'Student work', '', 'coral')}
-        ${screen === 'facilitate' || screen === 'work' ? (screen === 'facilitate' ? facilitateScreen(st, pendD) : partnerWork(st)) : reviewScreen(st, pqId)}
-      </div>`;
-  }
-
-  function reviewScreen(st, qid) {
-    const rec = qid === st.activeQuest ? st : st.library[qid];
-    const c = rec.contributor, q = rec.quest, approved = c.status === 'APPROVED';
-    const conv = Object.values(rec.content.missions).find((m) => m && m.needsFacilitator);
-    return `
-      <div class="grid-2">
-        <form class="card" data-form="contribution" data-qid="${qid}">
-          <div class="eyebrow coral">${esc(q.title)}${conv ? ' · ' + esc(conv.name) : ''}</div>
-          <h3>Your learning contribution</h3>
-          <p class="hint-note">Add context students can only get from you. You edit only your own contribution — never the educator’s curriculum. It becomes an approved source the assistant may draw on.</p>
-          <label class="fld" for="contrib">What students can learn from you</label>
-          <textarea class="input" id="contrib" rows="4" ${approved ? 'disabled' : ''}>${esc(c.text)}</textarea>
-          <div class="row" style="margin-top:12px">
-            ${approved
-              ? `<span class="status-chip st-verified">${Art.icon('check', 15)}Approved — educator notified</span>`
-              : `<button class="btn btn-primary" type="submit">${Art.icon('pencil', 16)} Save edit</button>
-                 <button class="btn btn-teal" type="button" data-a="approve-contrib" data-qid="${qid}">${Art.icon('check', 16)} Approve contribution</button>`}
-          </div>
-        </form>
-        <div class="stack">
-          <form class="card" data-form="partner" data-qid="${qid}">
-            <div class="eyebrow coral">How students see you</div>
-            <label class="fld" for="pt-name">Name</label><input class="input" id="pt-name" value="${esc(q.partner.name)}">
-            <label class="fld" for="pt-org">Organisation</label><input class="input" id="pt-org" value="${esc(q.partner.org)}">
-            <button class="btn btn-secondary btn-sm" type="submit" style="margin-top:8px">Save</button>
-          </form>
-          <div class="card wash-peach">
-            <div class="eyebrow coral">A shared responsibility</div>
-            <p class="hint-note" style="margin:0">Your approval is a separate sign-off from the educator’s: the quest can’t be published without it. This demo role is simulated; it does not represent venue staff or a confirmed partnership.</p>
-          </div>
-        </div>
+        ${pageHead(`Community partner · ${esc(pq.title)}`, TITLES[screen], picker, 'coral')}
+        ${screen === 'overview' ? Partner.overview(st, pqId) : screen === 'contribution' ? Partner.contribution(st, pqId) : screen === 'review' ? Partner.review(st, pqId)
+          : screen === 'facilitate' ? facilitateScreen(st, sel.pendingInteractions()) : Partner.quotes(st) + partnerWork(st)}
       </div>`;
   }
 
@@ -1134,6 +1099,7 @@
   function bind() {
     if (typeof Insights !== 'undefined') Insights.bind(root);
     if (typeof Journey !== 'undefined') Journey.bind(root);
+    if (typeof Partner !== 'undefined') Partner.bind(root);
     root.querySelectorAll('[data-a]').forEach((el) => {
       const a = el.dataset.a;
       if (a === 'pq-sel') { el.addEventListener('change', () => { S().ui.pq = el.value; render(); }); return; }
@@ -1342,7 +1308,10 @@
           const me = SEED.byId[S().ui.student];
           act('submitReflection', { participantId: me.id, answers: SEED.reflection.map((q, i) => (form.querySelector(`[name="r${i}"]`) || {}).value || '') });
         } else if (kind === 'contribution') {
-          act('saveContribution', { text: form.querySelector('#contrib').value, questId: form.dataset.qid });
+          const v = (id) => (form.querySelector('#' + id) || {}).value;
+          const r = act('saveContribution', { questId: form.dataset.qid, text: v('contrib'), avoid: v('c-avoid'), availability: v('c-avail'), name: v('pt-name'), org: v('pt-org'),
+            credit: (form.querySelector('[name="credit"]:checked') || {}).value });
+          if (r.ok && form.querySelector('[data-le="pp"], [data-list="pp"]') && (!form.dataset.qid || form.dataset.qid === S().activeQuest)) Engine.dispatch('setPartnerPrompts', { prompts: Assistant.readList(form, 'pp') });
         } else if (kind === 'partner') {
           act('setPartner', { questId: form.dataset.qid, name: form.querySelector('#pt-name').value, org: form.querySelector('#pt-org').value });
         } else if (kind === 'finale-review') {
@@ -1369,6 +1338,7 @@
       const d = Engine.dispatch;
       d('resetDemo');
       d('updateQuest', { field: 'safety', value: true });
+      sel.partnerItems().forEach((item) => d('reviewItem', { item }));
       d('approveContribution');
       SEED.topics.forEach((t) => d('approveTrack', { topic: t }));
       d('publishQuest');

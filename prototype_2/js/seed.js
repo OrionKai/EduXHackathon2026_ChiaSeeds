@@ -139,11 +139,11 @@ const SEED = {
       observe:
         'Identify two geographical or cultural contexts named on gallery signs or labels, and note one question the display leaves you with.',
       discuss:
-        'Your arranged conversation with the approved WorldQuest contributor: ask how to make an interpretation fair to people whose views may not appear on a museum label. Record their reply as a perspective, not a fact.',
+        'Your arranged conversation with the community partner: ask how to make an interpretation fair to people whose views may not appear on a museum label. Record their reply as a perspective, not a fact.',
       evidenceFields: [
         { key: 'context_1', label: 'Context 1 named in the gallery', placeholder: 'e.g. Rome…' },
         { key: 'context_2', label: 'Context 2 named in the gallery', placeholder: 'e.g. Ancient Sudan…' },
-        { key: 'question_to_contributor', label: 'The question you asked the contributor', placeholder: 'What did you ask?' },
+        { key: 'question_to_contributor', label: 'The question you asked the partner', placeholder: 'What did you ask?' },
         { key: 'paraphrased_reply', label: 'Their reply, in your own words (a perspective, not a fact)', placeholder: 'They suggested…' },
         { key: 'remaining_uncertainty', label: 'One question that remains open', placeholder: 'We still do not know…' },
       ],
@@ -153,14 +153,14 @@ const SEED = {
       ],
       teachHeadline: 'Interpretation depends on whose voices are heard — seek context and name the gaps.',
       fallback:
-        'Accessible alternative: teacher-guided conversation with a clearly labelled simulated contributor transcript.',
+        'Accessible alternative: teacher-guided conversation with a clearly labelled simulated partner transcript.',
       needsFacilitator: true,
     },
   },
 
   contributor: {
     name: 'WorldQuest Demo Collaborator',
-    label: 'SIMULATED WorldQuest contributor — not Fitzwilliam staff',
+    label: 'SIMULATED community partner — not Fitzwilliam staff',
     prompts: [
       'What is evidence, and what is interpretation?',
       'Whose perspective might be absent, and what would help us know?',
@@ -192,7 +192,7 @@ const SEED = {
         { id: 'c_no3', text: 'They showed an object keeps the same use for its whole life.', correct: false, miss: 'Objects have one fixed use' },
       ],
       D: [
-        { id: 'd_ok', text: 'They gathered a contributor’s perspective and named whose voices might be missing.', correct: true },
+        { id: 'd_ok', text: 'They gathered the partner’s perspective and named whose voices might be missing.', correct: true },
         { id: 'd_no', text: 'They confirmed one person’s view counts as established museum fact.', correct: false, miss: 'Treating a perspective as fact' },
         { id: 'd_no2', text: 'They showed the relief tells us everything about the person carved on it.', correct: false, miss: 'An image shows the whole person' },
         { id: 'd_no3', text: 'They found that missing voices don’t matter as long as the object survives.', correct: false, miss: 'Ignoring missing voices' },
@@ -255,9 +255,9 @@ const SEED = {
     },
     {
       id: 'listening_shell', title: 'The Listening Shell', home: 'H4', color: 'coral', category: 'Voices',
-      activity: 'Compose a meaningful question for an approved community contributor.',
+      activity: 'Compose a meaningful question for an approved community partner.',
       fact: 'Human perspectives add context no label can hold.',
-      promptLabel: 'Your question for a community contributor',
+      promptLabel: 'Your question for a community partner',
     },
     {
       id: 'curator_lantern', title: 'The Curator’s Lantern', home: 'H5', color: 'lantern', category: 'Reflect',
@@ -335,7 +335,7 @@ Object.entries({
       'Explains that different object types answer different questions.',
       'States a limit: one object type cannot show a whole society.'],
   D: ['Names the contexts shown in the gallery.',
-      'Records the contributor’s reply as a perspective, not as established fact.',
+      'Records the partner’s reply as a perspective, not as established fact.',
       'Leaves at least one genuine open question.'],
 }).forEach(([t, c]) => { TEMPLATES.lost_museum.missions[t].criteria = c; });
 SEED.ASSESS_TEXT = {
@@ -594,12 +594,12 @@ SEED.SAMPLE_INSIGHTS = {
     D: { simMiss: 'd_no', field: 'remaining_uncertainty', strengths: 'Strong open questions about missing voices and how objects arrived in Cambridge.',
       answers: [
         { text: 'We still don’t know how the person on the relief saw themselves.' },
-        { text: 'None — the contributor told us what it means, so now we know.', theme: 'fact' },
+        { text: 'None — the partner told us what it means, so now we know.', theme: 'fact' },
         { text: 'Whose voices from Palmyra are missing from the gallery?' },
-        { text: 'The contributor is from the community so their view is the official answer.', theme: 'fact' },
+        { text: 'The partner is from the community so their view is the official answer.', theme: 'fact' },
         { text: 'How did some of these objects end up in Cambridge?' }],
       themes: {
-        fact: { crit: 1, title: 'Treating one perspective as the answer', explain: 'Records the contributor’s view as settled fact instead of one perspective to weigh with the evidence.', ask: 'How is a perspective different from a fact — and why do we need both?' } } },
+        fact: { crit: 1, title: 'Treating one perspective as the answer', explain: 'Records the partner’s view as settled fact instead of one perspective to weigh with the evidence.', ask: 'How is a perspective different from a fact — and why do we need both?' } } },
   },
 };
 
@@ -625,7 +625,7 @@ SEED.SAMPLE_FOLLOWUPS = {
       activity: 'Give groups only one evidence type (e.g. coins) and five questions about daily life; they mark which ones it can’t answer.',
       exit: 'Name one question about ancient life that pottery can’t answer, however many pots we have.' },
     fact: { why: 'A real person from the community feels more authoritative than a label, so their view gets recorded as fact.',
-      activity: 'Sort statements from the gallery and the contributor into “fact”, “perspective” and “interpretation”, then discuss why we need all three.',
+      activity: 'Sort statements from the gallery and the partner into “fact”, “perspective” and “interpretation”, then discuss why we need all three.',
       exit: 'In one sentence: how is a perspective different from a fact?' },
   },
 };

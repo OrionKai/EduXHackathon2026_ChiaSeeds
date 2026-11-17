@@ -696,3 +696,12 @@ a.brand { text-decoration: none; color: inherit; }
 .j-s.open { background: var(--lavender); color: var(--violet-deep); }
 .j-s.done { color: var(--success); }
 @media (max-width: 700px) { .j-move { margin-left: 0; } .j-add { margin-left: 0; } }
+
+/* ---------- community partner ---------- */
+.p-dl { display: grid; grid-template-columns: minmax(110px, 180px) 1fr; gap: 4px 12px; margin: 0; }
+.p-dl dt { color: var(--muted); font-size: 13px; }
+.p-dl dd { margin: 0; }
+.p-item.p-ok { border-color: #9FDFD0; }
+.p-req { margin-top: 8px; padding: 8px 12px; border-radius: 10px; background: var(--paper); }
+.ns-steps li .btn { flex: none; }
+@media (max-width: 560px) { .p-dl { grid-template-columns: 1fr; } }

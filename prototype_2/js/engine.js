@@ -14,7 +14,7 @@
 const Engine = (() => {
   const STORAGE_KEY = 'worldquest-prototype2-v1';
   const QUEST_KEYS = ['quest', 'content', 'tracks', 'revisions', 'sources', 'contributor'];
-  const PLAY_KEYS = ['phase', 'evidence', 'peerTeach', 'finale', 'bonus', 'claims', 'master', 'reflections', 'seats', 'checkins', 'checkinPhotos', 'help', 'partnerFeedback', 'interactions', 'experience', 'evolved', 'misses', 'analysis'];
+  const PLAY_KEYS = ['phase', 'evidence', 'peerTeach', 'finale', 'bonus', 'claims', 'master', 'reflections', 'seats', 'checkins', 'checkinPhotos', 'help', 'partnerFeedback', 'interactions', 'experience', 'evolved', 'misses', 'analysis', 'partnerFlags'];
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
   /* ---------- initial state ---------- */
@@ -71,6 +71,27 @@ const Engine = (() => {
   const findStep = (s, id) => (s.journey.steps.find((x) => x.id === id) || null);
   const firstExperience = (s) => s.journey.steps.find((x) => x.type === 'experience') || null;
 
+  /* ---------- community partner: structured contribution, review of how they're represented, sign-off ---------- */
+  function normContributor(c) {
+    c = c || {};
+    if (!['INVITED', 'CONTRIBUTED', 'APPROVED'].includes(c.status)) c.status = c.text ? 'CONTRIBUTED' : 'INVITED';
+    c.avoid = c.avoid || ''; c.credit = c.credit || 'name'; c.availability = c.availability || '';
+    c.reviews = c.reviews || {}; c.requests = c.requests || [];
+    return c;
+  }
+  const recOf = (s, qid) => (!qid || qid === s.activeQuest ? s : s.library[qid]);
+  /* What the partner reviews: the tracks with a partner conversation (or all tracks if none), the story and the finale. */
+  function partnerItems(rec) {
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F'].slice(0, (rec.quest.structure || {}).tracks || 4).filter((t) => rec.content.missions[t]);
+    const withPartner = letters.filter((t) => rec.content.missions[t].needsFacilitator);
+    return [...(withPartner.length ? withPartner : letters).map((t) => 'track:' + t), 'story', 'finale'];
+  }
+  function partnerProgress(rec) {
+    const c = rec.contributor, items = partnerItems(rec);
+    const reviewed = items.filter((i) => c.reviews[i] === 'ok').length, open = c.requests.filter((r) => r.status === 'open').length;
+    return { items, reviewed, open, contributed: c.status !== 'INVITED' && !!c.text, signedOff: c.status === 'APPROVED' };
+  }
+
   /* Wrong picks are kept (counts only) so the educator can see common misconceptions. */
   const miss = (s, key) => { s.misses = s.misses || {}; s.misses[key] = (s.misses[key] || 0) + 1; };
   function freshState() {
@@ -120,11 +141,12 @@ const Engine = (() => {
           when: 'Thu 3 Dec, 2–3:30pm', bring: 'Your team’s finale answer and field notes', fallback: 'In-class drawing session with the art department' },
         draftGenerated: true,
       },
-      contributor: {
+      contributor: normContributor({
         text: SEED.contributor.defaultContribution,
-        status: 'PENDING', // PENDING | APPROVED
+        status: 'CONTRIBUTED', // INVITED | CONTRIBUTED | APPROVED (signed off)
         interactionPrompt: 0,
-      },
+      }),
+      partnerFlags: {}, // participantId -> { note, open } when the partner says a student misquoted them
       interactions: {}, // participantId -> true once facilitator verifies (Expert D)
       evidence,
       peerTeach,
@@ -216,6 +238,9 @@ const Engine = (() => {
     s.quest.next = { ...SEED.defaultNext(), ...(s.quest.next || {}) };
     if (!s.journey || !Array.isArray(s.journey.steps) || !s.journey.steps.length) s.journey = defaultJourney(s);
     (s.content.collectibles || []).forEach((c) => { if (!c.kind) Object.assign(c, SEED.defaultEarn()); });
+    normContributor(s.contributor);
+    Object.values(s.library || {}).forEach((r) => r.contributor && normContributor(r.contributor));
+    s.partnerFlags = s.partnerFlags || {};
     s.contributor.extraPrompts = s.contributor.extraPrompts || [];
     s.contributor.prompts = s.contributor.prompts || [...SEED.contributor.prompts, ...s.contributor.extraPrompts];
     s.partnerFeedback = s.partnerFeedback || {};
@@ -314,6 +339,8 @@ const Engine = (() => {
     pendingFinales: () => SEED.homeGroups.filter((h) => state.finale[h].status === 'SUBMITTED'),
 
     stepState: (i) => stepState(state, i),
+    partnerItems: (qid) => partnerItems(recOf(state, qid)),
+    partnerProgress: (qid) => partnerProgress(recOf(state, qid)),
     stepTitle: (st) => stepTitle(state, st),
     pendingBonus: () => SEED.collectibles.filter((c) => (state.bonus[c.id] || {}).status === 'SUBMITTED'),
 
@@ -374,7 +401,7 @@ const Engine = (() => {
     },
     publishQuest(s) {
       if (s.contributor.status !== 'APPROVED')
-        return { ok: false, msg: 'The community contribution has not been approved yet.' };
+        return { ok: false, msg: 'Your community partner hasn’t signed off yet (they review how their community is represented).' };
       if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Already published.' };
       if (!s.quest.draftGenerated) return { ok: false, msg: 'Draft the quest first.' };
       const probs = SEED.contentProblems(s.content);
@@ -389,31 +416,77 @@ const Engine = (() => {
     },
 
     /* ----- collaborator ----- */
-    saveContribution(s, { text, questId }) {
-      if (questId && questId !== s.activeQuest) {
-        const r = s.library[questId]; if (!r) return { ok: false };
-        const t = String(text || '').trim(); if (!t) return { ok: false, msg: 'The contribution cannot be empty.' };
-        r.contributor.text = t; r.contributor.status = 'PENDING';
-        return { ok: true, msg: 'Contribution saved.' };
-      }
-      const trimmed = (text || '').trim();
-      if (!trimmed) return { ok: false, msg: 'The contribution cannot be empty.' };
-      s.contributor.text = trimmed;
-      audit('collaborator', 'Edited learning contribution.');
-      return { ok: true, msg: 'Contribution saved.' };
+    saveContribution(s, { questId, text, avoid, credit, availability, name, org }) {
+      const rec = recOf(s, questId); if (!rec) return { ok: false };
+      if (rec.quest.status === 'PUBLISHED') return { ok: false, msg: 'This quest is published — ask the educator before changing your contribution.' };
+      const c = rec.contributor, t = String(text == null ? c.text : text).trim();
+      if (!t) return { ok: false, msg: 'Tell students what they can learn from you first.' };
+      c.text = t.slice(0, 1500);
+      if (typeof avoid === 'string') c.avoid = avoid.trim().slice(0, 800);
+      if (['name', 'org', 'anonymous'].includes(credit)) c.credit = credit;
+      if (typeof availability === 'string') c.availability = availability.trim().slice(0, 200);
+      if (typeof name === 'string' && name.trim()) rec.quest.partner.name = name.trim().slice(0, 80);
+      if (typeof org === 'string') rec.quest.partner.org = org.trim().slice(0, 120);
+      const was = c.status;
+      c.status = 'CONTRIBUTED';
+      audit('collaborator', `Saved their contribution to “${rec.quest.title}”.`);
+      return { ok: true, msg: was === 'APPROVED' ? 'Saved — sign off again when you’re happy.' : 'Contribution saved. Next: review how your community is represented.' };
+    },
+    reviewItem(s, { questId, item }) {
+      const rec = recOf(s, questId); if (!rec || !partnerItems(rec).includes(item)) return { ok: false };
+      if (rec.contributor.requests.some((r) => r.item === item && r.status === 'open')) return { ok: false, msg: 'Wait for the educator to answer your suggestion first.' };
+      rec.contributor.reviews[item] = 'ok';
+      return { ok: true, silent: true };
+    },
+    requestChange(s, { questId, item, text }) {
+      const rec = recOf(s, questId); if (!rec || !partnerItems(rec).includes(item)) return { ok: false };
+      const t = String(text || '').trim();
+      if (t.length < 5) return { ok: false, msg: 'Say what should change, in a sentence.' };
+      const c = rec.contributor;
+      c.requests.push({ id: 'r' + Date.now().toString(36) + c.requests.length, item, text: t.slice(0, 800), status: 'open', reply: '', at: Date.now() });
+      c.reviews[item] = 'change';
+      if (c.status === 'APPROVED') c.status = 'CONTRIBUTED';
+      audit('collaborator', `Suggested a change to ${item.replace('track:', 'track ')} in “${rec.quest.title}”.`);
+      return { ok: true, msg: 'Suggestion sent to the educator.' };
+    },
+    answerRequest(s, { questId, id, accept, reply }) {
+      const rec = recOf(s, questId); if (!rec) return { ok: false };
+      const r = rec.contributor.requests.find((x) => x.id === id);
+      if (!r || r.status !== 'open') return { ok: false };
+      const t = String(reply || '').trim();
+      if (!accept && t.length < 3) return { ok: false, msg: 'Write a short reply to the partner.' };
+      r.status = accept ? 'accepted' : 'replied'; r.reply = t || 'Thanks — I’ve made that change.';
+      delete rec.contributor.reviews[r.item]; // the partner looks again
+      audit('teacher', `${accept ? 'Accepted' : 'Replied to'} the partner’s suggestion on ${r.item.replace('track:', 'track ')}.`);
+      return { ok: true, msg: accept ? 'Marked as changed — your partner will check it again.' : 'Reply sent to your partner.' };
     },
     approveContribution(s, { questId } = {}) {
-      if (questId && questId !== s.activeQuest) {
-        const r = s.library[questId]; if (!r) return { ok: false };
-        if (!r.contributor.text) return { ok: false, msg: 'Write your contribution first.' };
-        r.contributor.status = 'APPROVED';
-        audit('collaborator', `Approved their contribution to “${r.quest.title}”.`);
-        return { ok: true, msg: 'Contribution approved for that quest.' };
-      }
-      if (s.contributor.status === 'APPROVED') return { ok: false, msg: 'Already approved.' };
-      s.contributor.status = 'APPROVED';
-      audit('collaborator', 'Approved community contribution (simulated partner).');
-      return { ok: true, msg: 'Contribution approved. The educator can now publish.' };
+      const rec = recOf(s, questId); if (!rec) return { ok: false };
+      const c = rec.contributor, p = partnerProgress(rec);
+      if (c.status === 'APPROVED') return { ok: false, msg: 'Already signed off.' };
+      if (!p.contributed) return { ok: false, msg: 'Write your contribution first.' };
+      if (p.open) return { ok: false, msg: 'Wait for the educator to answer your suggestions first.' };
+      if (p.reviewed < p.items.length) return { ok: false, msg: `Review every part first (${p.items.length - p.reviewed} left).` };
+      c.status = 'APPROVED';
+      audit('collaborator', `Signed off “${rec.quest.title}”.`);
+      return { ok: true, msg: 'Signed off. The educator can now publish.' };
+    },
+    flagParaphrase(s, { participantId, note }) {
+      const p = SEED.byId[participantId]; if (!p) return { ok: false };
+      const t = String(note || '').trim();
+      if (t.length < 3) return { ok: false, msg: 'Say briefly what’s not right.' };
+      s.partnerFlags[participantId] = { note: t.slice(0, 400), open: true, at: Date.now() };
+      audit('collaborator', `Flagged how ${p.name} recorded their words.`);
+      return { ok: true, msg: 'Flag sent to the educator.' };
+    },
+    resolveFlag(s, { participantId, ask }) {
+      const f = s.partnerFlags[participantId], p = SEED.byId[participantId];
+      if (!f || !f.open || !p) return { ok: false };
+      f.open = false;
+      const ev = s.evidence[participantId];
+      if (ask && ev && ['SUBMITTED', 'VERIFIED'].includes(ev.status)) { ev.status = 'NEEDS_REVISION'; ev.note = 'Your community partner says: ' + f.note; }
+      audit('teacher', ask ? `Asked ${p.name} to fix how they recorded the partner’s words.` : `Dismissed the partner’s flag on ${p.name}.`);
+      return { ok: true, msg: ask ? 'The student will see the partner’s note and revise.' : 'Flag dismissed.' };
     },
     verifyInteraction(s, { participantId }) {
       const p = SEED.byId[participantId];
@@ -800,7 +873,7 @@ const Engine = (() => {
       s.tracks = Object.fromEntries(SEED.topics.map((x) => [x, tpl === 'blank' || !content.missions[x].name ? 'EMPTY' : 'TEMPLATE']));
       s.revisions = {};
       s.sources = tpl === 'lost_museum' ? seedSources() : seedSources().filter((x) => x.kind === 'partner').map((x) => ({ ...x, id: 'S1' }));
-      s.contributor = { text: '', status: 'PENDING', interactionPrompt: 0, extraPrompts: [], prompts: [...SEED.contributor.prompts] };
+      s.contributor = normContributor({ text: '', status: 'INVITED', interactionPrompt: 0, extraPrompts: [], prompts: [...SEED.contributor.prompts] });
       s.activeQuest = id;
       SEED.useStructure(s.quest.structure); SEED.useContent(s.content);
       resetPlay(s);
