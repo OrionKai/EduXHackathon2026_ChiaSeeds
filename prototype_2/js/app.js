@@ -781,6 +781,10 @@
             <div class="fld-group"><label class="fld" for="q-title">Quest title</label><input class="input" id="q-title" data-q="title" value="${esc(q.title)}" ${dis}></div>
             <div class="fld-group"><label class="fld" for="q-obj">Learning objective</label><input class="input" id="q-obj" data-q="objective" value="${esc(q.objective)}" ${dis}></div>
             <div class="fld-group"><label class="fld" for="q-venue">Where will they explore?</label><input class="input" id="q-venue" data-q="venue" value="${esc(q.venue)}" ${dis}></div>
+            <div class="grid-2" style="gap:10px">
+              <div class="fld-group"><label class="fld" for="q-aud">Audience</label><select class="input" id="q-aud" data-q="audience" ${dis}>${Object.entries(SEED.AUDIENCES).map(([k, l]) => `<option value="${k}" ${(q.audience || {}).kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+              <div class="fld-group"><label class="fld" for="q-ages">Ages</label><input class="input" id="q-ages" data-q="ages" value="${esc((q.audience || {}).ages || '')}" placeholder="e.g. 13–16" ${dis}></div>
+            </div>
             <div class="fld-group"><label class="fld" for="q-dur">Session length (minutes)</label><input class="input" id="q-dur" data-q="duration" type="number" min="10" max="480" step="5" value="${q.duration || 60}" ${dis} style="max-width:140px"></div>
           </div>
           <form class="card" data-form="structure">
@@ -854,6 +858,7 @@
           <label class="fld" for="nx-when">When</label><input class="input" id="nx-when" value="${esc(n.when)}">
           <label class="fld" for="nx-bring">Students bring</label><input class="input" id="nx-bring" value="${esc(n.bring)}">
           <label class="fld" for="nx-fb">If the provider cancels</label><input class="input" id="nx-fb" value="${esc(n.fallback)}">
+          <label class="fld" for="nx-staff">Supervising adults</label><input class="input" id="nx-staff" value="${esc(n.staff || '')}" style="max-width:120px">
           <label class="fld" for="nx-unlock">Unlocks</label><select class="input" id="nx-unlock"><option value="all" ${n.unlock === 'all' ? 'selected' : ''}>When every home team has finished the quest</option><option value="manual" ${n.unlock === 'manual' ? 'selected' : ''}>When I unlock it</option></select>
           <button class="btn btn-secondary btn-sm" type="submit" style="align-self:flex-start;margin-top:6px">Save</button>
         </form>
@@ -871,7 +876,8 @@
           <div class="card stack" style="gap:8px;background:var(--paper)">
             <div class="spread"><h3 style="margin:0">Provider’s view</h3><span class="pill plain">simulated</span></div>
             ${n.status === 'none' ? '<p class="hint-note" style="margin:0">Nothing sent yet.</p>'
-              : n.status === 'sent' ? `<div class="mail">${esc(n.request)}</div><div class="row"><button class="btn btn-teal btn-sm" data-a="provider-accept">${Art.icon('check', 15)} Accept</button><button class="btn btn-ghost btn-sm" data-a="provider-counter">Suggest another date</button></div>`
+              : n.status === 'sent' ? `<div class="mail">${esc(n.request)}</div><div class="row"><button class="btn btn-teal btn-sm" data-a="provider-accept">${Art.icon('check', 15)} Accept</button></div>
+              <div class="row"><input class="input" id="nx-counter" placeholder="Or suggest another date" style="flex:1;min-width:150px"><button class="btn btn-ghost btn-sm" data-a="provider-counter">Suggest</button></div>`
               : `<p class="hint-note" style="margin:0">${n.status === 'accepted' ? 'Accepted — booking confirmed.' : 'Waiting for the teacher.'}</p>`}
           </div>
         </div>
@@ -1199,12 +1205,13 @@
           case 'next-enable': return act('setNext', { fields: { enabled: el.checked } }), render();
           case 'draft-booking': {
             const n = S().quest.next;
-            S().ui.bookingDraft = `Hello ${n.provider || 'there'},\n\nMy class (${S().quest.classSize} students, ages 13–16) is finishing a quest on “${S().quest.title}”. Afterwards we’d love to come to you for: ${n.activity || 'a short workshop'}${n.when ? ', on ' + n.when : ''}.\n\nStudents will bring: ${n.bring || 'their notes from the quest'}. Two staff will supervise. Could you confirm availability, timing and any cost?\n\nThank you,\nThe class teacher`;
+            const au = S().quest.audience || SEED.defaultAudience();
+            S().ui.bookingDraft = `Hello ${n.provider || 'there'},\n\nMy group (${SEED.participants.length} ${SEED.AUDIENCES[au.kind].toLowerCase()} learners${au.ages ? ', ages ' + au.ages : ''}) is finishing a quest on “${S().quest.title}”. Afterwards we’d love to come to you for: ${n.activity || 'a short workshop'}${n.when ? ', on ' + n.when : ''}.\n\nThey will bring: ${n.bring || 'their notes from the quest'}.${n.staff ? ' ' + n.staff + ' adults will supervise.' : ''} Could you confirm availability, timing and any cost?\n\nThank you`;
             render(); return;
           }
           case 'send-booking': { const t = (document.getElementById('nx-req') || {}).value; const r = act('sendBooking', { text: t }); if (r.ok) S().ui.bookingDraft = null; return; }
           case 'provider-accept': return act('providerReply', { accept: true });
-          case 'provider-counter': return act('providerReply', { accept: false, when: 'Fri 4 Dec, 10–11:30am' });
+          case 'provider-counter': { const w = ((document.getElementById('nx-counter') || {}).value || '').trim(); if (!w) return toast('Type the date the provider suggests.', 'error'); return act('providerReply', { accept: false, when: w }); }
           case 'accept-counter': return act('acceptCounter');
           case 'unlock-next': return act('unlockExperience', { reason: (document.getElementById('nx-reason') || {}).value || '' });
           case 'award-card': return act('awardCollectible', { collectibleId: el.dataset.card });
@@ -1352,7 +1359,7 @@
         }
         if (kind === 'next') {
           const v = (id) => form.querySelector('#' + id).value;
-          act('setNext', { fields: { activity: v('nx-act'), provider: v('nx-prov'), org: v('nx-org'), when: v('nx-when'), bring: v('nx-bring'), fallback: v('nx-fb'), unlock: v('nx-unlock') } });
+          act('setNext', { fields: { activity: v('nx-act'), provider: v('nx-prov'), org: v('nx-org'), when: v('nx-when'), bring: v('nx-bring'), fallback: v('nx-fb'), staff: v('nx-staff'), unlock: v('nx-unlock') } });
           return;
         }
         if (kind === 'session') {

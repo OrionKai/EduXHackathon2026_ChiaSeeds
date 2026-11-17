@@ -53,7 +53,7 @@ const Assistant = (() => {
   const chips = () => {
     const st = Engine.state;
     if (st.quest.status === 'PUBLISHED') return [];
-    if (isEmpty()) return [DRAFT];
+    if (isEmpty()) return /fitzwilliam/i.test(st.quest.venue || '') || !st.quest.venue ? [DRAFT] : [];
     return isTemplate() ? REVS.filter((r) => !st.revisions[r.topic]) : [];
   };
 
@@ -242,7 +242,8 @@ const Assistant = (() => {
       ${sec('At the place', false, `${ta('ed-obs', 'What students do there', f.observe, 3)}${ta('ed-disc', 'Discussion question', f.discuss, 2)}
         <label class="toggle"><input type="checkbox" id="ed-partner" ${f.needsContributor ? 'checked' : ''}> Includes an arranged conversation with the community partner</label>
         <span class="fld">Hints (never the answer)</span>${listEd('hints', f.hints, 'A hint that points back to the object', 'Add hint')}
-        ${inp('ed-fb', 'Accessible or backup route', f.fallback)}`)}
+        ${inp('ed-fb', 'Accessible or backup route', f.fallback)}
+        ${inp('ed-code', 'Backup check-in code (read out if the QR card won’t scan)', f.backupCode)}`)}
       ${sec('Evidence &amp; quick check', quizOpen, `<span class="fld">Evidence prompts</span>${listEd('ev', f.evidence, 'What students record', 'Add prompt')}
         <div class="grid-3" style="gap:8px"><div><label class="fld" for="as-ci">Check-in</label>${opt('as-ci', a.checkin, SEED.ASSESS_TEXT.checkin)}</div>
           <div><label class="fld" for="as-ev">Evidence type</label>${opt('as-ev', a.evidence, SEED.ASSESS_TEXT.evidence)}</div>
@@ -355,7 +356,7 @@ const Assistant = (() => {
     Engine.dispatch('setContent', { content });
     if (!q.venue) Engine.dispatch('updateQuest', { field: 'venue', value: 'The Fitzwilliam Museum, Cambridge' });
     if (!q.objective) Engine.dispatch('updateQuest', { field: 'objective', value: 'Interpret evidence from multiple perspectives' });
-    await say('Drafted 4 expert tracks (Galleries 19, 20, 21 and 24), a locked finale that needs all four, 5 collectibles and 2 reflection questions. Review and approve each track below — nothing reaches students until you do.', Engine.state.sources.map((s) => s.id));
+    await say(`Drafted ${SEED.topics.length} expert tracks (Galleries 19, 20, 21 and 24${SEED.topics.length > 4 ? ', plus empty tracks for you to fill' : ''}), a locked finale that needs every perspective, ${SEED.collectibles.length} collectibles and ${SEED.reflection.length} reflection questions. Review and approve each track below — nothing reaches students until you do.`, Engine.state.sources.map((s) => s.id));
     busy = false;
     window.WQ.render();
     document.getElementById('as-content')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -391,7 +392,8 @@ const Assistant = (() => {
   }
   function questBrief() {
     const q = Engine.state.quest;
-    return { title: q.title, objective: q.objective, venue: q.venue, minutes: q.duration, students: SEED.participants.length, tracks: SEED.topics.length, teams: SEED.homeGroups.length, ages: '13-16' };
+    const au = q.audience || SEED.defaultAudience();
+    return { title: q.title, objective: q.objective, venue: q.venue, minutes: q.duration, students: SEED.participants.length, tracks: SEED.topics.length, teams: SEED.homeGroups.length, audience: SEED.AUDIENCES[au.kind], ages: au.ages };
   }
   function liveContext() {
     const tracks = {};
@@ -537,7 +539,7 @@ const Assistant = (() => {
       const v = (id) => f.querySelector('#' + id).value.trim(), tk = f.dataset.asTrackform, old = SEED.trackFields(Engine.state.content, tk);
       const fields = { name: v('ed-name'), location: v('ed-loc'), keyObject: v('ed-key'), narrative: v('ed-narr'), observe: v('ed-obs'), discuss: v('ed-disc'),
         evidence: readList(f, 'ev'), hints: readList(f, 'hints'), fallback: v('ed-fb'), teachHeadline: v('ed-teach'), checks: readCheckList(f, 'chk'),
-        needsContributor: f.querySelector('#ed-partner').checked, sourceFact: old.sourceFact, sourceUrl: old.sourceUrl, assess: readAssess(f), refPhoto: refDraft };
+        needsContributor: f.querySelector('#ed-partner').checked, sourceFact: old.sourceFact, sourceUrl: old.sourceUrl, assess: readAssess(f), refPhoto: refDraft, backupCode: v('ed-code') };
       editing = null; refDraft = null; quizOpen = false;
       window.WQ.act('editTrack', { topic: tk, fields });
     });

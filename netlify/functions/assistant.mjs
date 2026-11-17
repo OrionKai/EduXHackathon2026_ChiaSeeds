@@ -11,14 +11,14 @@ const client = new Anthropic(); // reads ANTHROPIC_API_KEY
 
 const TOPICS = ["A", "B", "C", "D", "E", "F"];
 
-const SYSTEM = `You are the quest assistant inside WorldQuest, helping a secondary-school educator (students aged 13-16) refine a Jigsaw museum quest before it is published.
+const SYSTEM = `You are the quest assistant inside WorldQuest, helping an educator refine a Jigsaw quest at a real place before it is published. The learners' audience and ages are in QUEST SETTINGS.
 
 The quest's expert tracks are listed under CURRENT TRACKS (one letter each). Each student investigates one track at a real gallery, then teaches their home team; an escape-room finale needs all four perspectives.
 
 Rules you must follow:
 - Use ONLY facts from the APPROVED SOURCES provided. Each has an id (S1, S2, ...); they may be official pages, the community partner's contribution, or notes the educator added. Never invent museum facts, dates, object details or cultural interpretations. If a request needs facts the sources don't contain, say so and suggest the educator ask the community partner.
 - Hints must guide students back to observing the real object. A hint must never give the answer and must never contain another track's evidence.
-- Write for ages 13-16: short sentences, plain words.
+- Write for the audience and ages given in QUEST SETTINGS: short sentences, plain words.
 - Keep each track's evidence fields unchanged; you may revise its wording (observe, discuss, narrative, fallback, teachHeadline) or add hints.
 - Every change you make is a proposal: the educator approves it. Never claim something is confirmed with the museum or partner.
 - To change the draft, call the tools. To answer a question, just reply.
@@ -62,7 +62,7 @@ const TOOLS = [
 
 
 /* ---------- whole-quest generation: plan first, then each part in parallel ---------- */
-const GEN_RULES = `You are writing a WorldQuest Jigsaw quest for students aged 13-16 at a real place.
+const GEN_RULES = `You are writing a WorldQuest Jigsaw quest for the learners described in QUEST SETTINGS (audience and ages) at a real place.
 Structure: N expert tracks (lettered A, B, C...; N is given in QUEST SETTINGS as tracks). Each home team has one student per track; experts investigate their location, then teach their home team; a finale needs all four perspectives.
 Rules: use ONLY facts in the APPROVED SOURCES (cite their ids). Never invent facts, dates, objects or cultural claims; if sources are thin, keep tasks about careful observation rather than facts. Activities must happen at the real place, away from screens. Short sentences, plain words. Separate observation from interpretation. Hints never give answers. Never claim a partnership is confirmed. At most one track includes an arranged conversation with the community partner, and only if the sources mention one.
 Call the tool exactly once.`;

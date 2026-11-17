@@ -273,7 +273,7 @@ const SEED = {
   phaseMeta: {
     LOBBY: { label: 'Lobby', desc: 'Explorers join and home teams form.' },
     BRIEFING: { label: 'Briefing', desc: 'Story, safety rules and expert roles.' },
-    EXPERT: { label: 'Expert missions', desc: 'Expert groups investigate their four locations.' },
+    EXPERT: { label: 'Expert missions', desc: 'Expert groups investigate their locations.' },
     PEER_TEACH: { label: 'Peer teaching', desc: 'Experts return home and teach their team.' },
     FINALE: { label: 'Finale', desc: 'Home teams combine every perspective to solve the finale.' },
     REFLECTION: { label: 'Reflection', desc: 'Individual reflections and debrief.' },
@@ -297,6 +297,9 @@ Object.entries({ A: ['WQ-STATION-A', 'LENS'], B: ['WQ-STATION-B', 'STONE'], C: [
  * phases). The properties below are getters, so existing screens keep reading SEED.missions,
  * SEED.finale, ... and automatically get the current quest. Templates are starting points only.
  */
+/* Short words a facilitator can read out if a QR card can't be scanned; new ones for every quest. */
+const CODE_WORDS = ['LENS', 'STONE', 'TOKEN', 'VOICE', 'MAPLE', 'RIVER', 'CEDAR', 'EMBER', 'ORBIT', 'PRISM', 'QUILL', 'SPARK', 'COMET', 'FERN', 'HARBOR', 'LANTERN'];
+SEED.newBackupCode = () => CODE_WORDS[Math.floor(Math.random() * CODE_WORDS.length)] + String(10 + Math.floor(Math.random() * 90));
 const STATION = { A: ['WQ-STATION-A', 'LENS'], B: ['WQ-STATION-B', 'STONE'], C: ['WQ-STATION-C', 'TOKEN'], D: ['WQ-STATION-D', 'VOICE'] };
 const CONTENT_KEYS = ['title', 'subtitle', 'story', 'topicMeta', 'missions', 'peerTeaching', 'finale', 'collectibles', 'master', 'reflection'];
 const TEMPLATES = {
@@ -329,7 +332,7 @@ SEED.buildTrack = (t, f) => {
       hints: (f.hints || []).map((x) => String(x).trim()).filter(Boolean),
       teachHeadline: f.teachHeadline || '', fallback: f.fallback || '',
       needsFacilitator: !!f.needsContributor,
-      stationCode: STATION[t][0], backupCode: STATION[t][1],
+      stationCode: STATION[t][0], backupCode: String(f.backupCode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) || SEED.newBackupCode(),
       assess: { ...SEED.defaultAssess(), ...(f.assess || {}) },
       refPhoto: typeof f.refPhoto === 'string' && f.refPhoto.startsWith('data:image/') && f.refPhoto.length < 120000 ? f.refPhoto : null,
     },
@@ -347,7 +350,7 @@ SEED.trackFields = (c, t) => {
     evidence: m.evidenceFields.map((e) => e.label), hints: m.hints, fallback: m.fallback, teachHeadline: m.teachHeadline,
     checkCorrect: (opts.find((o) => o.correct) || {}).text || '', checkIncorrect: (opts.find((o) => !o.correct) || {}).text || '',
     checks: opts.map((o) => ({ text: o.text, correct: !!o.correct })),
-    needsContributor: !!m.needsFacilitator, sourceFact: m.sourceFact, sourceUrl: m.sourceUrl,
+    needsContributor: !!m.needsFacilitator, sourceFact: m.sourceFact, sourceUrl: m.sourceUrl, backupCode: m.backupCode,
     assess: JSON.parse(JSON.stringify(m.assess || SEED.defaultAssess())), refPhoto: m.refPhoto || null,
   };
 };
@@ -453,7 +456,7 @@ SEED.defaultEarn = () => ({ kind: 'bonus', track: 'A', hidden: false, evolves: t
 TEMPLATES.lost_museum.collectibles.forEach((c) => Object.assign(c, SEED.defaultEarn()));
 TEMPLATES.blank.collectibles.forEach((c) => Object.assign(c, SEED.defaultEarn()));
 /* The next real experience after the quest (booked with a provider, unlocked for the class). */
-SEED.defaultNext = () => ({ enabled: false, activity: '', provider: '', org: '', when: '', bring: '', fallback: '', unlock: 'all', status: 'none', request: '', counterWhen: '' });
+SEED.defaultNext = () => ({ enabled: false, activity: '', provider: '', org: '', when: '', bring: '', fallback: '', staff: '2', unlock: 'all', status: 'none', request: '', counterWhen: '' });
 
 /* ================= Jigsaw structure is configurable per quest =================
  * tracks (3–6) = home team size; classSize = seats; expertGroup = how many experts of the same
@@ -523,3 +526,6 @@ SEED.ensureContentShape = (c) => {
   });
   return c;
 };
+
+SEED.AUDIENCES = { secondary: 'Secondary school', university: 'University', adult: 'Adult / community learners' };
+SEED.defaultAudience = () => ({ kind: 'secondary', ages: '13–16' });

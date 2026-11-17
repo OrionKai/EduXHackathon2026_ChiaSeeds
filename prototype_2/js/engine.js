@@ -61,6 +61,7 @@ const Engine = (() => {
         templateId: 'lost_museum',
         partner: { ...SEED.partnerDefaults },
         structure: SEED.defaultStructure(),
+        audience: SEED.defaultAudience(),
         next: { ...SEED.defaultNext(), enabled: true, activity: 'Still-life drawing class: draw a memorable object from the museum trip', provider: 'Riverside Art Studio', org: 'Example provider (simulated)',
           when: 'Thu 3 Dec, 2–3:30pm', bring: 'Your team’s finale answer and field notes', fallback: 'In-class drawing session with the art department' },
         draftGenerated: true,
@@ -127,6 +128,7 @@ const Engine = (() => {
 
   function upgrade(s) {
     s.quest.structure = { ...SEED.defaultStructure(), ...(s.quest.structure || {}) };
+    s.quest.audience = { ...SEED.defaultAudience(), ...(s.quest.audience || {}) };
     SEED.useStructure(s.quest.structure);
     s.sources = s.sources || seedSources();
     s.content = s.content || JSON.parse(JSON.stringify(TEMPLATES.lost_museum));
@@ -282,6 +284,7 @@ const Engine = (() => {
 
     /* ----- quest authoring (educator) ----- */
     updateQuest(s, { field, value }) {
+      if (field === 'audience' || field === 'ages') { s.quest.audience = { ...SEED.defaultAudience(), ...(s.quest.audience || {}), [field === 'audience' ? 'kind' : 'ages']: String(value || '').slice(0, 40) }; return { ok: true, silent: true }; }
       if (!['title', 'objective', 'venue', 'duration', 'classSize', 'safety'].includes(field)) return { ok: false };
       if (field === 'safety') { s.quest.safety = !!value; return { ok: true, silent: true }; }
       s.quest[field] = ['duration', 'classSize'].includes(field) ? Number(value) : value;
@@ -664,7 +667,8 @@ const Engine = (() => {
       const t = String(title || '').trim() || (tpl === 'blank' ? 'Untitled quest' : content.title);
       content.title = t;
       s.quest = { id, title: t, objective: tpl === 'lost_museum' ? 'Interpret evidence from multiple perspectives' : '', venue: tpl === 'lost_museum' ? 'The Fitzwilliam Museum, Cambridge' : '',
-        duration: 60, classSize: 20, status: 'DRAFT', draftGenerated: true, safety: false, templateId: tpl, partner: { ...SEED.partnerDefaults }, next: SEED.defaultNext(), structure: SEED.defaultStructure() };
+        duration: 60, classSize: 20, status: 'DRAFT', draftGenerated: true, safety: false, templateId: tpl, partner: { ...SEED.partnerDefaults }, next: SEED.defaultNext(), structure: SEED.defaultStructure(), audience: SEED.defaultAudience() };
+      Object.values(content.missions).forEach((m) => { m.backupCode = SEED.newBackupCode(); });
       s.content = content;
       s.tracks = Object.fromEntries(SEED.topics.map((x) => [x, tpl === 'blank' ? 'EMPTY' : 'TEMPLATE']));
       s.revisions = {};
@@ -873,7 +877,7 @@ const Engine = (() => {
     setNext(s, { fields }) {
       const n = (s.quest.next = { ...SEED.defaultNext(), ...(s.quest.next || {}) });
       const f = fields || {};
-      ['activity', 'provider', 'org', 'when', 'bring', 'fallback'].forEach((k) => { if (typeof f[k] === 'string') n[k] = f[k].trim().slice(0, 300); });
+      ['activity', 'provider', 'org', 'when', 'bring', 'fallback', 'staff'].forEach((k) => { if (typeof f[k] === 'string') n[k] = f[k].trim().slice(0, 300); });
       if (typeof f.enabled === 'boolean') n.enabled = f.enabled;
       if (['all', 'manual'].includes(f.unlock)) n.unlock = f.unlock;
       return { ok: true, msg: 'Next experience saved.' };
