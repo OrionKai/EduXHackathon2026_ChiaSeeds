@@ -1,5 +1,5 @@
 /* WorldQuest prototype_2 — quest content editor + AI assistant for the educator's quest builder.
- * The quest's content lives in the session (see seed.js): four expert tracks, the finale,
+ * The quest's content lives in the session (see seed.js): the expert tracks, the finale,
  * collectibles, reflection questions and the story. The educator can edit every part by hand,
  * ask the assistant to change it, or generate a whole quest from the approved-source library.
  * Live AI runs through /api/assistant (Netlify function); when it's unavailable or switched off,
@@ -617,19 +617,21 @@ const Assistant = (() => {
     SEED.syncFinaleObjects(content);
     if (fin.status === 200 && fin.data && fin.data.finale) {
       const F = fin.data.finale;
-      SEED.buildFinale(content, { title: F.title, intro: 'Put together what every expert found.', steps: [
-        { type: 'choice', question: 'Which sentence is fair to say?', options: [{ text: F.cautious_statement, correct: true }, { text: F.overclaim_statement, correct: false }] },
-        { type: 'write', prompt: 'Write your team’s answer together, using what each expert found.', checks: ['Uses something from every track', 'Says what we still don’t know', 'Asks a question we could explore next'] }] });
+      const steps = (F.steps || []).filter((y) => y && y.question).map((y) => (y.type === 'write' ? { type: 'write', prompt: y.question, checks: y.checks || [] } : { type: 'choice', question: y.question, options: y.options || [] }));
+      SEED.buildFinale(content, { title: F.title, intro: F.intro || '', steps: steps.length ? steps : [SEED.finaleStep('choice'), SEED.finaleStep('write')] });
     } else failed.push('the finale');
     if (ext.status === 200 && ext.data && ext.data.extras) {
       const X = ext.data.extras;
-      content.collectibles = SEED.ensureContentShape(content).collectibles.map((c, i) => ({ ...c, ...(X.collectibles && X.collectibles[i] ? { title: X.collectibles[i].title, activity: X.collectibles[i].activity, fact: X.collectibles[i].fact } : {}) }));
+      const colors = ['violet', 'teal', 'sun', 'coral', 'sky', 'lime'];
+      content.collectibles = (X.cards || []).filter((k) => k && k.title).slice(0, 6).map((k, i) => ({ id: 'card_' + Date.now().toString(36) + i, title: k.title, color: colors[i % colors.length], category: k.earned_when === 'track' ? 'Badge' : 'Team',
+        kind: ['track', 'experts', 'finale', 'bonus'].includes(k.earned_when) ? k.earned_when : 'finale', track: SEED.topics.includes(k.track) ? k.track : 'any',
+        activity: k.earned_when === 'bonus' ? k.activity || '' : '', fact: k.fact || '', hidden: false, evolves: true, promptLabel: '' }));
       if (Array.isArray(X.reflection)) content.reflection = X.reflection.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 5);
     } else failed.push('collectibles and reflection');
     msgs.pop();
     const r = Engine.dispatch('setContent', { content });
     await say(r.ok
-      ? `Drafted “${content.title}”: ${P.tracks.map((t) => t.name).join(', ')}, a finale that needs every perspective, ${content.collectibles.length} collectibles and ${content.reflection.length} reflection questions.${failed.length ? ` I couldn’t finish ${failed.join(', ')} — fill those in by hand.` : ''} Review and approve each track below.`
+      ? `Drafted “${content.title}”: ${P.tracks.map((t) => t.name).join(', ')}, a final team challenge that needs every track, ${content.collectibles.length} reward cards and ${content.reflection.length} reflection questions.${failed.length ? ` I couldn’t finish ${failed.join(', ')} — fill those in by hand.` : ''} Review and approve each track below.`
       : 'The draft came back incomplete. Try again, or fill the quest in by hand.', ctx.sources.map((s) => s.id));
     history.push({ role: 'user', content: prompt }, { role: 'assistant', content: `Drafted ${content.title}.` });
     busy = false;

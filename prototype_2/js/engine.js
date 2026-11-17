@@ -1,7 +1,7 @@
 /* WorldQuest prototype_2 — authoritative demo game engine.
  * Pure state + guarded actions. The UI may only mutate state through Engine.dispatch,
  * which enforces the Jigsaw rules: evidence must be VERIFIED by the educator (or the
- * approved facilitator for Expert D), the finale stays LOCKED until all four
+ * community partner where a track needs one), the finale stays LOCKED until every
  * perspectives are verified AND shared, collectible claims are idempotent, and the
  * Guardian of Stories master award is granted exactly once.
  *
@@ -82,7 +82,8 @@ const Engine = (() => {
   const recOf = (s, qid) => (!qid || qid === s.activeQuest ? s : s.library[qid]);
   /* What the partner reviews: the tracks with a partner conversation (or all tracks if none), the story and the finale. */
   function partnerItems(rec) {
-    const letters = ['A', 'B', 'C', 'D', 'E', 'F'].slice(0, (rec.quest.structure || {}).tracks || 4).filter((t) => rec.content.missions[t]);
+    const n = Number((rec.quest.structure || {}).tracks);
+    const letters = Object.keys(rec.content.missions).sort().slice(0, Number.isFinite(n) ? Math.max(1, n) : undefined).filter((t) => rec.content.missions[t]);
     const withPartner = letters.filter((t) => rec.content.missions[t].needsFacilitator);
     return [...(withPartner.length ? withPartner : letters).map((t) => 'track:' + t), 'story', 'finale'];
   }

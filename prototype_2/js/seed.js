@@ -301,7 +301,7 @@ Object.entries({ A: ['WQ-STATION-A', 'LENS'], B: ['WQ-STATION-B', 'STONE'], C: [
   .forEach(([t, [qr, code]]) => { SEED.missions[t].stationCode = qr; SEED.missions[t].backupCode = code; });
 
 /* ================= Quest content is owned by the session, not this file =================
- * Everything a teacher can author (title, story, the four expert tracks, peer-teaching checks,
+ * Everything a teacher can author (title, story, the expert tracks, peer-teaching checks,
  * finale, collectibles, master award, reflection questions) lives in the session state as
  * `content`. SEED keeps only the fixed Jigsaw structure (20 seats, 5 home teams x 4 tracks,
  * phases). The properties below are getters, so existing screens keep reading SEED.missions,
@@ -443,6 +443,7 @@ TEMPLATES.blank = (() => {
   c.finale = { title: 'Final team challenge', intro: '', objects: [], steps: [SEED.finaleStep('choice'), SEED.finaleStep('write')] };
   SEED.syncFinaleObjects(c);
   c.collectibles = []; // a blank quest starts with no cards; add them if you want them
+  c.questDefaults = {}; // no example goal, venue or next experience
   c.reflection = [''];
   return c;
 })();
@@ -499,7 +500,7 @@ SEED.keyObjectOf = (t) => {
 
 /* Collectibles: each home team's card has a rule for how it is earned.
    bonus = team submits the bonus activity and the educator approves it (the original behaviour)
-   finale = the team's finale is approved · experts = all four of the team's experts are verified
+   finale = the team's final challenge is approved · experts = every expert in the team is verified
    track = the team's expert for one track is verified · egg = hidden: a phone tilted up at the location
    teacher = the educator awards it by hand */
 SEED.EARN_TEXT = { track: 'Students finish their track’s tasks (each gets their own)', experts: 'A team’s experts all finish their tracks', finale: 'A team solves the final challenge',
@@ -559,7 +560,7 @@ SEED.expertGroupOf = (pid) => {
   return { index, members: same.slice(index * g, index * g + g), count: Math.ceil(same.length / g) };
 };
 SEED.styleOf = (t) => TRACK_STYLE[t];
-/* Make a quest's content match its structure: a track per letter, a collectible per home team. */
+/* Make a quest's content match its structure: one track per track id (A, B, C… — ids, not a fixed count). */
 SEED.ensureContentShape = (c) => {
   SEED.migrateFinale(c);
   SEED.topics.forEach((t) => {
