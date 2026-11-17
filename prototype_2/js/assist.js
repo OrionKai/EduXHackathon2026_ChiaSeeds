@@ -571,12 +571,19 @@ const Assistant = (() => {
     if (busy) return;
     const ctx = liveContext();
     if (!ctx.sources.length) { lastNotice = 'Add at least one approved source first — the assistant only writes from your sources.'; return window.WQ.render(); }
+    // students need at least 2 tracks to teach each other; a quest with fewer gets 2
+    const st0 = Engine.state.quest.structure;
+    if (!st0.tracks || st0.tracks < 2) { const n = Math.max(2, SEED.structure.classSize); Engine.dispatch('setStructure', { tracks: 2, classSize: n, expertGroup: Math.min(SEED.structure.expertGroup, Math.ceil(n / 2)) }); ctx.quest = questBrief(); }
     busy = true; confirmGen = false;
     const prompt = `Plan a ${ctx.quest.minutes}-minute Jigsaw quest for ${ctx.quest.students} students${ctx.quest.venue ? ' at ' + ctx.quest.venue : ''}. Goal: ${ctx.quest.objective || 'decide from the sources'}.`;
     msgs.push({ who: 'you', text: prompt }); paintMsgs();
     const step = { who: 'ai', text: `Planning ${SEED.topics.length} complementary perspectives from your sources…`, thinking: false }; msgs.push(step); paintMsgs();
     const plan = await call({ mode: 'plan', quest: ctx.quest, sources: ctx.sources });
-    if (plan.status !== 200 || !plan.data || !plan.data.plan) { msgs.pop(); msgs.pop(); failNotice(plan.status); busy = false; return window.WQ.render(); }
+    if (plan.status !== 200 || !plan.data || !plan.data.plan) {
+      msgs.pop(); msgs.pop(); busy = false;
+      if (plan.data && plan.data.error === 'bad_plan') { lastNotice = `The AI’s plan didn’t have enough tracks (${SEED.topics.length} needed) — press Generate again.`; return window.WQ.render(); }
+      failNotice(plan.status); return window.WQ.render();
+    }
     const P = plan.data.plan;
     step.text = `Plan: ${P.tracks.map((t) => `${t.letter} ${t.name}`).join(' · ')}. Writing the tracks, finale and collectibles…`; paintMsgs();
     const [tr, fin, ext] = await Promise.all([

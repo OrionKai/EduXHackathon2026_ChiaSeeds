@@ -345,9 +345,11 @@ export default async (req) => {
       const out = await generatePart(mode, body);
       if (!out) return json({ error: "no_output" }, 502);
       if (mode === "plan") {
-        const n = Math.max(3, Math.min(6, Number((body.quest || {}).tracks) || 4));
-        out.tracks = TOPICS.slice(0, n).map((t) => (out.tracks || []).find((x) => x.letter === t)).filter(Boolean);
-        if (out.tracks.length !== n) return json({ error: "bad_plan" }, 502);
+        // As many tracks as the quest has (1-6); take them in the order given and letter them A, B, C…
+        const asked = Number((body.quest || {}).tracks), n = Math.max(1, Math.min(6, Number.isFinite(asked) && asked > 0 ? asked : 4));
+        const given = (out.tracks || []).filter((x) => x && x.name);
+        if (given.length < n) return json({ error: "bad_plan", detail: `planned ${given.length} of ${n} tracks` }, 502);
+        out.tracks = given.slice(0, n).map((x, i) => ({ ...x, letter: TOPICS[i] }));
       }
       return json({ [mode]: out });
     } catch (error) {
