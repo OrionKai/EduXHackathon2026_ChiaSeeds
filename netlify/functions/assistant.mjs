@@ -35,7 +35,11 @@ Rules you must follow:
 
 const cite = { source_ids: { type: "array", items: { type: "string" }, description: "Ids of the approved sources this change relies on, e.g. S2." },
   summary: { type: "string", description: "One sentence for the educator describing what changed and why." } };
-const tool = (name, description, properties) => ({ name, description, strict: true,
+// strict: false — 13 tools with several nested schemas compiled a BNF grammar large
+// enough to trip the API's "compiled grammar is too large" limit (400 -> 502).
+// Off, the models still receive the schemas as prompts; applyEdit() parses inputs defensively.
+// Flip back to true only if the tool set is split up / shrunk.
+const tool = (name, description, properties) => ({ name, description, strict: false,
   input_schema: { type: "object", properties: { ...properties, ...cite }, required: [...Object.keys(properties), "source_ids", "summary"], additionalProperties: false } });
 const TOOLS = [
   tool("revise_track", "Propose new text for one field of one expert track.", {
