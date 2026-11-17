@@ -74,7 +74,7 @@ const Partner = (() => {
           <p style="margin:0">Students will see you as: <strong>${esc(label(q, c))}</strong>.</p></div>
         <div class="card wash-peach"><div class="eyebrow coral">A shared responsibility</div>
           <p class="hint-note" style="margin:0">You approve your contribution and its representation. The educator manages the learning activity and publication.</p>
-          <details><summary>About this demo</summary><p class="hint-note">The partner is simulated. No venue partnership is confirmed.</p></details></div>
+          <details class="partner-disclosure"><summary>About this demo</summary><p class="hint-note">The partner is simulated. No venue partnership is confirmed.</p></details></div>
       </div></div>`;
   }
 
@@ -84,7 +84,7 @@ const Partner = (() => {
       const m = c.missions[item.slice(6)] || {}, opts = c.peerTeaching.checkOptions[item.slice(6)] || [];
       const rows = (fields) => fields.filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('');
       return `<dl class="p-dl">${rows([['Where', m.gallery], ['Main question', m.narrative], ['What students do', m.observe]])}</dl>
-        <details><summary>View discussion and learning details</summary><dl class="p-dl">${rows([['Discussion question', m.discuss], ['What students explain to their team', m.teachHeadline], ['Expected summary', (opts.find((o) => o.correct) || {}).text]])}</dl></details>`;
+        <details class="partner-disclosure"><summary>View discussion and learning details</summary><dl class="p-dl">${rows([['Discussion question', m.discuss], ['What students explain to their team', m.teachHeadline], ['Expected summary', (opts.find((o) => o.correct) || {}).text]])}</dl></details>`;
     }
     if (item === 'story') return `<p style="margin:0">${esc(c.subtitle ? c.subtitle + ' — ' : '')}${esc(c.story.opening || 'No story written yet.')}</p>`;
     return `<p style="margin:0 0 6px"><strong>${esc(c.finale.title)}</strong>${c.finale.intro ? ` — ${esc(c.finale.intro)}` : ''}</p>

@@ -698,6 +698,24 @@ a.brand { text-decoration: none; color: inherit; }
 @media (max-width: 700px) { .j-move { margin-left: 0; } .j-add { margin-left: 0; } }
 
 /* ---------- community partner ---------- */
+.role-collaborator .partner-disclosure { margin-top: 10px; }
+.role-collaborator .partner-disclosure > summary {
+  display: list-item;
+  list-style-position: inside;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-mini);
+  background: var(--lavender);
+  color: var(--violet-deep);
+  font-weight: 600;
+  cursor: pointer;
+}
+.role-collaborator .partner-disclosure > summary::marker { color: var(--violet-deep); }
+.role-collaborator .partner-disclosure > summary:hover,
+.role-collaborator .partner-disclosure > summary:focus-visible,
+.role-collaborator .partner-disclosure[open] > summary { border-color: var(--violet); }
+.role-collaborator .partner-disclosure > :not(summary) { margin-top: 10px; }
 .p-dl { display: grid; grid-template-columns: minmax(110px, 180px) 1fr; gap: 4px 12px; margin: 0; }
 .p-dl dt { color: var(--muted); font-size: 13px; }
 .p-dl dd { margin: 0; }

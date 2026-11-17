@@ -1073,10 +1073,10 @@
           <p class="hint-note">Students in the conversation activity will see the selected question. Use it to start your in-person conversation.</p>
           ${(st.contributor.prompts || SEED.contributor.prompts).map((p, i) => `<button type="button" class="tile-pick" data-a="prompt" data-i="${i}" aria-pressed="${promptIdx === i}">${promptIdx === i ? '<span class="pill mint">Selected question</span> ' : ''}${esc(p)}</button>`).join('')}
           <p class="hint-note">Read the question, then put your device away and talk. Confirm afterwards.</p>
-          <details style="margin-top:10px"><summary>${Art.icon('pencil', 14)} Edit questions</summary>
+          <details class="partner-disclosure" style="margin-top:10px"><summary>${Art.icon('pencil', 14)} Edit questions</summary>
             <form class="stack" data-form="partner-prompts" style="gap:8px;margin-top:10px">${Assistant.listEd('pp', st.contributor.prompts || SEED.contributor.prompts, 'A question for students', 'Add a question')}
             <button class="btn btn-secondary btn-sm" type="submit" style="align-self:flex-start">Save questions</button></form></details>
-          <details style="margin-top:10px"><summary>How students use your contribution</summary><p class="hint-note">Students record your perspective in their own words and share it with their team. You can check their understanding later in "Student work".</p></details>
+          <details class="partner-disclosure" style="margin-top:10px"><summary>How students use your contribution</summary><p class="hint-note">Students record your perspective in their own words and share it with their team. You can check their understanding later in "Student work".</p></details>
         </div>
         <div class="card">
           <h3>${Art.icon('handshake', 19)} Confirm completed conversations</h3>
