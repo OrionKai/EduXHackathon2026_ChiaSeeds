@@ -604,3 +604,11 @@ a.brand { text-decoration: none; color: inherit; }
 .mail { white-space: pre-wrap; font-size: 14px; background: var(--white); border: 1px solid var(--stroke); border-radius: 12px; padding: 12px; }
 .next-exp { border: 2px solid var(--teal); }
 .qr-box img, .qr-box canvas { display: block; }
+
+/* ---------- tracks E/F, expert sub-groups, builder scrolling ---------- */
+.topic-chip.sky { background: #E3F2FF; color: #1F5F99; } .topic-chip.lime { background: #EEF8DD; color: #4A6B12; }
+.jig-tile.sky { border-color: #B7D9F7; } .jig-tile.sky .topic-dot { background: #6BB3F0; color: #0E3456; }
+.jig-tile.lime { border-color: #CFE7A6; } .jig-tile.lime .topic-dot { background: #9CCB4E; color: #2D4208; }
+.exp-sub { border-top: 1px dashed var(--stroke); padding-top: 4px; margin-top: 4px; }
+.exp-sub:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+.builder-left { position: static !important; }

@@ -60,6 +60,7 @@ const Engine = (() => {
         id: 'q_lm',
         templateId: 'lost_museum',
         partner: { ...SEED.partnerDefaults },
+        structure: SEED.defaultStructure(),
         next: { ...SEED.defaultNext(), enabled: true, activity: 'Still-life drawing class: draw a memorable object from the museum trip', provider: 'Riverside Art Studio', org: 'Example provider (simulated)',
           when: 'Thu 3 Dec, 2–3:30pm', bring: 'Your team’s finale answer and field notes', fallback: 'In-class drawing session with the art department' },
         draftGenerated: true,
@@ -100,7 +101,7 @@ const Engine = (() => {
   /* ---------- persistence ---------- */
 
   let state = load();
-  SEED.useContent(state.content);
+  SEED.useStructure(state.quest.structure); SEED.useContent(state.content);
   const listeners = new Set();
 
   function load() {
@@ -114,6 +115,7 @@ const Engine = (() => {
       /* corrupted or unavailable storage -> fresh demo */
     }
     const f = freshState();
+    syncRoster(f);
     snapInto(f);
     return f;
   }
@@ -124,6 +126,8 @@ const Engine = (() => {
   }
 
   function upgrade(s) {
+    s.quest.structure = { ...SEED.defaultStructure(), ...(s.quest.structure || {}) };
+    SEED.useStructure(s.quest.structure);
     s.sources = s.sources || seedSources();
     s.content = s.content || JSON.parse(JSON.stringify(TEMPLATES.lost_museum));
     s.library = s.library || {};
@@ -136,6 +140,7 @@ const Engine = (() => {
     s.help = s.help || [];
     s.tracks = s.tracks || { A: 'AI', B: 'AI', C: 'AI', D: 'AI' };
     s.revisions = s.revisions || {};
+    syncRoster(s);
     s.trackEdits = s.trackEdits || {};
     s.seats = s.seats || {};
     s.checkinPhotos = s.checkinPhotos || {};
@@ -154,12 +159,14 @@ const Engine = (() => {
 
   /* ---------- quest library ---------- */
   function snapInto(s) { s.library = s.library || {}; s.library[s.activeQuest] = clone(Object.fromEntries(QUEST_KEYS.map((k) => [k, s[k]]))); }
-  function resetPlay(s) { const f = freshState(); PLAY_KEYS.forEach((k) => { s[k] = f[k]; }); }
+  function resetPlay(s) { const f = freshState(); PLAY_KEYS.forEach((k) => { s[k] = f[k]; }); syncRoster(s); }
+  /* The seat list, kept in the shared state so the database guard can check it. */
+  function syncRoster(s) { s.roster = SEED.participants.map((p) => [p.id, p.home, p.topic]); }
   function loadQuest(s, id) {
     const r = s.library[id];
     QUEST_KEYS.forEach((k) => { s[k] = clone(r[k]); });
     s.activeQuest = id;
-    SEED.useContent(s.content);
+    SEED.useStructure(s.quest.structure); SEED.useContent(s.content);
     resetPlay(s);
   }
 
@@ -172,7 +179,7 @@ const Engine = (() => {
   }
 
   function emit(event) {
-    SEED.useContent(state.content);
+    SEED.useStructure(state.quest.structure); SEED.useContent(state.content);
     persist();
     listeners.forEach((fn) => fn(state, event));
   }
@@ -192,7 +199,7 @@ const Engine = (() => {
     // The verified evidence map for one home group: topic -> boolean
     homeVerified(h) {
       const out = {};
-      for (const t of SEED.topics) {
+      for (const t of SEED.topicsFor(h)) {
         const expert = SEED.expertOf(h, t);
         out[t] = expert ? state.evidence[expert.id].status === 'VERIFIED' : false;
       }
@@ -201,21 +208,21 @@ const Engine = (() => {
 
     homeShared(h) {
       const out = {};
-      for (const t of SEED.topics) out[t] = state.peerTeach[h][t].shared;
+      for (const t of SEED.topicsFor(h)) out[t] = state.peerTeach[h][t].shared;
       return out;
     },
 
     finaleUnlocked(h) {
       const v = sel.homeVerified(h);
       const s = sel.homeShared(h);
-      return SEED.topics.every((t) => v[t]) && SEED.topics.every((t) => s[t]);
+      return SEED.topicsFor(h).every((t) => v[t] && s[t]);
     },
 
     finaleLockReasons(h) {
       const v = sel.homeVerified(h);
       const s = sel.homeShared(h);
       const reasons = [];
-      for (const t of SEED.topics) {
+      for (const t of SEED.topicsFor(h)) {
         if (!v[t]) reasons.push({ topic: t, kind: 'evidence' });
         else if (!s[t]) reasons.push({ topic: t, kind: 'teach' });
       }
@@ -265,7 +272,8 @@ const Engine = (() => {
 
     resetDemo() {
       state = freshState();
-      SEED.useContent(state.content);
+      syncRoster(state);
+      SEED.useStructure(state.quest.structure); SEED.useContent(state.content);
       snapInto(state);
       audit('system', 'Demo reset to seeded state.');
       return { ok: true, msg: 'Demo reset.' };
@@ -296,7 +304,7 @@ const Engine = (() => {
       if (probs.length) return { ok: false, msg: `Not ready yet (${probs.length} to do): ${probs[0]}.` };
       if (!s.quest.safety) return { ok: false, msg: 'Confirm the safety and supervision plan first.' };
       if (SEED.topics.some((t) => s.tracks[t] !== 'APPROVED'))
-        return { ok: false, msg: 'Approve all four AI-drafted expert tracks first — nothing reaches students unapproved.' };
+        return { ok: false, msg: 'Approve every expert track first — nothing reaches students unapproved.' };
       s.quest.status = 'PUBLISHED';
       audit('teacher', 'Published quest (DEMO_ONLY — simulation notice shown).');
       return { ok: true, msg: 'Quest published as a demo-only adventure.' };
@@ -508,8 +516,9 @@ const Engine = (() => {
       if (['SUBMITTED', 'APPROVED'].includes(f.status)) return { ok: false, msg: 'Already submitted.' };
 
       // Panel 1 — evidence match must be complete and correct.
-      for (const o of SEED.finale.objects) {
-        if (!f.match[o.id]) return { ok: false, msg: 'Match all four objects to a perspective first.' };
+      const tags = SEED.topicsFor(home).map((t) => SEED.topicMeta[t].tag);
+      for (const o of SEED.finale.objects.filter((x) => tags.includes(x.answer))) {
+        if (!f.match[o.id]) return { ok: false, msg: 'Match every object to a perspective first.' };
         if (f.match[o.id] !== o.answer)
           return { ok: false, msg: 'One of the matches does not fit — discuss as a team and try a different pairing.' };
       }
@@ -651,14 +660,14 @@ const Engine = (() => {
       const t = String(title || '').trim() || (tpl === 'blank' ? 'Untitled quest' : content.title);
       content.title = t;
       s.quest = { id, title: t, objective: tpl === 'lost_museum' ? 'Interpret evidence from multiple perspectives' : '', venue: tpl === 'lost_museum' ? 'The Fitzwilliam Museum, Cambridge' : '',
-        duration: 60, classSize: 20, status: 'DRAFT', draftGenerated: true, safety: false, templateId: tpl, partner: { ...SEED.partnerDefaults }, next: SEED.defaultNext() };
+        duration: 60, classSize: 20, status: 'DRAFT', draftGenerated: true, safety: false, templateId: tpl, partner: { ...SEED.partnerDefaults }, next: SEED.defaultNext(), structure: SEED.defaultStructure() };
       s.content = content;
       s.tracks = Object.fromEntries(SEED.topics.map((x) => [x, tpl === 'blank' ? 'EMPTY' : 'TEMPLATE']));
       s.revisions = {};
       s.sources = tpl === 'lost_museum' ? seedSources() : seedSources().filter((x) => x.kind === 'partner').map((x) => ({ ...x, id: 'S1' }));
       s.contributor = { text: '', status: 'PENDING', interactionPrompt: 0, extraPrompts: [] };
       s.activeQuest = id;
-      SEED.useContent(s.content);
+      SEED.useStructure(s.quest.structure); SEED.useContent(s.content);
       resetPlay(s);
       audit('teacher', `Created quest “${t}” (${tpl === 'blank' ? 'blank' : 'from template ' + content.meta.name}).`);
       return { ok: true, msg: `Created “${t}”.`, id };
@@ -689,13 +698,31 @@ const Engine = (() => {
       return { ok: true, msg: 'Partner details saved.' };
     },
 
+    setStructure(s, { tracks, classSize, expertGroup }) {
+      if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Published quests are frozen — create a new quest to change the groups.' };
+      if (s.phase !== 'LOBBY') return { ok: false, msg: 'End the live session first.' };
+      const t = Number(tracks), n = Number(classSize), g = Number(expertGroup);
+      if (!(t >= 3 && t <= 6)) return { ok: false, msg: 'Choose 3 to 6 tracks.' };
+      if (!(n >= t && n <= 60)) return { ok: false, msg: `Class size must be between ${t} and 60.` };
+      const teams = Math.ceil(n / t);
+      if (!(g >= 1 && g <= teams)) return { ok: false, msg: `Expert groups can be 1 to ${teams} students.` };
+      s.quest.structure = { tracks: t, classSize: n, expertGroup: g };
+      s.quest.classSize = n;
+      SEED.useStructure(s.quest.structure);
+      SEED.ensureContentShape(s.content);
+      const nt = {}; SEED.topics.forEach((x) => { nt[x] = s.tracks[x] || 'EMPTY'; }); s.tracks = nt;
+      resetPlay(s);
+      audit('teacher', `Set the groups: ${t} tracks, ${n} students (${teams} home teams), expert groups of ${g}.`);
+      return { ok: true, msg: `${teams} home teams of ${t}, expert groups of ${g}.` };
+    },
+
     /* ----- authoring the quest content (educator; AI proposals land here too) ----- */
     setContent(s, { content }) {
       if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Published quests are frozen — create a new quest to change it.' };
       if (!content || !content.missions || !SEED.topics.every((t) => content.missions[t])) return { ok: false, msg: 'The draft was incomplete.' };
-      s.content = content;
+      s.content = SEED.ensureContentShape(content);
       if (content.title) s.quest.title = content.title;
-      SEED.useContent(s.content);
+      SEED.useStructure(s.quest.structure); SEED.useContent(s.content);
       SEED.syncFinaleObjects(s.content);
       s.tracks = Object.fromEntries(SEED.topics.map((t) => [t, 'AI']));
       s.revisions = {};
@@ -935,6 +962,7 @@ const Engine = (() => {
         for (const t of SEED.topics) {
           const cell = s.peerTeach[h][t];
           const expert = SEED.expertOf(h, t);
+          if (!expert) continue;
           const isActive = expert && (expert.id === s.ui.student || !!s.seats[expert.id]);
           if (!cell.shared && !isActive && s.evidence[expert.id].status === 'VERIFIED') {
             const checker = SEED.homeMembers(h).find((m) => m.id !== expert.id);

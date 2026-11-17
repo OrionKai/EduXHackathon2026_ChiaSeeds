@@ -131,7 +131,7 @@ const Assistant = (() => {
     const n = SEED.topics.filter((t) => st.tracks[t] === 'APPROVED').length;
     return `
       <section class="card" id="as-content">
-        <div class="spread"><h3 style="margin:0">${Art.icon('map', 18)} Expert tracks</h3><span class="row" style="gap:6px"><span class="pill lavender">${n}/4 approved</span>${probs.length ? `<span class="pill peach">${probs.length} to complete</span>` : '<span class="pill mint">complete</span>'}</span></div>
+        <div class="spread"><h3 style="margin:0">${Art.icon('map', 18)} Expert tracks</h3><span class="row" style="gap:6px"><span class="pill lavender">${n}/${SEED.topics.length} approved</span>${probs.length ? `<span class="pill peach">${probs.length} to complete</span>` : '<span class="pill mint">complete</span>'}</span></div>
         <p class="hint-note" style="margin:6px 0 10px">One member of every home team investigates each track, then teaches the others. Mix and match the blocks each track uses.</p>
         <div class="stack" style="gap:10px">
           ${SEED.topics.map((t) => {
@@ -373,7 +373,7 @@ const Assistant = (() => {
   }
   function questBrief() {
     const q = Engine.state.quest;
-    return { title: q.title, objective: q.objective, venue: q.venue, minutes: q.duration, students: q.classSize, ages: '13-16' };
+    return { title: q.title, objective: q.objective, venue: q.venue, minutes: q.duration, students: SEED.participants.length, tracks: SEED.topics.length, teams: SEED.homeGroups.length, ages: '13-16' };
   }
   function liveContext() {
     const tracks = {};
@@ -410,7 +410,7 @@ const Assistant = (() => {
     busy = true; confirmGen = false;
     const prompt = `Plan a ${ctx.quest.minutes}-minute Jigsaw quest for ${ctx.quest.students} students${ctx.quest.venue ? ' at ' + ctx.quest.venue : ''}. Goal: ${ctx.quest.objective || 'decide from the sources'}.`;
     msgs.push({ who: 'you', text: prompt }); paintMsgs();
-    const step = { who: 'ai', text: 'Planning four complementary perspectives from your sources…', thinking: false }; msgs.push(step); paintMsgs();
+    const step = { who: 'ai', text: `Planning ${SEED.topics.length} complementary perspectives from your sources…`, thinking: false }; msgs.push(step); paintMsgs();
     const plan = await call({ mode: 'plan', quest: ctx.quest, sources: ctx.sources });
     if (plan.status !== 200 || !plan.data || !plan.data.plan) { msgs.pop(); msgs.pop(); failNotice(plan.status); busy = false; return window.WQ.render(); }
     const P = plan.data.plan;
@@ -421,6 +421,7 @@ const Assistant = (() => {
       call({ mode: 'extras', plan: P, quest: ctx.quest, sources: ctx.sources }),
     ]);
     const content = JSON.parse(JSON.stringify(TEMPLATES.blank));
+    SEED.ensureContentShape(content);
     content.title = P.title || Engine.state.quest.title;
     content.story = { ...content.story, opening: P.story_opening || '' };
     const failed = [];
@@ -449,13 +450,13 @@ const Assistant = (() => {
     } else failed.push('the finale');
     if (ext.status === 200 && ext.data && ext.data.extras) {
       const X = ext.data.extras;
-      content.collectibles = content.collectibles.map((c, i) => ({ ...c, ...(X.collectibles && X.collectibles[i] ? { title: X.collectibles[i].title, activity: X.collectibles[i].activity, fact: X.collectibles[i].fact } : {}) }));
+      content.collectibles = SEED.ensureContentShape(content).collectibles.map((c, i) => ({ ...c, ...(X.collectibles && X.collectibles[i] ? { title: X.collectibles[i].title, activity: X.collectibles[i].activity, fact: X.collectibles[i].fact } : {}) }));
       if (Array.isArray(X.reflection)) content.reflection = [X.reflection[0] || '', X.reflection[1] || ''];
     } else failed.push('collectibles and reflection');
     msgs.pop();
     const r = Engine.dispatch('setContent', { content });
     await say(r.ok
-      ? `Drafted “${content.title}”: ${P.tracks.map((t) => t.name).join(', ')}, a finale that needs all four, 5 collectibles and 2 reflection questions.${failed.length ? ` I couldn’t finish ${failed.join(', ')} — fill those in by hand.` : ''} Review and approve each track below.`
+      ? `Drafted “${content.title}”: ${P.tracks.map((t) => t.name).join(', ')}, a finale that needs every perspective, ${content.collectibles.length} collectibles and ${content.reflection.length} reflection questions.${failed.length ? ` I couldn’t finish ${failed.join(', ')} — fill those in by hand.` : ''} Review and approve each track below.`
       : 'The draft came back incomplete. Try again, or fill the quest in by hand.', ctx.sources.map((s) => s.id));
     history.push({ role: 'user', content: prompt }, { role: 'assistant', content: `Drafted ${content.title}.` });
     busy = false;

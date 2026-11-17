@@ -449,3 +449,72 @@ TEMPLATES.lost_museum.collectibles.forEach((c) => Object.assign(c, SEED.defaultE
 TEMPLATES.blank.collectibles.forEach((c) => Object.assign(c, SEED.defaultEarn()));
 /* The next real experience after the quest (booked with a provider, unlocked for the class). */
 SEED.defaultNext = () => ({ enabled: false, activity: '', provider: '', org: '', when: '', bring: '', fallback: '', unlock: 'all', status: 'none', request: '', counterWhen: '' });
+
+/* ================= Jigsaw structure is configurable per quest =================
+ * tracks (3–6) = home team size; classSize = seats; expertGroup = how many experts of the same
+ * track visit their station together. Everything that used to be fixed (participants, home teams,
+ * tracks) is now computed from the active quest's structure. */
+const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
+const TRACK_STYLE = {
+  A: { color: 'violet', icon: 'lens', tag: 'OBJECT_EVIDENCE' }, B: { color: 'teal', icon: 'monument', tag: 'POWER_MEMORY' },
+  C: { color: 'sun', icon: 'tokens', tag: 'MULTIPLE_LIVES' }, D: { color: 'coral', icon: 'voices', tag: 'CONNECTIONS_VOICES' },
+  E: { color: 'sky', icon: 'map', tag: 'TRACK_E' }, F: { color: 'lime', icon: 'leaf', tag: 'TRACK_F' },
+};
+const STATION_WORDS = { E: ['WQ-STATION-E', 'MAPLE'], F: ['WQ-STATION-F', 'RIVER'] };
+Object.assign(STATION, STATION_WORDS);
+SEED.defaultStructure = () => ({ tracks: 4, classSize: 20, expertGroup: 5 });
+let __structure = SEED.defaultStructure(), __roster = null;
+function buildRoster() {
+  const { tracks, classSize } = __structure, topics = LETTERS.slice(0, tracks), list = [];
+  for (let i = 1; i <= classSize; i++) {
+    const id = 'S' + String(i).padStart(2, '0');
+    list.push({ id, name: 'Explorer ' + String(i).padStart(2, '0'), home: 'H' + (Math.floor((i - 1) / tracks) + 1), topic: topics[(i - 1) % tracks] });
+  }
+  const homes = [...new Set(list.map((p) => p.home))];
+  __roster = { topics, list, homes, byId: Object.fromEntries(list.map((p) => [p.id, p])) };
+}
+SEED.useStructure = (st) => {
+  const t = Math.max(3, Math.min(6, Number(st && st.tracks) || 4));
+  const n = Math.max(t, Math.min(60, Number(st && st.classSize) || 20));
+  const g = Math.max(1, Number(st && st.expertGroup) || 5);
+  if (__roster && t === __structure.tracks && n === __structure.classSize && g === __structure.expertGroup) return;
+  __structure = { tracks: t, classSize: n, expertGroup: g };
+  buildRoster();
+};
+buildRoster();
+Object.defineProperty(SEED, 'participants', { get: () => __roster.list, configurable: true });
+Object.defineProperty(SEED, 'homeGroups', { get: () => __roster.homes, configurable: true });
+Object.defineProperty(SEED, 'topics', { get: () => __roster.topics, configurable: true });
+Object.defineProperty(SEED, 'byId', { get: () => __roster.byId, configurable: true });
+Object.defineProperty(SEED, 'structure', { get: () => __structure, configurable: true });
+/* Tracks present in one home team (the last team can be smaller when the class doesn't divide evenly). */
+SEED.topicsFor = (h) => SEED.topics.filter((t) => SEED.expertOf(h, t));
+/* The small group of same-track experts a student visits their station with. */
+SEED.expertGroupOf = (pid) => {
+  const p = SEED.byId[pid]; if (!p) return { index: 0, members: [] };
+  const same = SEED.participants.filter((x) => x.topic === p.topic);
+  const g = __structure.expertGroup, i = same.findIndex((x) => x.id === pid), index = Math.floor(i / g);
+  return { index, members: same.slice(index * g, index * g + g), count: Math.ceil(same.length / g) };
+};
+SEED.styleOf = (t) => TRACK_STYLE[t];
+/* Make a quest's content match its structure: a track per letter, a collectible per home team. */
+SEED.ensureContentShape = (c) => {
+  SEED.topics.forEach((t) => {
+    if (!c.missions[t]) {
+      const b = SEED.buildTrack(t, { name: '', evidence: [''], hints: [] });
+      c.missions[t] = b.mission;
+      c.peerTeaching.checkOptions[t] = b.check;
+    }
+    c.topicMeta[t] = { ...TRACK_STYLE[t], ...(c.topicMeta[t] || {}), color: (c.topicMeta[t] || TRACK_STYLE[t]).color || TRACK_STYLE[t].color };
+    if (!c.topicMeta[t].name) c.topicMeta[t].name = c.missions[t].name || 'Track ' + t;
+    if (!c.topicMeta[t].label) c.topicMeta[t].label = 'Track ' + t;
+  });
+  SEED.syncFinaleObjects(c);
+  const base = TEMPLATES.lost_museum.collectibles;
+  c.collectibles = SEED.homeGroups.map((h, i) => {
+    const old = c.collectibles[i];
+    if (old) return { ...old, home: h };
+    return { id: 'card_' + (i + 1), title: '', activity: '', fact: '', home: h, color: base[i % base.length].color, category: 'Discovery', promptLabel: 'Your team’s discovery', ...SEED.defaultEarn() };
+  });
+  return c;
+};

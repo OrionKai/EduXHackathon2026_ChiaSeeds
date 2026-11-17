@@ -9,7 +9,7 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic(); // reads ANTHROPIC_API_KEY
 
-const TOPICS = ["A", "B", "C", "D"];
+const TOPICS = ["A", "B", "C", "D", "E", "F"];
 
 const SYSTEM = `You are the quest assistant inside WorldQuest, helping a secondary-school educator (students aged 13-16) refine a Jigsaw museum quest before it is published.
 
@@ -63,7 +63,7 @@ const TOOLS = [
 
 /* ---------- whole-quest generation: plan first, then each part in parallel ---------- */
 const GEN_RULES = `You are writing a WorldQuest Jigsaw quest for students aged 13-16 at a real place.
-Structure: 4 expert tracks (A-D). Each home team has one student per track; experts investigate their location, then teach their home team; a finale needs all four perspectives.
+Structure: N expert tracks (lettered A, B, C...; N is given in QUEST SETTINGS as tracks). Each home team has one student per track; experts investigate their location, then teach their home team; a finale needs all four perspectives.
 Rules: use ONLY facts in the APPROVED SOURCES (cite their ids). Never invent facts, dates, objects or cultural claims; if sources are thin, keep tasks about careful observation rather than facts. Activities must happen at the real place, away from screens. Short sentences, plain words. Separate observation from interpretation. Hints never give answers. Never claim a partnership is confirmed. At most one track includes an arranged conversation with the community partner, and only if the sources mention one.
 Call the tool exactly once.`;
 const str = { type: "string" };
@@ -80,10 +80,10 @@ const GEN_TOOLS = {
     input_schema: obj({ collectibles: { type: "array", items: obj({ title: str, activity: str, fact: str }) }, reflection: arr }) },
 };
 const GEN_ASK = {
-  plan: "Plan the quest: a title, a 2-3 sentence fictional story opening (clearly a story, no false claims), and four complementary perspectives (letters A-D), each tied to a real location and key object named in the sources.",
+  plan: "Plan the quest: a title, a 2-3 sentence fictional story opening (clearly a story, no false claims), and exactly the number of complementary perspectives given in QUEST SETTINGS (tracks), lettered from A, each tied to a real location and key object named in the sources.",
   track: (letter) => `Write track ${letter} in full, following the plan. evidence_prompts: 2-4 prompts (observations first, then one interpretation and one limit of the evidence). hints: 2. check_correct: a one-sentence fair summary of what this expert teaches; check_incorrect: a tempting summary that overclaims. quiz: 2 multiple-choice questions (4 options each) answerable only by looking at the real object or from the sources, never trick questions.`,
-  finale: "Write the finale: a title; a cautious statement and an overclaiming one; 3-4 evidence sentences (one per track, citing what students observed); one sentence each about perspectives, uncertainty and inviting a visitor question; and one tempting overclaim students must leave out.",
-  extras: "Write 5 optional team collectibles (a short evocative name, a 1-sentence bonus activity done on site, and a 1-sentence fact shown when earned), and 2 reflection questions about learning from others.",
+  finale: "Write the finale: a title; a cautious statement and an overclaiming one; one evidence sentence per track (citing what students observed); one sentence each about perspectives, uncertainty and inviting a visitor question; and one tempting overclaim students must leave out.",
+  extras: "Write one optional collectible per home team (the number of teams is given in QUEST SETTINGS as teams) (a short evocative name, a 1-sentence bonus activity done on site, and a 1-sentence fact shown when earned), and 2 reflection questions about learning from others.",
 };
 async function generatePart(part, body) {
   const tool = GEN_TOOLS[part];
@@ -174,8 +174,9 @@ export default async (req) => {
       const out = await generatePart(mode, body);
       if (!out) return json({ error: "no_output" }, 502);
       if (mode === "plan") {
-        out.tracks = TOPICS.map((t) => (out.tracks || []).find((x) => x.letter === t)).filter(Boolean);
-        if (out.tracks.length !== 4) return json({ error: "bad_plan" }, 502);
+        const n = Math.max(3, Math.min(6, Number((body.quest || {}).tracks) || 4));
+        out.tracks = TOPICS.slice(0, n).map((t) => (out.tracks || []).find((x) => x.letter === t)).filter(Boolean);
+        if (out.tracks.length !== n) return json({ error: "bad_plan" }, 502);
       }
       return json({ [mode]: out });
     } catch (error) {
