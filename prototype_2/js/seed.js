@@ -323,6 +323,21 @@ SEED.topics.forEach((t) => { TEMPLATES.lost_museum.missions[t].assess = SEED.def
 /* Something students can actually photograph at each station of the example quest. */
 Object.entries({ A: 'Nespawershefyt’s coffin set', B: 'the sarcophagus lid of Ramesses III', C: 'a piece of painted pottery', D: 'a grave relief from Palmyra' })
   .forEach(([t, k]) => { TEMPLATES.lost_museum.missions[t].keyObject = k; });
+/* Success criteria: what a good answer includes. The misconception analysis checks answers against these. */
+Object.entries({
+  A: ['Names at least two details you can actually see on the coffin set (decoration, shape, materials).',
+      'Separates what the object shows from what would need other sources (such as beliefs).',
+      'States that one coffin cannot show how everyone in ancient Egypt was buried.'],
+  B: ['Describes a visible feature of the lid (size, carving, material).',
+      'Explains the lid as how power chose to be remembered, not as proof the ruler was popular.',
+      'Names a group whose experience the monument leaves out (e.g. workers, women, children).'],
+  C: ['Names two different object types and a question each could help answer.',
+      'Explains that different object types answer different questions.',
+      'States a limit: one object type cannot show a whole society.'],
+  D: ['Names the contexts shown in the gallery.',
+      'Records the contributor’s reply as a perspective, not as established fact.',
+      'Leaves at least one genuine open question.'],
+}).forEach(([t, c]) => { TEMPLATES.lost_museum.missions[t].criteria = c; });
 SEED.ASSESS_TEXT = {
   checkin: { photo_ai: 'Photo of the object, checked by AI (sent to the AI, then discarded)', photo_teacher: 'Photo of the object, checked by the educator', qr: 'QR clue card or facilitator code', none: 'No check-in' },
   evidence: { notes: 'Written field notes', photo: 'A photo of the object', notes_photo: 'Field notes and a photo' },
@@ -340,6 +355,7 @@ SEED.buildTrack = (t, f) => {
       sourceFact: f.sourceFact || '', sourceUrl: f.sourceUrl || '',
       evidenceFields: prompts.map((label, i) => ({ key: 'f' + (i + 1), label, placeholder: '' })),
       hints: (f.hints || []).map((x) => String(x).trim()).filter(Boolean),
+      criteria: (f.criteria || []).map((x) => String(x).trim()).filter(Boolean),
       teachHeadline: f.teachHeadline || '', fallback: f.fallback || '',
       needsFacilitator: !!f.needsContributor,
       stationCode: STATION[t][0], backupCode: String(f.backupCode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) || SEED.newBackupCode(),
@@ -357,7 +373,7 @@ SEED.trackFields = (c, t) => {
   return {
     name: m.name, location: m.gallery, keyObject: m.keyObject || (c.finale.objects.find((o) => o.answer === c.topicMeta[t].tag) || {}).label || '',
     narrative: m.narrative, observe: m.observe, discuss: m.discuss,
-    evidence: m.evidenceFields.map((e) => e.label), hints: m.hints, fallback: m.fallback, teachHeadline: m.teachHeadline,
+    evidence: m.evidenceFields.map((e) => e.label), hints: m.hints, criteria: m.criteria || [], fallback: m.fallback, teachHeadline: m.teachHeadline,
     checkCorrect: (opts.find((o) => o.correct) || {}).text || '', checkIncorrect: (opts.find((o) => !o.correct) || {}).text || '',
     checks: opts.map((o) => ({ id: o.id, text: o.text, correct: !!o.correct, miss: o.miss || '' })),
     needsContributor: !!m.needsFacilitator, sourceFact: m.sourceFact, sourceUrl: m.sourceUrl, backupCode: m.backupCode,
@@ -552,8 +568,8 @@ SEED.SAMPLE_INSIGHTS = {
         { text: 'It shows all Egyptians were buried this way, so there isn’t much it can’t tell us.', theme: 'general' },
         { text: 'We don’t know what Nespawershefyt was like as a person, only how they were buried.' }],
       themes: {
-        beliefs: { title: 'Reading beliefs straight off the object', explain: 'Treats the decoration as proof of exactly what people believed, rather than evidence that needs other sources.', ask: 'What else would we need, besides the coffin, to know what Nespawershefyt believed?' },
-        general: { title: 'One burial stands for everyone', explain: 'Generalises from one high-status coffin to all Egyptians.', ask: 'Who might not have had a coffin like this — and how could we find out?' } } },
+        beliefs: { crit: 1, title: 'Reading beliefs straight off the object', explain: 'Treats the decoration as proof of exactly what people believed, rather than evidence that needs other sources.', ask: 'What else would we need, besides the coffin, to know what Nespawershefyt believed?' },
+        general: { crit: 2, title: 'One burial stands for everyone', explain: 'Generalises from one high-status coffin to all Egyptians.', ask: 'Who might not have had a coffin like this — and how could we find out?' } } },
     B: { simMiss: 'b_no2', field: 'uncertainty', strengths: 'Several students noticed that workers, women and children are missing from the monument.',
       answers: [
         { text: 'Ordinary workers who built the tomb aren’t remembered here.' },
@@ -562,8 +578,8 @@ SEED.SAMPLE_INSIGHTS = {
         { text: 'Everyone important is on it, so it tells us about the whole of Egypt.', theme: 'popular' },
         { text: 'Because it’s so big, Ramesses must have been the most powerful king ever.', theme: 'size' }],
       themes: {
-        popular: { title: 'A monument means the ruler was popular', explain: 'Reads a royal monument as evidence of popularity or of everyone’s experience, not as how power chose to be remembered.', ask: 'Who decided what went on this lid — and who didn’t get a say?' },
-        size: { title: 'Bigger means more powerful', explain: 'Uses size as a direct measure of power instead of one clue among several.', ask: 'What else, besides size, could tell us how powerful a ruler was?' } } },
+        popular: { crit: 1, title: 'A monument means the ruler was popular', explain: 'Reads a royal monument as evidence of popularity or of everyone’s experience, not as how power chose to be remembered.', ask: 'Who decided what went on this lid — and who didn’t get a say?' },
+        size: { crit: 0, title: 'Bigger means more powerful', explain: 'Uses size as a direct measure of power instead of one clue among several.', ask: 'What else, besides size, could tell us how powerful a ruler was?' } } },
     C: { simMiss: 'c_no', field: 'limitation', strengths: 'Good comparisons of what different object types can and can’t answer.',
       answers: [
         { text: 'Pottery only tells us about some uses, not about laws or beliefs.' },
@@ -572,8 +588,8 @@ SEED.SAMPLE_INSIGHTS = {
         { text: 'There isn’t really a limitation if you look at enough pots.', theme: 'more' },
         { text: 'Pots get reused, so the use we see might not be the first one.' }],
       themes: {
-        rich: { title: 'Assuming who owned things', explain: 'States who used an object type as fact without evidence from the gallery.', ask: 'What in the case would tell us who actually used this pottery?' },
-        more: { title: 'More of the same fills every gap', explain: 'Thinks many examples of one object type can answer every question about a society.', ask: 'What questions could a thousand pots still not answer?' } } },
+        rich: { basis: 'Not supported by your approved sources: they don’t say who owned painted pottery.', title: 'Assuming who owned things', explain: 'States who used an object type as fact without evidence from the gallery.', ask: 'What in the case would tell us who actually used this pottery?' },
+        more: { crit: 2, title: 'More of the same fills every gap', explain: 'Thinks many examples of one object type can answer every question about a society.', ask: 'What questions could a thousand pots still not answer?' } } },
     D: { simMiss: 'd_no', field: 'remaining_uncertainty', strengths: 'Strong open questions about missing voices and how objects arrived in Cambridge.',
       answers: [
         { text: 'We still don’t know how the person on the relief saw themselves.' },
@@ -582,7 +598,7 @@ SEED.SAMPLE_INSIGHTS = {
         { text: 'The contributor is from the community so their view is the official answer.', theme: 'fact' },
         { text: 'How did some of these objects end up in Cambridge?' }],
       themes: {
-        fact: { title: 'Treating one perspective as the answer', explain: 'Records the contributor’s view as settled fact instead of one perspective to weigh with the evidence.', ask: 'How is a perspective different from a fact — and why do we need both?' } } },
+        fact: { crit: 1, title: 'Treating one perspective as the answer', explain: 'Records the contributor’s view as settled fact instead of one perspective to weigh with the evidence.', ask: 'How is a perspective different from a fact — and why do we need both?' } } },
   },
 };
 

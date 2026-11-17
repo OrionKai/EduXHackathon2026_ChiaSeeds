@@ -57,7 +57,9 @@ const Insights = (() => {
       if (hit && hit.theme) (byTheme[hit.theme] = byTheme[hit.theme] || []).push({ sid: a.sid, quote: val });
     }
     const themes = Object.entries(byTheme).map(([id, q]) => ({ id, ...b.themes[id], students: q.map((x) => x.sid), quotes: q.slice(0, 3) }));
-    return { by: 'scripted', themes, strengths: b.strengths ? [b.strengths] : [], note: `Grouped by matching the “${field.label || 'last'}” answers against the example quest’s known answers.` };
+    const crit = SEED.missions[t].criteria || [];
+    themes.forEach((th) => { th.basis = th.crit != null && crit[th.crit] ? 'Success criterion: ' + crit[th.crit] : th.basis || ''; });
+    return { by: 'scripted', themes, cannot: [], strengths: b.strengths ? [b.strengths] : [], note: `Grouped by matching the “${field.label || 'last'}” answers against the example quest’s known answers.` };
   }
 
   const apiPost = async (body) => {
@@ -66,7 +68,20 @@ const Insights = (() => {
     return { status: res.status, data: res.ok ? await res.json().catch(() => null) : null };
   };
   const audienceOf = (q) => { const au = q.audience || SEED.defaultAudience(); return `${SEED.AUDIENCES[au.kind] || ''} ${au.ages || ''}`.trim(); };
-  const trackBrief = (m) => ({ name: m.name, location: m.gallery, goal: m.teachHeadline, source_fact: m.sourceFact, prompts: m.evidenceFields.map((f) => f.label) });
+  /* The teacher's approved material for a track: what answers are judged against. */
+  const groundOf = (st, t) => {
+    const m = SEED.missions[t], opts = SEED.peerTeaching.checkOptions[t] || [];
+    return { criteria: (m.criteria || []).filter(Boolean), sources: (st.sources || []).map((s) => ({ title: s.title, text: s.text })),
+      correct_statement: (opts.find((o) => o.correct) || {}).text || '', known_misconceptions: opts.filter((o) => !o.correct).map((o) => ({ label: o.miss || '', statement: o.text })) };
+  };
+  const trackBrief = (m, st) => ({ name: m.name, location: m.gallery, goal: m.teachHeadline, source_fact: m.sourceFact, prompts: m.evidenceFields.map((f) => f.label), ...groundOf(st || Engine.state, m.topic) });
+  const basisLine = (st, t, by) => {
+    const g = groundOf(st, t), parts = [];
+    if (g.criteria.length) parts.push(`${g.criteria.length} success criteri${g.criteria.length === 1 ? 'on' : 'a'}`);
+    if (by !== 'scripted' && g.sources.length) parts.push(`${g.sources.length} approved source${g.sources.length === 1 ? '' : 's'}`);
+    if (g.correct_statement) parts.push(by === 'scripted' ? 'your example answers' : 'your teach-back answer key');
+    return parts.length ? `Checked against: ${parts.join(' · ')}` : '';
+  };
 
   async function analyse(topic, how) {
     const st = Engine.state, answers = answersFor(st, topic);
@@ -75,13 +90,14 @@ const Insights = (() => {
     busy[topic] = true; window.WQ.render();
     if (how === 'ai' && liveOn()) {
         try {
-        const r = await apiPost({ mode: 'misconceptions', audience: audienceOf(st.quest), track: trackBrief(SEED.missions[topic]),
+        const r = await apiPost({ mode: 'misconceptions', audience: audienceOf(st.quest), track: trackBrief(SEED.missions[topic], st),
           answers: answers.map((a) => ({ id: a.sid, text: a.text })) });
         const res = { status: r.status }, d = r.data;
         if (d && d.result) {
           const known = Object.fromEntries(answers.map((a) => [a.sid, norm(a.text)]));
           result = { by: 'ai', strengths: d.result.strengths || [], note: d.result.note || '',
-            themes: (d.result.themes || []).slice(0, 4).map((th) => ({ title: th.title, explain: th.explanation, ask: th.debrief_question,
+            cannot: (d.result.cannot_verify || []).filter((c) => known[c.student_id]).slice(0, 5).map((c) => ({ sid: c.student_id, claim: c.claim })),
+            themes: (d.result.themes || []).slice(0, 4).map((th) => ({ title: th.title, explain: th.explanation, ask: th.debrief_question, basis: th.basis || '',
               students: (th.student_ids || []).filter((id) => known[id]),
               quotes: (th.quotes || []).filter((x) => known[x.student_id] && x.quote && known[x.student_id].includes(norm(x.quote))).slice(0, 3).map((x) => ({ sid: x.student_id, quote: x.quote })) }))
               .filter((th) => th.students.length) };
@@ -92,7 +108,7 @@ const Insights = (() => {
     busy[topic] = false;
     if (!result) { window.WQ.render(); return window.WQ.toast(how === 'ai' ? 'Live AI didn’t answer — try again, or use the scripted analysis.' : 'Turn on live AI in the Quest builder to analyse this track.', 'error'); }
     chats[topic] = [];
-    result.n = answers.length; result.at = Date.now();
+    result.n = answers.length; result.at = Date.now(); result.basisLine = basisLine(st, topic, result.by);
     result.who = Object.fromEntries(answers.map((a) => [a.sid, a.pid])); // stays on this side: names are never sent
     window.WQ.act('setAnalysis', { topic, result });
   }
@@ -107,12 +123,16 @@ const Insights = (() => {
         ${liveOn() ? `<button class="btn btn-ghost btn-sm" data-ins="${t}" data-how="ai" ${busy[t] || !n ? 'disabled' : ''}>${Art.icon('sparkle', 15)} Analyse with live AI</button>`
           : sample(st, t) ? '' : `<span class="hint-note">Turn on live AI in the Quest builder to analyse these ${n} answers.</span>`}
         ${a ? `<span class="pill ${a.by === 'ai' ? 'lavender' : 'plain'}">${label}</span>` : ''}</div>
+      ${!groundOf(st, t).criteria.length ? `<p class="hint-note" style="margin:0">${Art.icon('alert', 14)} No success criteria for this track yet — add “What a good answer includes” in the Quest builder so answers are checked against your expectations.</p>` : ''}
+      ${a && a.basisLine ? `<p class="hint-note" style="margin:0">${esc(a.basisLine)}</p>` : ''}
       ${a ? (a.themes.length ? a.themes.map((th) => `<div class="ins-theme">
           <div class="spread"><strong>${esc(th.title)}</strong><span class="pill peach">${th.students.length} of ${a.n}</span></div>
           <p style="margin:4px 0">${esc(th.explain)}</p>
+          ${th.basis ? `<p class="hint-note" style="margin:0 0 4px"><strong>Why it’s flagged:</strong> ${esc(th.basis)}</p>` : ''}
           ${th.quotes.map((q) => `<p class="evidence-quote" style="margin:4px 0">“${esc(q.quote)}” <small>— ${name(q.sid)}</small></p>`).join('')}
           ${th.ask ? `<p style="margin:6px 0 0"><span class="eyebrow teal">Ask in the debrief</span><br>${esc(th.ask)}</p>` : ''}</div>`).join('')
         : '<p class="hint-note" style="margin:0">No clear misconceptions in these answers.</p>')
+        + ((a.cannot || []).length ? `<p class="hint-note" style="margin:0"><strong>Can’t verify against your material</strong> (not counted as misconceptions): ${a.cannot.map((c) => `${name(c.sid)}: “${esc(c.claim)}”`).join(' · ')}</p>` : '')
         + (a.strengths.length ? `<p class="hint-note" style="margin:0"><strong>Going well:</strong> ${a.strengths.map(esc).join(' ')}</p>` : '')
         + (a.note ? `<p class="hint-note" style="margin:0">${esc(a.note)}</p>` : '') + chatBox(st, t, a) : ''}
     </div>`;
@@ -157,7 +177,7 @@ const Insights = (() => {
     let reply = '';
     try {
       const answers = answersFor(st, t);
-      const r = await apiPost({ mode: 'insight_chat', message: q, history, audience: audienceOf(st.quest), track: trackBrief(SEED.missions[t]),
+      const r = await apiPost({ mode: 'insight_chat', message: q, history, audience: audienceOf(st.quest), track: trackBrief(SEED.missions[t], st),
         findings: a.themes.map((th) => ({ title: th.title, explanation: th.explain })), answers: answers.map((x) => ({ id: x.sid, text: x.text })) });
       reply = r.data && r.data.reply ? r.data.reply : r.status === 401 ? 'Live AI needs the demo passcode (Quest builder → assistant).' : '';
     } catch {}

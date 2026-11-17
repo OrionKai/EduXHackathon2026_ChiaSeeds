@@ -245,6 +245,7 @@ const Assistant = (() => {
         ${inp('ed-fb', 'Accessible or backup route', f.fallback)}
         ${inp('ed-code', 'Backup check-in code (read out if the QR card won’t scan)', f.backupCode)}`)}
       ${sec('Evidence &amp; quick check', quizOpen, `<span class="fld">Evidence prompts</span>${listEd('ev', f.evidence, 'What students record', 'Add prompt')}
+        <span class="fld">What a good answer includes (success criteria — the misconception analysis checks answers against these)</span>${listEd('crit', f.criteria, 'e.g. Separates what the object shows from what needs other sources', 'Add criterion')}
         <div class="grid-3" style="gap:8px"><div><label class="fld" for="as-ci">Check-in</label>${opt('as-ci', a.checkin, SEED.ASSESS_TEXT.checkin)}</div>
           <div><label class="fld" for="as-ev">Evidence type</label>${opt('as-ev', a.evidence, SEED.ASSESS_TEXT.evidence)}</div>
           <div><label class="fld" for="as-ver">Verified by</label>${opt('as-ver', a.verify, SEED.ASSESS_TEXT.verify)}</div></div>
@@ -453,7 +454,7 @@ const Assistant = (() => {
       const b = SEED.buildTrack(t, {
         name: (d && d.name) || pt.name || '', location: (d && d.location) || pt.location || '', keyObject: (d && d.key_object) || pt.key_object || '',
         narrative: d ? d.narrative : pt.perspective || '', observe: d ? d.observe : '', discuss: d ? d.discuss : '',
-        evidence: d ? d.evidence_prompts : [], hints: d ? d.hints : [], fallback: d ? d.fallback : '', teachHeadline: d ? d.teach_headline : '',
+        evidence: d ? d.evidence_prompts : [], criteria: d ? d.success_criteria : [], hints: d ? d.hints : [], fallback: d ? d.fallback : '', teachHeadline: d ? d.teach_headline : '',
         checkCorrect: d ? d.check_correct : '', checkIncorrect: d ? d.check_incorrect : '', needsContributor: !!(d ? d.needs_contributor : pt.needs_contributor),
         sourceFact: src ? src.text.slice(0, 280) : '', sourceUrl: src && src.url ? src.url : '',
         assess: (() => { const qz = d && Array.isArray(d.quiz) ? d.quiz.filter((x) => x && x.question && Array.isArray(x.options) && x.options.length >= 2).slice(0, 3).map((x) => ({ q: x.question, o: x.options.slice(0, 4), a: Math.max(0, Math.min(Number(x.correct_index) || 0, x.options.length - 1)) })) : [];
@@ -538,7 +539,7 @@ const Assistant = (() => {
       e.preventDefault();
       const v = (id) => f.querySelector('#' + id).value.trim(), tk = f.dataset.asTrackform, old = SEED.trackFields(Engine.state.content, tk);
       const fields = { name: v('ed-name'), location: v('ed-loc'), keyObject: v('ed-key'), narrative: v('ed-narr'), observe: v('ed-obs'), discuss: v('ed-disc'),
-        evidence: readList(f, 'ev'), hints: readList(f, 'hints'), fallback: v('ed-fb'), teachHeadline: v('ed-teach'), checks: readCheckList(f, 'chk'),
+        evidence: readList(f, 'ev'), criteria: readList(f, 'crit'), hints: readList(f, 'hints'), fallback: v('ed-fb'), teachHeadline: v('ed-teach'), checks: readCheckList(f, 'chk'),
         needsContributor: f.querySelector('#ed-partner').checked, sourceFact: old.sourceFact, sourceUrl: old.sourceUrl, assess: readAssess(f), refPhoto: refDraft, backupCode: v('ed-code') };
       editing = null; refDraft = null; quizOpen = false;
       window.WQ.act('editTrack', { topic: tk, fields });
