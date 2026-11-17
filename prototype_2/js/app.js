@@ -54,7 +54,7 @@
   }
 
   const sessionCode = () => (typeof Sync !== 'undefined' ? Sync.state.session : 'FITZ-DEMO');
-  const joinedHere = (st) => !!(st.ui.joinedIn && st.ui.joinedIn[sessionCode()]);
+  const joinedHere = (st) => { const pid = st.ui.joinedIn && st.ui.joinedIn[sessionCode()]; return !!(pid && SEED.byId[pid] && (st.seats[pid] || st.ui.demoPlay === pid)); };
   function markJoined(pid, nick) {
     const u = S().ui; u.joinedIn = u.joinedIn || {}; u.joinedIn[sessionCode()] = pid;
     try { const k = 'wq-joined', list = JSON.parse(localStorage.getItem(k) || '[]').filter((x) => x.code !== sessionCode());
@@ -79,7 +79,7 @@
   const DEFAULT_SCREEN = { student: 'adventure', teacher: 'dashboard', collaborator: 'review' };
   const NAV = {
     student: [['adventure', 'sparkle', 'My adventure'], ['map', 'map', 'Quest map'], ['album', 'trophy', 'Class album']],
-    teacher: [['dashboard', 'map', 'My quests'], ['builder', 'pencil', 'Quest builder'], ['next', 'arrow', 'Next experience'], ['teams', 'team', 'Teams'], ['live', 'eye', 'Live session'], ['album', 'trophy', 'Album'], ['report', 'book', 'Report']],
+    teacher: [['dashboard', 'map', 'My quests'], ['builder', 'pencil', 'Quest builder'], ['next', 'arrow', 'Next experience'], ['teams', 'team', 'Teams'], ['live', 'eye', 'Live session'], ['album', 'trophy', 'Class album'], ['report', 'book', 'Report']],
     collaborator: [['review', 'pencil', 'Review contribution'], ['facilitate', 'voices', 'Facilitate'], ['work', 'book', 'Student work']],
   };
   const currentRole = () => ROUTES[location.hash.slice(1)] || null;
@@ -92,6 +92,7 @@
   function render() {
     const y = window.scrollY;
     const st = S();
+    if (!SEED.byId[st.ui.student]) st.ui.student = SEED.participants[0].id;
     const role = currentRole();
     if (!role) {
       root.innerHTML = landingView(st) + overlays(st) + demoDrawer(st);
@@ -390,18 +391,17 @@
       ${tab === 'observe' ? `
         ${checkinCard(st, me, m)}
         <div class="gallery-note"><h4>${Art.icon('map', 18)} ${esc(m.gallery)}</h4><p style="margin:0">${esc(m.observe)}</p></div>
-        <div class="card"><p class="hint-note" style="margin:0"><strong>Verified anchor:</strong> ${esc(m.sourceFact)}
-          <a href="${m.sourceUrl}" target="_blank" rel="noopener">official source</a> · re-check on the day. ${esc(m.fallback)}</p></div>
+        ${m.sourceFact || m.fallback ? `<div class="card"><p class="hint-note" style="margin:0">${m.sourceFact ? `<strong>From an approved source:</strong> ${esc(m.sourceFact)}${m.sourceUrl ? ` <a href="${esc(m.sourceUrl)}" target="_blank" rel="noopener">source</a>` : ''} · re-check on the day. ` : ''}${esc(m.fallback)}</p></div>` : ''}
         <p class="hint-note">Observe in person with your group. Never touch or place anything on objects or exhibits.</p>` : ''}
       ${tab === 'discuss' ? `
         <div class="card wash-lavender"><h4>${Art.icon('voices', 18)} Talk it through</h4><p style="margin:0">${esc(m.discuss)}</p></div>
         ${m.needsFacilitator ? `<div class="card"><div class="eyebrow coral">Today’s question from the community partner</div><p style="margin:0"><strong>${esc((st.contributor.prompts || SEED.contributor.prompts)[st.contributor.interactionPrompt || 0])}</strong></p></div>` : ''}
         ${m.needsFacilitator ? `
           <div class="card ${st.interactions[me.id] ? 'wash-mint' : 'wash-peach'}">
-            <div class="spread"><h4 style="margin:0">${Art.icon('handshake', 18)} Arranged contributor conversation</h4>
+            <div class="spread"><h4 style="margin:0">${Art.icon('handshake', 18)} Arranged conversation with the community partner</h4>
             ${st.interactions[me.id] ? statusChip('VERIFIED') : statusChip('SUBMITTED')}</div>
             <p style="margin:8px 0 0">${st.interactions[me.id]
-              ? 'Your conversation with the approved contributor is verified — record their perspective in step 3.'
+              ? 'Your conversation with the community partner is verified — record their perspective in step 3.'
               : `Meet the approved community partner (<em>${esc(st.quest.partner.name)}</em>). They confirm it from their own device.`}</p>
           </div>` : ''}` : ''}
       ${tab === 'record' ? (st.checkins[me.id] || (m.assess && m.assess.checkin === 'none') ? recordForm(st, me, m, ev) : checkinCard(st, me, m, true)) : ''}`;
@@ -411,7 +411,7 @@
     const a = m.assess || SEED.defaultAssess();
     if (a.checkin === 'none') return '';
     const c = st.checkins[me.id];
-    const via = { QR: 'QR clue card', CODE: 'facilitator code', PHOTO_AI: 'photo checked by AI', PHOTO_TEACHER: 'photo approved by your teacher', SIMULATED: 'simulated' };
+    const via = { QR: 'QR clue card', CODE: 'backup code', PHOTO_AI: 'photo checked by AI', PHOTO_TEACHER: 'photo approved by your teacher', SIMULATED: 'simulated' };
     if (c) return `<div class="card wash-mint" style="padding:12px 16px"><strong>${Art.icon('check', 16)} Checked in at ${esc(m.gallery)}</strong> <small>${via[c.via] || ''}</small></div>`;
     if (a.checkin === 'qr') return `<div class="card checkin-card">
       <h4 style="margin:0 0 6px">${Art.icon('map', 18)} ${locked ? 'Field notes unlock at your station' : 'Find your station'}</h4>
@@ -456,7 +456,7 @@
         </div>
         ${hintsOpen ? `<div class="gallery-note" style="margin-top:12px"><h4>${Art.icon('sparkle', 16)} Hints, one at a time · never the answer</h4>
           <ol style="margin:0;padding-left:18px">${m.hints.slice(0, st.ui.hintsShown || 1).map((h) => `<li>${esc(h)}</li>`).join('')}</ol>
-          <div class="spread" style="margin-top:8px"><span class="hint-src">From: approved source · <a href="${m.sourceUrl}" target="_blank" rel="noopener">${esc(m.gallery)} page</a> · educator-approved</span>
+          <div class="spread" style="margin-top:8px"><span class="hint-src">${m.sourceUrl ? `From an approved source · <a href="${esc(m.sourceUrl)}" target="_blank" rel="noopener">${esc(m.gallery)} page</a> · ` : ''}educator-approved</span>
           ${(st.ui.hintsShown || 1) < m.hints.length ? `<button class="btn btn-ghost btn-sm" type="button" data-a="hint-more">Another hint</button>` : ''}</div></div>` : ''}
       </form>`;
   }
@@ -595,7 +595,7 @@
       </div>
       <div class="card">
         <h3>Panel 3 · Compose the new introduction</h3>
-        <p class="hint-note">${esc(fin.compose.prompt)} Pick 4–5 sentence tiles:</p>
+        <p class="hint-note">${esc(fin.compose.prompt)} Pick up to ${fin.compose.max || 6} sentence tiles:</p>
         ${fin.compose.tiles.map((t) => `<button type="button" class="tile-pick" data-a="tile" data-tile="${t.id}" aria-pressed="${f.tiles.includes(t.id)}">${esc(t.text)}</button>`).join('')}
       </div>
       <button class="btn btn-primary" data-a="submit-finale">${Art.icon('puzzle', 18)} Submit our restored introduction</button>`;
@@ -638,7 +638,7 @@
     if (!n || !n.enabled || !n.activity) return '';
     const here = !!ex.checkins[me.id];
     return `<div class="card next-exp">
-      <div class="spread"><div class="eyebrow teal">Next real experience</div><span class="pill ${ex.unlocked ? 'mint' : 'plain'}">${here ? 'checked in' : ex.unlocked ? 'unlocked' : 'locked'}</span></div>
+      <div class="spread"><div class="eyebrow teal">Next experience</div><span class="pill ${ex.unlocked ? 'mint' : 'plain'}">${here ? 'checked in' : ex.unlocked ? 'unlocked' : 'locked'}</span></div>
       <h3 style="margin:4px 0">${esc(n.activity)}</h3>
       <p class="hint-note" style="margin:0">${esc(n.provider)}${n.when ? ' · ' + esc(n.when) : ''}${n.bring ? ' · bring: ' + esc(n.bring) : ''}</p>
       ${here ? `<p style="margin:8px 0 0">${Art.icon('check', 15)} You’re checked in. Phones away — enjoy it.</p>`
@@ -669,7 +669,7 @@
       <div class="hero">
         <div>
           <div class="eyebrow sun">${esc(SEED.title)} · complete</div>
-          <h1>Guardians of <span class="accent">stories.</span></h1>
+          <h1>Quest <span class="accent">complete.</span></h1>
           <p class="lede">${SEED.topics.length} perspectives, ${SEED.homeGroups.length} teams, one shared answer. The best part wasn’t on this screen — it was the looking, the listening and the teaching.</p>
           <button class="btn btn-primary" data-a="screen" data-screen="album">${Art.icon('trophy', 18)} Open the class album</button>
         </div>
@@ -706,7 +706,7 @@
   function albumScreen(st, viewer) {
     const n = sel.claimedCount();
     return `
-      ${pageHead(esc(st.quest.title), viewer === 'student' ? 'Class album' : 'Album', `<span class="pill lavender">${n} / ${SEED.collectibles.length} collected</span>`)}
+      ${pageHead(esc(st.quest.title), 'Class album', `<span class="pill lavender">${n} / ${SEED.collectibles.length} collected</span>`)}
       <div class="album-grid">
         ${SEED.collectibles.map((c) => {
           const claimed = !!st.claims[c.id];
@@ -758,12 +758,23 @@
         ${pageHead(`Educator studio · class code <span class="mono">${esc(code)}</span>`, 'My quests', `<button class="btn btn-primary" data-a="new-quest" ${live ? 'disabled title="End the live session first"' : ''}>${Art.icon('plus', 16)} New quest</button>`)}
         ${st.ui.newQuest && !live ? `<div class="card new-quest">
           <div class="spread"><h3 style="margin:0">Start a new quest</h3><button class="btn btn-ghost btn-sm" data-a="new-quest-x">Cancel</button></div>
-          <label class="fld" for="nq-title">Working title (optional)</label><input class="input" id="nq-title" placeholder="e.g. Pollinator Patrol at the community garden">
-          <div class="grid-3" style="margin-top:10px">
-            <button class="card choice-card" data-a="create-quest" data-tpl="blank">${Art.icon('pencil', 20)}<strong>Blank quest</strong><small>Write every part yourself, or ask the AI as you go.</small></button>
-            <button class="card choice-card" data-a="create-quest" data-tpl="ai">${Art.icon('sparkle', 20)}<strong>Generate with AI</strong><small>Add your sources, then the assistant drafts every track, the finale and collectibles for you to review.</small></button>
-            <button class="card choice-card" data-a="create-quest" data-tpl="lost_museum">${Art.icon('book', 20)}<strong>Example: The Lost Museum</strong><small>A complete Fitzwilliam quest to adapt.</small></button>
-          </div></div>` : ''}
+          <label class="fld" for="nq-title">Working title (optional)</label><input class="input" id="nq-title" placeholder="e.g. Pollinator Patrol at the community garden" value="${esc(st.ui.nqTitle || '')}">
+          ${!st.ui.nqTpl ? `<p class="hint-note" style="margin:10px 0 6px">Step 1 of 2 · How do you want to start?</p>
+          <div class="grid-3">
+            <button class="card choice-card" data-a="nq-pick" data-tpl="blank">${Art.icon('pencil', 20)}<strong>Blank quest</strong><small>Write every part yourself, or ask the assistant as you go.</small></button>
+            <button class="card choice-card" data-a="nq-pick" data-tpl="ai">${Art.icon('sparkle', 20)}<strong>Generate with AI</strong><small>Add your sources, then the assistant drafts every track, the finale and collectibles for you to review.</small></button>
+            <button class="card choice-card" data-a="nq-pick" data-tpl="lost_museum">${Art.icon('book', 20)}<strong>Start from the example</strong><small>The Lost Museum: a complete Fitzwilliam quest to adapt.</small></button>
+          </div>` : (() => { const d = SEED.defaultStructure(); return `<form class="stack" data-form="new-quest" style="gap:8px;margin-top:10px">
+            <p class="hint-note" style="margin:0">Step 2 of 2 · How will the class be split? You can change this later in Quest settings.</p>
+            <div class="grid-3" style="gap:10px">
+              <div class="fld-group"><label class="fld" for="g-tracks">Perspectives (expert tracks)</label><input class="input" id="g-tracks" type="number" min="3" max="6" value="${d.tracks}"></div>
+              <div class="fld-group"><label class="fld" for="g-size">Students in the class</label><input class="input" id="g-size" type="number" min="3" max="60" value="${d.classSize}"></div>
+              <div class="fld-group"><label class="fld" for="g-exp">Students per expert group</label><input class="input" id="g-exp" type="number" min="1" max="30" value="${d.expertGroup}"></div>
+            </div>
+            <p class="hint-note" style="margin:0" id="g-summary">${structSummary(d.tracks, d.classSize, d.expertGroup)}</p>
+            ${st.ui.nqTpl === 'lost_museum' ? '<p class="hint-note" style="margin:0">The example has 4 written tracks; with more, the extra tracks start empty.</p>' : ''}
+            <div class="row"><button class="btn btn-primary" type="submit">Create quest</button><button class="btn btn-ghost" type="button" data-a="nq-back">Back</button></div>
+          </form>`; })()}</div>` : ''}
         <div class="grid-3">
           ${quests.map(({ id, q, active }) => `<div class="card quest-card ${active ? 'is-active' : ''}">
             <div class="spread"><span class="pill ${q.status === 'PUBLISHED' ? 'mint' : 'plain'}">${q.status === 'PUBLISHED' ? 'Published' : 'Draft'}</span>${active ? '<span class="pill lavender">This class</span>' : ''}</div>
@@ -834,7 +845,7 @@
         </div>
         <div class="stack builder-right">
           ${Assistant.board()}
-          <section class="card" id="sec-next"><div class="spread"><h3 style="margin:0">${Art.icon('arrow', 18)} Next real experience</h3>${n.enabled ? `<span class="pill ${n.status === 'accepted' ? 'mint' : 'peach'}">${n.status === 'accepted' ? 'booked' : n.status === 'none' ? 'not requested' : 'awaiting provider'}</span>` : '<span class="pill plain">off</span>'}</div>
+          <section class="card" id="sec-next"><div class="spread"><h3 style="margin:0">${Art.icon('arrow', 18)} Next experience</h3>${n.enabled ? `<span class="pill ${n.status === 'accepted' ? 'mint' : 'peach'}">${n.status === 'accepted' ? 'booked' : n.status === 'none' ? 'not requested' : 'awaiting provider'}</span>` : '<span class="pill plain">off</span>'}</div>
             <p class="hint-note" style="margin:6px 0 10px">${n.enabled ? `${esc(n.activity)} · ${esc(n.provider)}${n.when ? ' · ' + esc(n.when) : ''}. Unlocks ${n.unlock === 'all' ? 'when every team finishes' : 'when you unlock it'}.` : 'After the quest, students apply what they learned with a real-world partner, e.g. a drawing class or a workshop.'}</p>
             <button class="btn btn-secondary btn-sm" data-a="screen" data-screen="next">${n.enabled ? 'Manage booking' : 'Set one up'}</button></section>
           <section class="card" id="sec-publish">
@@ -885,7 +896,7 @@
           <div class="card stack" style="gap:8px">
             <div class="spread"><h3 style="margin:0">Booking</h3><div class="pipe">${['Request', 'Provider replies', 'Booked'].map((t, i) => `<span class="pipe-s ${i + 1 < stage || n.status === 'accepted' ? 'done' : i + 1 === stage ? 'on' : ''}"><b>${i + 1}</b>${t}</span>`).join('<i></i>')}</div></div>
             ${n.status === 'none' ? `
-              <button class="as-chip" type="button" data-a="draft-booking" style="align-self:flex-start">${Art.icon('sparkle', 14)} Draft the request</button>
+              <button class="as-chip" type="button" data-a="draft-booking" style="align-self:flex-start">${Art.icon('pencil', 14)} Start from a template</button>
               <label class="fld" for="nx-req">Message to ${esc(n.provider || 'the provider')}</label><textarea class="input" id="nx-req" rows="7">${esc(draft)}</textarea>
               <button class="btn btn-primary btn-sm" data-a="send-booking" style="align-self:flex-start">${Art.icon('arrow', 15)} Send request</button>`
               : `<div class="mail">${esc(n.request)}</div>`}
@@ -941,14 +952,14 @@
   }
 
   function homeMatrix(st) {
-    const cls = { A: 'v', B: 't', C: 's', D: 'c', E: 'v', F: 't' };
+    const cls = Object.fromEntries(SEED.topics.map((t) => [t, { violet: 'v', teal: 't', sun: 's', coral: 'c', sky: 'k', lime: 'l' }[SEED.topicMeta[t].color] || 'v']));
     return `<table><thead><tr><th scope="col">Track</th>${SEED.homeGroups.map((h) => `<th scope="col">${h}</th>`).join('')}</tr></thead>
       <tbody>${SEED.topics.map((t) => `<tr><th scope="row">${t} · ${esc(SEED.topicMeta[t].label)}</th>
         ${SEED.homeGroups.map((h) => { const p = SEED.expertOf(h, t); if (!p) return '<td>—</td>'; return `<td class="${cls[t]}">${esc(who(p).replace('Explorer ', 'Ex '))}${evShort(st, p)}</td>`; }).join('')}</tr>`).join('')}</tbody></table>`;
   }
 
   function expertMatrix(st) {
-    const cls = { A: 'v', B: 't', C: 's', D: 'c', E: 'v', F: 't' };
+    const cls = Object.fromEntries(SEED.topics.map((t) => [t, { violet: 'v', teal: 't', sun: 's', coral: 'c', sky: 'k', lime: 'l' }[SEED.topicMeta[t].color] || 'v']));
     return `<table><thead><tr>${SEED.topics.map((t) => `<th scope="col">${t} · ${esc(SEED.topicMeta[t].name)}</th>`).join('')}</tr></thead>
       <tbody><tr>${SEED.topics.map((t) => { const ps = SEED.participants.filter((p) => p.topic === t), g = SEED.structure.expertGroup; const groups = []; for (let k = 0; k < ps.length; k += g) groups.push(ps.slice(k, k + g));
       return `<td class="${cls[t]}" style="vertical-align:top">${groups.map((grp, gi) => `<div class="exp-sub"><small class="hint-note">Group ${gi + 1}</small>${grp.map((p) => `<div>${esc(who(p).replace('Explorer ', 'Ex '))} <small>(${p.home})</small>${evShort(st, p)}</div>`).join('')}</div>`).join('')}</td>`; }).join('')}</tr></tbody></table>`;
@@ -1050,7 +1061,7 @@
     const refl = Object.entries(st.reflections);
     return `
       <div class="stack">
-        ${pageHead(esc(st.quest.title), 'Report', '<span class="pill">demo data — not real learners</span>')}
+        ${pageHead(esc(st.quest.title), 'Report', SEED.participants.some((p) => st.evidence[p.id].simulated) ? '<span class="pill">includes simulated classmates</span>' : '')}
         <div class="grid-3">
           <div class="card wash-lavender"><div class="eyebrow">Evidence verified</div><h2 style="font-size:38px">${verified.length}/${SEED.participants.length}</h2><p style="margin:0">${simCount ? simCount + ' marked SIMULATED' : 'all from live demo play'}</p></div>
           <div class="card wash-mint"><div class="eyebrow teal">Perspectives taught</div><h2 style="font-size:38px">${shares}/${teachTotal}</h2><p style="margin:0">teach-backs across ${SEED.homeGroups.length} home teams</p></div>
@@ -1083,7 +1094,7 @@
     return `
       <div class="stack">
         ${screen === 'review'
-          ? pageHead(`Community partner · ${esc(pq.partner.name)}`, 'Review contribution', `<label class="sr-only" for="pq-sel">Quest</label><select class="input" id="pq-sel" data-a="pq-sel" style="width:auto;min-width:200px">${Object.entries(st.library).map(([id, r]) => `<option value="${id}" ${id === pqId ? 'selected' : ''}>${esc((id === st.activeQuest ? st.quest : r.quest).title)}${id === st.activeQuest ? ' (this class)' : ''}</option>`).join('')}</select>`, 'coral')
+          ? pageHead(`Community partner · ${esc(pq.title)}`, 'Review contribution', `<label class="sr-only" for="pq-sel">Quest</label><select class="input" id="pq-sel" data-a="pq-sel" style="width:auto;min-width:200px">${Object.entries(st.library).map(([id, r]) => `<option value="${id}" ${id === pqId ? 'selected' : ''}>${esc((id === st.activeQuest ? st.quest : r.quest).title)}${id === st.activeQuest ? ' (this class)' : ''}</option>`).join('')}</select>`, 'coral')
           : pageHead(`Community partner · ${esc(st.quest.title)}`, screen === 'facilitate' ? 'Facilitate' : 'Student work', '', 'coral')}
         ${screen === 'facilitate' || screen === 'work' ? (screen === 'facilitate' ? facilitateScreen(st, pendD) : partnerWork(st)) : reviewScreen(st, pqId)}
       </div>`;
@@ -1092,7 +1103,7 @@
   function reviewScreen(st, qid) {
     const rec = qid === st.activeQuest ? st : st.library[qid];
     const c = rec.contributor, q = rec.quest, approved = c.status === 'APPROVED';
-    const conv = SEED.topics.map((t) => rec.content.missions[t]).find((m) => m.needsFacilitator);
+    const conv = Object.values(rec.content.missions).find((m) => m && m.needsFacilitator);
     return `
       <div class="grid-2">
         <form class="card" data-form="contribution" data-qid="${qid}">
@@ -1198,7 +1209,7 @@
       const a = el.dataset.a;
       if (a === 'pq-sel') { el.addEventListener('change', () => { S().ui.pq = el.value; render(); }); return; }
       if (a === 'student-sel') {
-        el.addEventListener('change', () => { markJoined(el.value); act('setStudent', { id: el.value }); });
+        el.addEventListener('change', () => { S().ui.demoPlay = el.value; markJoined(el.value); act('setStudent', { id: el.value }); });
         return;
       }
       el.addEventListener('click', (e) => {
@@ -1236,7 +1247,7 @@
           case 'tamper': return typeof Sync !== 'undefined' && Sync.tamperTest().then((r) => toast(r.msg, r.ok ? 'success' : 'error'));
           case 'scan-station': {
             const me = SEED.byId[S().ui.student], m = SEED.missions[me.topic];
-            return Scanner.open({ title: `Scan the ${m.name} clue card`, hint: `It’s at ${m.gallery}. The facilitator can read you the backup code if the camera won’t work.`,
+            return Scanner.open({ title: `Scan the ${m.name} clue card`, hint: `It’s at ${m.gallery}. Your teacher can read you the backup code if the camera won’t work.`,
               onCode: (code) => act('checkIn', { participantId: me.id, code }).ok });
           }
           case 'lookup': return act('setLookUp', { on: true });
@@ -1276,8 +1287,10 @@
           case 'sim-class': return act('simulateClassmates');
           case 'sim-bonus': return act('simulateBonusSubmissions');
           case 'approve-contrib': return act('approveContribution', { questId: el.dataset.qid });
-          case 'new-quest': S().ui.newQuest = true; render(); return;
-          case 'new-quest-x': S().ui.newQuest = false; render(); return;
+          case 'new-quest': S().ui.newQuest = true; S().ui.nqTpl = null; render(); return;
+          case 'new-quest-x': S().ui.newQuest = false; S().ui.nqTpl = null; render(); return;
+          case 'nq-pick': S().ui.nqTitle = (document.getElementById('nq-title') || {}).value || ''; S().ui.nqTpl = el.dataset.tpl; render(); return;
+          case 'nq-back': S().ui.nqTpl = null; render(); return;
           case 'create-quest': {
             const tpl = el.dataset.tpl, title = (document.getElementById('nq-title') || {}).value || '';
             const r = act('createQuest', { template: tpl === 'ai' ? 'blank' : tpl, title });
@@ -1342,7 +1355,7 @@
       const id = S().ui.student, d = (S().ui.drafts[id] = S().ui.drafts[id] || {}); d[r.name] = r.value;
     }));
     root.querySelectorAll('[data-qrtext]').forEach((q) => { if (window.QRCode && !q.firstChild) new QRCode(q, { text: q.dataset.qrtext, width: 150, height: 150, colorDark: '#20264B', colorLight: '#FFFFFF' }); });
-    const gs = root.querySelector('form[data-form="structure"]');
+    const gs = root.querySelector('form[data-form="structure"], form[data-form="new-quest"]');
     if (gs) gs.addEventListener('input', () => { const v = (id) => gs.querySelector('#' + id).value; const out = document.getElementById('g-summary'); if (out && Number(v('g-tracks')) >= 3 && Number(v('g-size')) >= 1 && Number(v('g-exp')) >= 1) out.textContent = structSummary(v('g-tracks'), v('g-size'), v('g-exp')); });
     if (typeof Assistant !== 'undefined') Assistant.bind(root);
 
@@ -1363,6 +1376,14 @@
         if (kind === 'partner-prompts') { act('setPartnerPrompts', { prompts: Assistant.readList(form, 'pp') }); return; }
         if (kind === 'partner-q') { const r = act('addPartnerPrompt', { text: form.querySelector('#pq').value }); return; }
         if (kind === 'partner-fb') { act('partnerFeedback', { home: form.dataset.home, text: form.querySelector('input').value }); return; }
+        if (kind === 'new-quest') {
+          const v = (id) => Number(form.querySelector('#' + id).value), tpl = S().ui.nqTpl;
+          const r = act('createQuest', { template: tpl === 'ai' ? 'blank' : tpl, title: S().ui.nqTitle || '', structure: { tracks: v('g-tracks'), classSize: v('g-size'), expertGroup: v('g-exp') } });
+          if (!r.ok) return;
+          S().ui.newQuest = false; S().ui.nqTpl = null; S().ui.nqTitle = ''; S().ui.screen = 'builder'; render();
+          if (tpl === 'ai') toast(Assistant.getMode() === 'live' ? 'Add your sources and check the quest settings, then press “Generate the whole quest”.' : 'Live AI is off — switch the assistant’s “AI” button to live to generate, or write the tracks yourself.', 'success');
+          return;
+        }
         if (kind === 'structure') {
           const v = (id) => Number(form.querySelector('#' + id).value);
           act('setStructure', { tracks: v('g-tracks'), classSize: v('g-size'), expertGroup: v('g-exp') });

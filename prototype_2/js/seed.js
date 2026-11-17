@@ -353,7 +353,7 @@ SEED.buildTrack = (t, f) => {
       name: f.name || '', gallery: f.location || '', keyObject: f.keyObject || '',
       narrative: f.narrative || '', observe: f.observe || '', discuss: f.discuss || '',
       sourceFact: f.sourceFact || '', sourceUrl: f.sourceUrl || '',
-      evidenceFields: prompts.map((label, i) => ({ key: 'f' + (i + 1), label, placeholder: '' })),
+      evidenceFields: prompts.map((label, i) => ({ key: (f.evidenceKeys || [])[i] || 'f' + (i + 1), label, placeholder: '' })),
       hints: (f.hints || []).map((x) => String(x).trim()).filter(Boolean),
       criteria: (f.criteria || []).map((x) => String(x).trim()).filter(Boolean),
       teachHeadline: f.teachHeadline || '', fallback: f.fallback || '',
@@ -373,7 +373,7 @@ SEED.trackFields = (c, t) => {
   return {
     name: m.name, location: m.gallery, keyObject: m.keyObject || (c.finale.objects.find((o) => o.answer === c.topicMeta[t].tag) || {}).label || '',
     narrative: m.narrative, observe: m.observe, discuss: m.discuss,
-    evidence: m.evidenceFields.map((e) => e.label), hints: m.hints, criteria: m.criteria || [], fallback: m.fallback, teachHeadline: m.teachHeadline,
+    evidence: m.evidenceFields.map((e) => e.label), evidenceKeys: m.evidenceFields.map((e) => e.key), hints: m.hints, criteria: m.criteria || [], fallback: m.fallback, teachHeadline: m.teachHeadline,
     checkCorrect: (opts.find((o) => o.correct) || {}).text || '', checkIncorrect: (opts.find((o) => !o.correct) || {}).text || '',
     checks: opts.map((o) => ({ id: o.id, text: o.text, correct: !!o.correct, miss: o.miss || '' })),
     needsContributor: !!m.needsFacilitator, sourceFact: m.sourceFact, sourceUrl: m.sourceUrl, backupCode: m.backupCode,
@@ -463,7 +463,7 @@ CONTENT_KEYS.forEach((k) => Object.defineProperty(SEED, k, {
 }));
 
 SEED.genericDisclaimer = 'Story elements, characters and awards are fiction created for learning. No partnership with any venue is claimed unless one has been agreed. Real school visits must be booked with the venue.';
-SEED.partnerDefaults = { name: 'WorldQuest Demo Collaborator', org: 'Simulated community contributor' };
+SEED.partnerDefaults = { name: 'WorldQuest Demo Collaborator', org: 'Simulated community partner' };
 
 /* The object students photograph to check in: the track's key object, or its finale object. */
 SEED.keyObjectOf = (t) => {
@@ -476,7 +476,7 @@ SEED.keyObjectOf = (t) => {
    finale = the team's finale is approved · experts = all four of the team's experts are verified
    track = the team's expert for one track is verified · egg = hidden: a phone tilted up at the location
    teacher = the educator awards it by hand */
-SEED.EARN_TEXT = { bonus: 'Team bonus activity, approved by the educator', finale: 'The team’s finale is approved', experts: 'All four of the team’s experts are verified',
+SEED.EARN_TEXT = { bonus: 'Team bonus activity, approved by the educator', finale: 'The team’s finale is approved', experts: 'Every expert in the team is verified',
   track: 'The team’s expert for one track is verified', egg: 'Hidden easter egg: a phone tilted up at the location', teacher: 'The educator awards it' };
 SEED.defaultEarn = () => ({ kind: 'bonus', track: 'A', hidden: false, evolves: true });
 TEMPLATES.lost_museum.collectibles.forEach((c) => Object.assign(c, SEED.defaultEarn()));

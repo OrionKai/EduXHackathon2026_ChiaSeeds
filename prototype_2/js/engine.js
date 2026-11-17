@@ -19,6 +19,17 @@ const Engine = (() => {
 
   /* ---------- initial state ---------- */
 
+  /* Fresh/reset state is always the example quest: its groups and its content, never the last quest's. */
+  function useDefaults() { SEED.useStructure(SEED.defaultStructure()); SEED.useContent(null); }
+  /* A valid Jigsaw shape, or the reason it isn't. */
+  function structureProblem(t, n, g) {
+    if (!(t >= 3 && t <= 6)) return 'Choose 3 to 6 tracks.';
+    if (!(n >= t && n <= 60)) return `Class size must be between ${t} and 60.`;
+    const teams = Math.ceil(n / t), last = n - (teams - 1) * t;
+    if (last === 1) return `With ${n} students the last home team would have just one student, who couldn’t be taught. Try ${n - 1} or ${n + 1}.`;
+    if (!(g >= 1 && g <= teams)) return `Expert groups can be 1 to ${teams} students.`;
+    return '';
+  }
   /* Wrong picks are kept (counts only) so the educator can see common misconceptions. */
   const miss = (s, key) => { s.misses = s.misses || {}; s.misses[key] = (s.misses[key] || 0) + 1; };
   function freshState() {
@@ -93,7 +104,7 @@ const Engine = (() => {
       experience: { unlocked: false, reason: '', checkins: {} }, // the next real experience for this class run
       evolved: {}, // collectibleId -> true once its team checked in at the next experience
       help: [], // { id, pid, at, open }
-      tracks: { A: 'TEMPLATE', B: 'TEMPLATE', C: 'TEMPLATE', D: 'TEMPLATE' }, // TEMPLATE | EMPTY | AI | REVISED | EDITED | APPROVED
+      tracks: Object.fromEntries(SEED.topics.map((t) => [t, 'TEMPLATE'])), // TEMPLATE | EMPTY | AI | REVISED | EDITED | APPROVED
       revisions: {}, // topic -> note from an AI revision
       trackEdits: {}, // topic -> { observe?, discuss?, narrative?, fallback?, teachHeadline?, hintsExtra?: [] } shown to students
       ui: { role: 'student', student: 'S06', screen: null, lookUp: false, joined: false, masterSeen: false, drafts: {} },
@@ -117,7 +128,7 @@ const Engine = (() => {
     } catch (e) {
       /* corrupted or unavailable storage -> fresh demo */
     }
-    SEED.useStructure(SEED.defaultStructure());
+    useDefaults();
     const f = freshState();
     syncRoster(f);
     snapInto(f);
@@ -125,14 +136,16 @@ const Engine = (() => {
   }
 
   function seedSources() {
-    return SEED.topics.map((t, i) => ({ id: 'S' + (i + 1), kind: 'official', title: SEED.missions[t].gallery + ' · official page', url: SEED.missions[t].sourceUrl, text: SEED.missions[t].sourceFact }))
-      .concat([{ id: 'S' + (SEED.topics.length + 1), kind: 'partner', title: 'Community partner contribution', url: '', text: '' }]);
+    const T = TEMPLATES.lost_museum.missions, keys = Object.keys(T);
+    return keys.map((t, i) => ({ id: 'S' + (i + 1), kind: 'official', title: T[t].gallery + ' · official page', url: T[t].sourceUrl, text: T[t].sourceFact }))
+      .concat([{ id: 'S' + (keys.length + 1), kind: 'partner', title: 'Community partner contribution', url: '', text: '' }]);
   }
 
   function upgrade(s) {
     s.quest.structure = { ...SEED.defaultStructure(), ...(s.quest.structure || {}) };
     s.quest.audience = { ...SEED.defaultAudience(), ...(s.quest.audience || {}) };
     SEED.useStructure(s.quest.structure);
+    if (s.content) SEED.useContent(s.content);
     s.sources = s.sources || seedSources();
     s.content = s.content || JSON.parse(JSON.stringify(TEMPLATES.lost_museum));
     s.library = s.library || {};
@@ -143,7 +156,8 @@ const Engine = (() => {
     if (!s.library[s.activeQuest]) snapInto(s);
     s.checkins = s.checkins || {};
     s.help = s.help || [];
-    s.tracks = s.tracks || { A: 'AI', B: 'AI', C: 'AI', D: 'AI' };
+    s.tracks = s.tracks || {};
+    SEED.topics.forEach((t) => { if (!s.tracks[t]) s.tracks[t] = 'EMPTY'; });
     s.revisions = s.revisions || {};
     /* self-heal: play data must match the quest's groups (e.g. a state saved under a different structure) */
     if (SEED.participants.some((p) => !s.evidence || !s.evidence[p.id]) || SEED.homeGroups.some((h) => !s.finale || !s.finale[h] || !s.peerTeach || !s.peerTeach[h] || SEED.topicsFor(h).some((t) => !s.peerTeach[h][t]))) resetPlay(s);
@@ -154,6 +168,8 @@ const Engine = (() => {
     s.experience = s.experience || { unlocked: false, reason: '', checkins: {} };
     s.evolved = s.evolved || {};
     s.misses = s.misses || {};
+    s.bonus = s.bonus || {};
+    SEED.collectibles.forEach((c) => { if (!s.bonus[c.id]) s.bonus[c.id] = { status: 'AVAILABLE', answer: '', simulated: false }; });
     s.analysis = s.analysis || {};
     s.quest.next = { ...SEED.defaultNext(), ...(s.quest.next || {}) };
     (s.content.collectibles || []).forEach((c) => { if (!c.kind) Object.assign(c, SEED.defaultEarn()); });
@@ -169,7 +185,10 @@ const Engine = (() => {
 
   /* ---------- quest library ---------- */
   function snapInto(s) { s.library = s.library || {}; s.library[s.activeQuest] = clone(Object.fromEntries(QUEST_KEYS.map((k) => [k, s[k]]))); }
-  function resetPlay(s) { const f = freshState(); PLAY_KEYS.forEach((k) => { s[k] = f[k]; }); syncRoster(s); }
+  function resetPlay(s) {
+    const f = freshState(); PLAY_KEYS.forEach((k) => { s[k] = f[k]; }); syncRoster(s);
+    if (s.ui && !SEED.byId[s.ui.student]) s.ui.student = SEED.participants[0].id;
+  }
   /* The seat list, kept in the shared state so the database guard can check it. */
   function syncRoster(s) { s.roster = SEED.participants.map((p) => [p.id, p.home, p.topic]); }
   function loadQuest(s, id) {
@@ -251,7 +270,7 @@ const Engine = (() => {
 
     pendingFinales: () => SEED.homeGroups.filter((h) => state.finale[h].status === 'SUBMITTED'),
 
-    pendingBonus: () => SEED.collectibles.filter((c) => state.bonus[c.id].status === 'SUBMITTED'),
+    pendingBonus: () => SEED.collectibles.filter((c) => (state.bonus[c.id] || {}).status === 'SUBMITTED'),
 
     phaseIndex: () => SEED.phases.indexOf(state.phase),
   };
@@ -281,7 +300,7 @@ const Engine = (() => {
     },
 
     resetDemo() {
-      SEED.useStructure(SEED.defaultStructure()); // seats must come from the default quest's groups, not the last quest's
+      useDefaults(); // seats must come from the default quest's groups, not the last quest's
       state = freshState();
       syncRoster(state);
       SEED.useStructure(state.quest.structure); SEED.useContent(state.content);
@@ -301,7 +320,7 @@ const Engine = (() => {
     },
     generateDraft(s) {
       s.quest.draftGenerated = true;
-      s.tracks = { A: 'AI', B: 'AI', C: 'AI', D: 'AI' };
+      s.tracks = Object.fromEntries(SEED.topics.map((t) => [t, 'AI']));
       s.revisions = {};
       s.trackEdits = {};
       audit('teacher', 'Generated quest draft (Seeded demo — no API key used).');
@@ -346,7 +365,7 @@ const Engine = (() => {
       }
       if (s.contributor.status === 'APPROVED') return { ok: false, msg: 'Already approved.' };
       s.contributor.status = 'APPROVED';
-      audit('collaborator', 'Approved community contribution (simulated contributor).');
+      audit('collaborator', 'Approved community contribution (simulated partner).');
       return { ok: true, msg: 'Contribution approved. The educator can now publish.' };
     },
     verifyInteraction(s, { participantId }) {
@@ -435,7 +454,7 @@ const Engine = (() => {
       if (mission.needsFacilitator && !s.interactions[participantId])
         return {
           ok: false,
-          msg: 'Your arranged contributor conversation has not been verified yet — ask the facilitator to confirm it first.',
+          msg: 'Your arranged conversation with the community partner has not been verified yet — ask the community partner to confirm it first.',
         };
       ev.answers = answers;
       ev.photo = as.evidence !== 'notes' ? photo : null;
@@ -457,7 +476,7 @@ const Engine = (() => {
       if (!p || ev.status !== 'SUBMITTED') return { ok: false, msg: 'Nothing to review.' };
       const mission = SEED.missions[p.topic];
       const allowed = reviewer === 'teacher' || (reviewer === 'collaborator' && (mission.needsFacilitator || (mission.assess && mission.assess.verify === 'partner')));
-      if (!allowed) return { ok: false, msg: 'Only the educator (or the approved facilitator) can verify this.' };
+      if (!allowed) return { ok: false, msg: 'Only the educator (or the community partner) can verify this.' };
       if (verdict === 'VERIFIED') {
         ev.status = 'VERIFIED';
         audit(reviewer, `Verified ${p.name}’s ${mission.name} evidence.`);
@@ -473,8 +492,8 @@ const Engine = (() => {
     /* Educator-only: store an analysis of one track's written answers (AI or scripted). */
     setAnalysis(s, { topic, result }) {
       if (!SEED.topics.includes(topic) || !result || !Array.isArray(result.themes)) return { ok: false };
-      s.analysis = s.analysis || {};
-      s.analysis[topic] = result;
+      s.ui.analysis = s.ui.analysis || {};
+      s.ui.analysis[s.activeQuest + ':' + topic] = result;
       audit('teacher', `Analysed ${SEED.topicMeta[topic].name} answers (${result.by === 'ai' ? 'AI suggestion' : 'scripted'}).`);
       return { ok: true, msg: result.themes.length ? `${result.themes.length} possible misconception${result.themes.length > 1 ? 's' : ''} found — check before acting.` : 'No clear misconceptions found.' };
     },
@@ -683,13 +702,20 @@ const Engine = (() => {
       if (!s.quest.draftGenerated) return { ok: false, msg: 'Draft the quest first.' };
       if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Already published — edits would disrupt a live session.' };
       if (!SEED.topics.includes(topic)) return { ok: false };
+      if (patch && patch.fields) {
+        const b = SEED.buildTrack(topic, patch.fields);
+        s.content.missions[topic] = b.mission;
+        s.content.topicMeta[topic] = { ...s.content.topicMeta[topic], name: patch.fields.name || 'Track ' + topic, label: b.label };
+        s.content.peerTeaching.checkOptions[topic] = b.check;
+        SEED.syncFinaleObjects(s.content);
+      }
       const m = s.content.missions[topic];
       for (const k of ['observe', 'discuss', 'narrative', 'fallback', 'teachHeadline']) if (patch && typeof patch[k] === 'string' && patch[k].trim()) m[k] = patch[k].trim().slice(0, 600);
       if (patch && typeof patch.hint === 'string' && patch.hint.trim()) m.hints = [...m.hints, patch.hint.trim().slice(0, 300)].slice(-5);
       if (patch && patch.assess && typeof patch.assess === 'object') m.assess = { ...SEED.defaultAssess(), ...(m.assess || {}), ...patch.assess };
       s.tracks[topic] = by === 'educator' ? 'EDITED' : 'REVISED';
       s.revisions[topic] = [s.revisions[topic], note].filter(Boolean).join(' · ').slice(-500);
-      audit('teacher', `AI revised track ${topic} on request (simulated AI) — needs approval again.`);
+      audit('teacher', `The assistant revised track ${topic}${by === 'ai' ? ' (live AI)' : by === 'educator' ? '' : ' (scripted suggestion)'} — needs approval again.`);
       return { ok: true, silent: true };
     },
     approveTrack(s, { topic }) {
@@ -703,19 +729,28 @@ const Engine = (() => {
     },
 
     /* ----- quest library (educator) ----- */
-    createQuest(s, { template, title }) {
+    createQuest(s, { template, title, structure }) {
       if (s.phase !== 'LOBBY') return { ok: false, msg: 'End the live session first (Live session → back to the lobby).' };
       const tpl = TEMPLATES[template] ? template : 'blank';
       snapInto(s);
+      const st = { ...SEED.defaultStructure(), ...(structure || {}) };
+      st.tracks = Number(st.tracks); st.classSize = Number(st.classSize); st.expertGroup = Number(st.expertGroup);
+      const bad = structureProblem(st.tracks, st.classSize, st.expertGroup);
+      if (bad) return { ok: false, msg: bad };
       const id = 'q' + Date.now().toString(36);
+      SEED.useStructure(st);
       const content = clone(TEMPLATES[tpl]);
+      SEED.useContent(content);
       const t = String(title || '').trim() || (tpl === 'blank' ? 'Untitled quest' : content.title);
       content.title = t;
       s.quest = { id, title: t, objective: tpl === 'lost_museum' ? 'Interpret evidence from multiple perspectives' : '', venue: tpl === 'lost_museum' ? 'The Fitzwilliam Museum, Cambridge' : '',
-        duration: 60, classSize: 20, status: 'DRAFT', draftGenerated: true, safety: false, templateId: tpl, partner: { ...SEED.partnerDefaults }, next: SEED.defaultNext(), structure: SEED.defaultStructure(), audience: SEED.defaultAudience() };
+        duration: 60, classSize: 20, status: 'DRAFT', draftGenerated: true, safety: false, templateId: tpl, partner: { ...SEED.partnerDefaults }, next: SEED.defaultNext(), structure: st, audience: SEED.defaultAudience() };
+      SEED.ensureContentShape(content);
+      Object.keys(content.missions).forEach((k) => { if (!SEED.topics.includes(k)) delete content.missions[k]; });
       Object.values(content.missions).forEach((m) => { m.backupCode = SEED.newBackupCode(); });
+      s.quest.classSize = st.classSize;
       s.content = content;
-      s.tracks = Object.fromEntries(SEED.topics.map((x) => [x, tpl === 'blank' ? 'EMPTY' : 'TEMPLATE']));
+      s.tracks = Object.fromEntries(SEED.topics.map((x) => [x, tpl === 'blank' || !content.missions[x].name ? 'EMPTY' : 'TEMPLATE']));
       s.revisions = {};
       s.sources = tpl === 'lost_museum' ? seedSources() : seedSources().filter((x) => x.kind === 'partner').map((x) => ({ ...x, id: 'S1' }));
       s.contributor = { text: '', status: 'PENDING', interactionPrompt: 0, extraPrompts: [], prompts: [...SEED.contributor.prompts] };
@@ -755,10 +790,9 @@ const Engine = (() => {
       if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Published quests are frozen — create a new quest to change the groups.' };
       if (s.phase !== 'LOBBY') return { ok: false, msg: 'End the live session first.' };
       const t = Number(tracks), n = Number(classSize), g = Number(expertGroup);
-      if (!(t >= 3 && t <= 6)) return { ok: false, msg: 'Choose 3 to 6 tracks.' };
-      if (!(n >= t && n <= 60)) return { ok: false, msg: `Class size must be between ${t} and 60.` };
-      const teams = Math.ceil(n / t);
-      if (!(g >= 1 && g <= teams)) return { ok: false, msg: `Expert groups can be 1 to ${teams} students.` };
+      const bad = structureProblem(t, n, g);
+      if (bad) return { ok: false, msg: bad };
+      const teams = Math.ceil(n / t), last = n - (teams - 1) * t;
       s.quest.structure = { tracks: t, classSize: n, expertGroup: g };
       s.quest.classSize = n;
       SEED.useStructure(s.quest.structure);
@@ -766,7 +800,7 @@ const Engine = (() => {
       const nt = {}; SEED.topics.forEach((x) => { nt[x] = s.tracks[x] || 'EMPTY'; }); s.tracks = nt;
       resetPlay(s);
       audit('teacher', `Set the groups: ${t} tracks, ${n} students (${teams} home teams), expert groups of ${g}.`);
-      return { ok: true, msg: `${teams} home teams of ${t}, expert groups of ${g}.` };
+      return { ok: true, msg: `${teams} home teams of ${t}${last < t ? ` (the last has ${last})` : ''}, expert groups of ${g}.` };
     },
 
     /* ----- authoring the quest content (educator; AI proposals land here too) ----- */
@@ -994,6 +1028,7 @@ const Engine = (() => {
 
     /* ----- clearly labelled demo shortcut (SIMULATED) ----- */
     simulateClassmates(s) {
+      if (s.phase === 'LOBBY') return { ok: false, msg: 'Start the session first (Live session → Advance phase).' };
       let changed = 0;
       for (const p of SEED.participants) {
         if (p.id === s.ui.student || s.seats[p.id] || (s.checkins[p.id] && s.checkins[p.id].via !== 'SIMULATED')) continue;
@@ -1023,6 +1058,7 @@ const Engine = (() => {
           const isActive = expert && (expert.id === s.ui.student || !!s.seats[expert.id]);
           if (!cell.shared && !isActive && s.evidence[expert.id].status === 'VERIFIED') {
             const checker = SEED.homeMembers(h).find((m) => m.id !== expert.id);
+            if (!checker) continue;
             cell.shared = true;
             cell.presenter = expert.id;
             cell.checker = checker.id;
@@ -1103,7 +1139,7 @@ const Engine = (() => {
   }
 
   /* UI-only actions are per device and never shared with other devices. */
-  const UI_ACTIONS = new Set(['setRole', 'setStudent', 'setScreen', 'setLookUp', 'markMasterSeen']);
+  const UI_ACTIONS = new Set(['setRole', 'setStudent', 'setScreen', 'setLookUp', 'markMasterSeen', 'setAnalysis']);
   let commitHook = null; // set by sync.js: called after a shared action succeeds locally
 
   function dispatch(type, payload = {}, opts = {}) {
@@ -1130,7 +1166,7 @@ const Engine = (() => {
     emit({ type: 'remote' });
   }
   function freshShared() {
-    SEED.useStructure(SEED.defaultStructure());
+    useDefaults();
     const { ui, ...rest } = freshState();
     return rest;
   }

@@ -669,3 +669,7 @@ a.brand { text-decoration: none; color: inherit; }
 .ins-msg { border-radius: 12px; padding: 8px 12px; max-width: 92%; }
 .ins-msg.you { align-self: flex-end; background: var(--lavender); }
 .ins-msg.scripted, .ins-msg.ai { align-self: flex-start; background: var(--paper); }
+.matrix td.k { border-color: #B7D9F7; background: #F1F8FF; }
+.matrix td.l { border-color: #CFE7A6; background: #F6FBEC; }
+.mission-hero.sky { background: linear-gradient(135deg, #E3F2FF, #F5FAFF 70%); }
+.mission-hero.lime { background: linear-gradient(135deg, #EEF8DD, #FAFDF4 70%); }

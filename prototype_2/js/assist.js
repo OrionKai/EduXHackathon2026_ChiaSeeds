@@ -9,14 +9,23 @@
 'use strict';
 
 const Assistant = (() => {
-  const msgs = [{ who: 'ai', text: 'Hi! I draft only from the approved sources in your library. Add anything else I should use, then tell me what the quest is for.' }];
+  const GREETING = 'Hi! I draft only from the approved sources in your library. Add anything else I should use, then tell me what the quest is for.';
+  /* One conversation per quest: switching quests switches the conversation (and closes any open editor). */
+  const convos = {};
+  let msgs = [], history = [], convoOf = null;
+  function syncQuest() {
+    const id = Engine.state.activeQuest;
+    if (id === convoOf) return;
+    convos[id] = convos[id] || { msgs: [{ who: 'ai', text: GREETING }], history: [] };
+    msgs = convos[id].msgs; history = convos[id].history; convoOf = id;
+    editing = null; refDraft = null; quizOpen = false; confirmGen = false; lastNotice = '';
+  }
   let editing = null; // 'A'..'D' | 'finale' | 'extras'
   let refDraft = null; // reference photo being edited for the open track
   let quizOpen = false;
   let busy = false, speed = 1, confirmGen = false;
   let mode = (() => { try { return localStorage.getItem('wq-ai-mode') || 'live'; } catch { return 'live'; } })();
   let needPass = false, lastNotice = '';
-  const history = [];
   const sleep = (ms) => (speed ? new Promise((r) => setTimeout(r, ms * speed)) : Promise.resolve());
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const lines = (v) => String(v || '').split('\n').map((x) => x.trim()).filter(Boolean);
@@ -48,13 +57,13 @@ const Assistant = (() => {
       patch: { hint: 'Compare its size with nearby cases. What might scale suggest about who it honoured?' },
       reply: 'Added a hint to Track B: “Compare its size with nearby cases. What might scale suggest about who it honoured?” It points students back to the object rather than giving the answer.' },
   ];
-  const DRAFT = { id: 'draft', chip: 'Draft the quest from my sources', prompt: (q) => `Draft a ${q.duration || 60}-minute Jigsaw quest for ${q.classSize || 20} students at the Fitzwilliam Museum using my sources.` };
+  const DRAFT = { id: 'draft', chip: 'Draft the example quest (Fitzwilliam Museum)', prompt: (q) => `Draft the example ${q.duration || 60}-minute Jigsaw quest at the Fitzwilliam Museum for ${SEED.participants.length} students.` };
   /* Suggestions are scripted and repeatable (for demos); anything typed goes to the live AI. */
   const chips = () => {
     const st = Engine.state;
     if (st.quest.status === 'PUBLISHED') return [];
-    if (isEmpty()) return /fitzwilliam/i.test(st.quest.venue || '') || !st.quest.venue ? [DRAFT] : [];
-    return isTemplate() ? REVS.filter((r) => !st.revisions[r.topic]) : [];
+    if (isEmpty()) return SEED.topics.length === 4 && (/fitzwilliam/i.test(st.quest.venue || '') || !st.quest.venue) ? [DRAFT] : [];
+    return isTemplate() ? REVS.filter((r) => SEED.topics.includes(r.topic) && !st.revisions[r.topic]) : [];
   };
 
   /* ---------------- rendering ---------------- */
@@ -64,6 +73,7 @@ const Assistant = (() => {
   }
 
   function chat() {
+    syncQuest();
     const st = Engine.state, cs = chips(), locked = st.quest.status === 'PUBLISHED';
     return `
       <div class="card as-card">
@@ -79,10 +89,11 @@ const Assistant = (() => {
         <form class="as-compose" data-as-form><label class="sr-only" for="as-in">Message the assistant</label>
           <input class="input" id="as-in" placeholder="${mode === 'live' ? 'Ask for a change, e.g. “make Track B shorter”' : 'Live AI is off — edit by hand below'}" autocomplete="off" ${busy ? 'disabled' : ''}>
           <button class="btn btn-primary btn-sm" type="submit" ${busy ? 'disabled' : ''}>Send</button></form>
-        <p class="hint-note" style="margin:0">AI drafts at design time. During play, AI is used only if a track uses the optional “Photo · AI checks” check-in — the photo is discarded after the check, and if AI is unavailable your teacher confirms instead.</p>
+        <p class="hint-note" style="margin:0">AI drafts at design time. During and after play it is used only where you choose it: the optional “Photo · AI checks” check-in (photo discarded after the check) and the Report’s answer analysis (names removed). Everything else works without AI.</p>
       </div>`;
   }
   function board() {
+    syncQuest();
     const st = Engine.state;
     return `${sourcesCard()}${tracksSection(st)}${finaleSection(st)}${collectiblesSection(st)}${storySection(st)}`;
   }
@@ -398,8 +409,34 @@ const Assistant = (() => {
   }
   function liveContext() {
     const tracks = {};
-    SEED.topics.forEach((t) => { const f = SEED.trackFields(Engine.state.content, t); tracks[t] = { ...f, status: Engine.state.tracks[t] }; });
+    SEED.topics.forEach((t) => { const { refPhoto, backupCode, evidenceKeys, ...f } = SEED.trackFields(Engine.state.content, t); tracks[t] = { ...f, status: Engine.state.tracks[t] }; });
     return { quest: questBrief(), tracks, sources: SRC().filter((s) => s.fact).map((s) => ({ id: s.id, title: s.title, text: s.fact, url: s.url || '' })) };
+  }
+
+  /* One assistant tool call → one proposal the educator approves (tracks) or a settings change. */
+  function applyEdit(e) {
+    const i = e.input || {}, note = (i.summary || 'AI revision') + (i.source_ids && i.source_ids.length ? ` [${i.source_ids.join(', ')}]` : '');
+    if (e.tool === 'update_quest_settings') {
+      [['title', i.title], ['objective', i.objective], ['venue', i.venue], ['ages', i.ages]].forEach(([k, v]) => { if (v && String(v).trim()) Engine.dispatch('updateQuest', { field: k, value: String(v).trim() }); });
+      if (Number(i.duration_minutes) > 0) Engine.dispatch('updateQuest', { field: 'duration', value: Number(i.duration_minutes) });
+      return;
+    }
+    if (!SEED.topics.includes(i.topic)) return;
+    const f = SEED.trackFields(Engine.state.content, i.topic);
+    if (e.tool === 'revise_track' && i.field in f) f[i.field] = String(i.new_text || '');
+    else if (e.tool === 'add_hint') f.hints = [...f.hints, String(i.hint || '')];
+    else if (e.tool === 'set_track_list') { const k = { evidence_prompts: 'evidence', hints: 'hints', success_criteria: 'criteria' }[i.field]; if (!k) return; f[k] = (i.items || []).map(String).filter((x) => x.trim()); }
+    else if (e.tool === 'set_assessment') {
+      const quiz = (i.quiz || []).filter((q) => q && q.question && Array.isArray(q.options) && q.options.length >= 2)
+        .map((q) => ({ q: String(q.question), o: q.options.slice(0, 6).map(String), a: Math.max(0, Math.min(Number(q.correct_index) || 0, Math.min(q.options.length, 6) - 1)) }));
+      f.assess = { ...f.assess, checkin: i.checkin || f.assess.checkin, evidence: i.evidence || f.assess.evidence,
+        verify: quiz.length || i.verify !== 'auto' ? i.verify || f.assess.verify : 'teacher', quiz, pass: quiz.length ? Math.max(1, Math.min(Number(i.pass_mark) || quiz.length, quiz.length)) : 0 };
+    } else if (e.tool === 'set_teachback_check') {
+      const st = (i.statements || []).filter((x) => x && String(x.text || '').trim());
+      if (!st.some((x) => x.correct) || !st.some((x) => !x.correct)) return;
+      f.checks = st.map((x) => ({ text: String(x.text).trim(), correct: !!x.correct, miss: x.correct ? '' : String(x.misconception || '') }));
+    } else return;
+    Engine.dispatch('reviseTrack', { topic: i.topic, note, patch: { fields: f }, by: 'ai' });
   }
 
   async function liveTurn(text) {
@@ -412,11 +449,7 @@ const Assistant = (() => {
     const cites = [...new Set((data.edits || []).flatMap((e) => e.input.source_ids || []))];
     await say(data.reply, cites);
     history.push({ role: 'user', content: text }, { role: 'assistant', content: data.reply });
-    for (const e of data.edits || []) {
-      const i = e.input;
-      const patch = e.tool === 'add_hint' ? { hint: i.hint } : { [i.field]: i.new_text };
-      Engine.dispatch('reviseTrack', { topic: i.topic, note: (i.summary || 'AI revision') + (i.source_ids && i.source_ids.length ? ` [${i.source_ids.join(', ')}]` : ''), patch });
-    }
+    for (const e of data.edits || []) applyEdit(e);
     busy = false;
     lastNotice = data.edits && data.edits.length ? `Claude proposed ${data.edits.length} change${data.edits.length > 1 ? 's' : ''} — review and approve them in Quest content.` : '';
     window.WQ.render();
@@ -472,7 +505,7 @@ const Assistant = (() => {
     if (ext.status === 200 && ext.data && ext.data.extras) {
       const X = ext.data.extras;
       content.collectibles = SEED.ensureContentShape(content).collectibles.map((c, i) => ({ ...c, ...(X.collectibles && X.collectibles[i] ? { title: X.collectibles[i].title, activity: X.collectibles[i].activity, fact: X.collectibles[i].fact } : {}) }));
-      if (Array.isArray(X.reflection)) content.reflection = [X.reflection[0] || '', X.reflection[1] || ''];
+      if (Array.isArray(X.reflection)) content.reflection = X.reflection.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 5);
     } else failed.push('collectibles and reflection');
     msgs.pop();
     const r = Engine.dispatch('setContent', { content });
@@ -539,7 +572,7 @@ const Assistant = (() => {
       e.preventDefault();
       const v = (id) => f.querySelector('#' + id).value.trim(), tk = f.dataset.asTrackform, old = SEED.trackFields(Engine.state.content, tk);
       const fields = { name: v('ed-name'), location: v('ed-loc'), keyObject: v('ed-key'), narrative: v('ed-narr'), observe: v('ed-obs'), discuss: v('ed-disc'),
-        evidence: readList(f, 'ev'), criteria: readList(f, 'crit'), hints: readList(f, 'hints'), fallback: v('ed-fb'), teachHeadline: v('ed-teach'), checks: readCheckList(f, 'chk'),
+        evidence: readList(f, 'ev'), evidenceKeys: old.evidenceKeys, criteria: readList(f, 'crit'), hints: readList(f, 'hints'), fallback: v('ed-fb'), teachHeadline: v('ed-teach'), checks: readCheckList(f, 'chk'),
         needsContributor: f.querySelector('#ed-partner').checked, sourceFact: old.sourceFact, sourceUrl: old.sourceUrl, assess: readAssess(f), refPhoto: refDraft, backupCode: v('ed-code') };
       editing = null; refDraft = null; quizOpen = false;
       window.WQ.act('editTrack', { topic: tk, fields });

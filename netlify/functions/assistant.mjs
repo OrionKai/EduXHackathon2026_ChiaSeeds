@@ -12,72 +12,72 @@ const client = new Anthropic(); // reads ANTHROPIC_API_KEY
 
 const TOPICS = ["A", "B", "C", "D", "E", "F"];
 
-const SYSTEM = `You are the quest assistant inside WorldQuest, helping an educator refine a Jigsaw quest at a real place before it is published. The learners' audience and ages are in QUEST SETTINGS.
+const SYSTEM = `You are the quest assistant inside WorldQuest, helping an educator build a Jigsaw quest at a real place (a museum, garden, site or neighbourhood) before it is published. The learners' audience and ages are in QUEST SETTINGS.
 
-The quest's expert tracks are listed under CURRENT TRACKS (one letter each). Each student investigates one track at a real gallery, then teaches their home team; an escape-room finale needs all four perspectives.
+The quest's expert tracks are listed under CURRENT TRACKS (one letter each, with their current fields and assessment). Each student investigates one track at a real location, then teaches their home team; an escape-room finale needs every perspective.
+
+What you can change, by calling tools (every change is a proposal the educator approves):
+- a track's wording: name, location, key object, the question it asks (narrative), what students do there (observe), discussion question, backup route (fallback), teach-back headline — revise_track;
+- a track's lists: evidence prompts, hints, success criteria (what a good answer includes) — set_track_list (send the whole new list);
+- how a track is assessed: check-in (photo checked by AI, photo checked by the teacher, QR clue card, none), evidence type (notes, photo, notes and photo), who verifies (teacher, community partner, automatic when the quick check is passed), and a multiple-choice quick check with a pass mark — set_assessment (send the whole assessment; copy unchanged values from CURRENT TRACKS);
+- the teach-back check statements a teammate chooses from, with which are correct and the misconception each wrong one shows — set_teachback_check;
+- the quest settings: title, learning objective, venue, session length, ages — update_quest_settings (empty string or 0 = leave unchanged).
+What you can't change: the number of tracks or the groups (Quest settings → Groups), the finale, collectibles, the next experience, or publishing. If asked, say where in the builder the educator can do it. If asked what you can do, list the above briefly.
 
 Rules you must follow:
-- Use ONLY facts from the APPROVED SOURCES provided. Each has an id (S1, S2, ...); they may be official pages, the community partner's contribution, or notes the educator added. Never invent museum facts, dates, object details or cultural interpretations. If a request needs facts the sources don't contain, say so and suggest the educator ask the community partner.
-- Hints must guide students back to observing the real object. A hint must never give the answer and must never contain another track's evidence.
+- Use ONLY facts from the APPROVED SOURCES provided. Each has an id (S1, S2, ...). Never invent facts, dates, object details or cultural interpretations. A quick-check question must be answerable by looking at the object or from an approved source, and only from that track's own evidence. If a request needs facts the sources don't contain, say so and suggest adding a source.
+- Hints must guide students back to observing the real object; never the answer, never another track's evidence.
 - Write for the audience and ages given in QUEST SETTINGS: short sentences, plain words.
-- Keep each track's evidence fields unchanged; you may revise its wording (observe, discuss, narrative, fallback, teachHeadline) or add hints.
-- Every change you make is a proposal: the educator approves it. Never claim something is confirmed with the museum or partner.
+- Never claim something is confirmed with the venue or partner.
 - To change the draft, call the tools. To answer a question, just reply.
 - Reply in at most 3 short sentences, and cite the sources you used like [S2].`;
 
+const cite = { source_ids: { type: "array", items: { type: "string" }, description: "Ids of the approved sources this change relies on, e.g. S2." },
+  summary: { type: "string", description: "One sentence for the educator describing what changed and why." } };
+const tool = (name, description, properties) => ({ name, description, strict: true,
+  input_schema: { type: "object", properties: { ...properties, ...cite }, required: [...Object.keys(properties), "source_ids", "summary"], additionalProperties: false } });
 const TOOLS = [
-  {
-    name: "revise_track",
-    description: "Propose new wording for one field of one expert track. Use for simplifying, clarifying, adapting to time or venue, or adding an accessible/fallback route. Returns nothing; the educator reviews the change.",
-    strict: true,
-    input_schema: {
-      type: "object",
-      properties: {
-        topic: { type: "string", enum: TOPICS },
-        field: { type: "string", enum: ["observe", "discuss", "narrative", "fallback", "teachHeadline"] },
-        new_text: { type: "string", description: "The full replacement text for that field." },
-        source_ids: { type: "array", items: { type: "string" }, description: "Ids of the approved sources this change relies on, e.g. S2." },
-        summary: { type: "string", description: "One sentence for the educator describing what changed and why." },
-      },
-      required: ["topic", "field", "new_text", "source_ids", "summary"],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "add_hint",
-    description: "Propose one extra hint for a track. The hint must point students back to the real object and must not reveal the answer or another track's evidence.",
-    strict: true,
-    input_schema: {
-      type: "object",
-      properties: {
-        topic: { type: "string", enum: TOPICS },
-        hint: { type: "string" },
-        source_ids: { type: "array", items: { type: "string" } },
-        summary: { type: "string" },
-      },
-      required: ["topic", "hint", "source_ids", "summary"],
-      additionalProperties: false,
-    },
-  },
+  tool("revise_track", "Propose new text for one field of one expert track.", {
+    topic: { type: "string", enum: TOPICS },
+    field: { type: "string", enum: ["name", "location", "keyObject", "narrative", "observe", "discuss", "fallback", "teachHeadline"] },
+    new_text: { type: "string", description: "The full replacement text for that field." } }),
+  tool("set_track_list", "Replace one list of one expert track with a new full list.", {
+    topic: { type: "string", enum: TOPICS },
+    field: { type: "string", enum: ["evidence_prompts", "hints", "success_criteria"] },
+    items: { type: "array", items: { type: "string" } } }),
+  tool("set_assessment", "Set how one track is assessed. Send the complete assessment; copy any unchanged values from CURRENT TRACKS.", {
+    topic: { type: "string", enum: TOPICS },
+    checkin: { type: "string", enum: ["photo_ai", "photo_teacher", "qr", "none"] },
+    evidence: { type: "string", enum: ["notes", "photo", "notes_photo"] },
+    verify: { type: "string", enum: ["teacher", "partner", "auto"] },
+    quiz: { type: "array", items: { type: "object", additionalProperties: false, required: ["question", "options", "correct_index"],
+      properties: { question: { type: "string" }, options: { type: "array", items: { type: "string" } }, correct_index: { type: "integer" } } } },
+    pass_mark: { type: "integer", description: "Questions a student must get right (0 when there is no quiz)." } }),
+  tool("set_teachback_check", "Replace the statements a teammate chooses from after the expert teaches them.", {
+    topic: { type: "string", enum: TOPICS },
+    statements: { type: "array", items: { type: "object", additionalProperties: false, required: ["text", "correct", "misconception"],
+      properties: { text: { type: "string" }, correct: { type: "boolean" }, misconception: { type: "string", description: "Short label of the misconception a wrong statement shows; empty for correct ones." } } } } }),
+  tool("update_quest_settings", "Change the quest settings. Use an empty string or 0 for anything that should stay unchanged.", {
+    title: { type: "string" }, objective: { type: "string" }, venue: { type: "string" }, duration_minutes: { type: "integer" }, ages: { type: "string" } }),
 ];
 
 
 /* ---------- whole-quest generation: plan first, then each part in parallel ---------- */
 const GEN_RULES = `You are writing a WorldQuest Jigsaw quest for the learners described in QUEST SETTINGS (audience and ages) at a real place.
-Structure: N expert tracks (lettered A, B, C...; N is given in QUEST SETTINGS as tracks). Each home team has one student per track; experts investigate their location, then teach their home team; a finale needs all four perspectives.
+Structure: N expert tracks (lettered A, B, C...; N is given in QUEST SETTINGS as tracks). Each home team has one student per track; experts investigate their location, then teach their home team; a finale needs every perspective.
 Rules: use ONLY facts in the APPROVED SOURCES (cite their ids). Never invent facts, dates, objects or cultural claims; if sources are thin, keep tasks about careful observation rather than facts. Activities must happen at the real place, away from screens. Short sentences, plain words. Separate observation from interpretation. Hints never give answers. Never claim a partnership is confirmed. At most one track includes an arranged conversation with the community partner, and only if the sources mention one.
 Call the tool exactly once.`;
 const str = { type: "string" };
 const arr = { type: "array", items: { type: "string" } };
 const obj = (properties) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
 const GEN_TOOLS = {
-  plan: { name: "plan_quest", description: "The quest title, a short story opening, and the four complementary expert tracks.", strict: true,
+  plan: { name: "plan_quest", description: "The quest title, a short story opening, and the complementary expert tracks (as many as QUEST SETTINGS gives).", strict: true,
     input_schema: obj({ title: str, story_opening: str, tracks: { type: "array", items: obj({ letter: { type: "string", enum: TOPICS }, name: str, location: str, key_object: str, perspective: str, needs_contributor: { type: "boolean" } }) } }) },
   track: { name: "write_track", description: "Everything students need for one expert track.", strict: true,
     input_schema: obj({ name: str, location: str, key_object: str, narrative: str, observe: str, discuss: str, evidence_prompts: arr, success_criteria: arr, hints: arr, fallback: str, teach_headline: str, check_correct: str, check_incorrect: str, needs_contributor: { type: "boolean" }, source_ids: arr, quiz: { type: "array", items: obj({ question: str, options: arr, correct_index: { type: "integer" } }) } }) },
   finale: { name: "write_finale", description: "The escape-room finale that needs every perspective.", strict: true,
     input_schema: obj({ title: str, cautious_statement: str, overclaim_statement: str, evidence_sentences: arr, perspectives_sentence: str, uncertainty_sentence: str, invite_sentence: str, trap_sentence: str }) },
-  extras: { name: "write_extras", description: "Five optional team collectibles and two reflection questions.", strict: true,
+  extras: { name: "write_extras", description: "One optional collectible per home team, and the reflection questions.", strict: true,
     input_schema: obj({ collectibles: { type: "array", items: obj({ title: str, activity: str, fact: str }) }, reflection: arr }) },
 };
 const GEN_ASK = {
@@ -355,7 +355,7 @@ EDUCATOR'S REQUEST: ${message.trim()}`;
     const edits = response.content
       .filter((b) => b.type === "tool_use")
       .map((b) => ({ tool: b.name, input: b.input }))
-      .filter((e) => TOPICS.includes(e.input?.topic))
+      .filter((e) => e.tool === "update_quest_settings" || TOPICS.includes(e.input?.topic))
       .map((e) => ({ ...e, input: { ...e.input, source_ids: (e.input.source_ids || []).filter((id) => knownIds.has(id)) } }));
     return json({
       reply: reply || (edits.length ? "I've proposed the changes below — please review them." : "Done."),

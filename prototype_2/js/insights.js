@@ -11,6 +11,8 @@
 const Insights = (() => {
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const busy = {};
+  /* Analyses live on the educator's device only (UI state, never in the shared class data). */
+  const getA = (st, t) => ((st.ui && st.ui.analysis) || {})[st.activeQuest + ':' + t];
   const norm = (x) => String(x || '').toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, ' ').trim();
 
   /* ----- layer 1: wrong picks, grouped per track ----- */
@@ -107,14 +109,14 @@ const Insights = (() => {
     if (how !== 'ai' && sample(st, topic)) result = scripted(st, topic, answers);
     busy[topic] = false;
     if (!result) { window.WQ.render(); return window.WQ.toast(how === 'ai' ? 'Live AI didn’t answer — try again, or use the scripted analysis.' : 'Turn on live AI in the Quest builder to analyse this track.', 'error'); }
-    chats[topic] = [];
+    chats[ck(topic)] = [];
     result.n = answers.length; result.at = Date.now(); result.basisLine = basisLine(st, topic, result.by);
-    result.who = Object.fromEntries(answers.map((a) => [a.sid, a.pid])); // stays on this side: names are never sent
+    result.who = Object.fromEntries(answers.map((a) => [a.sid, a.pid])); // names are never sent to the AI; this map stays on this device
     window.WQ.act('setAnalysis', { topic, result });
   }
 
   function analysisCard(st, t) {
-    const a = (st.analysis || {})[t], n = answersFor(st, t).length;
+    const a = getA(st, t), n = answersFor(st, t).length;
     const label = a ? (a.by === 'ai' ? 'AI suggestion — check before acting' : 'Scripted example analysis (demo)') : '';
     const name = (sid) => { const p = a && a.who && SEED.byId[a.who[sid]]; return p ? `${esc(sid)} (${esc(st.seats && st.seats[p.id] ? st.seats[p.id].nick : p.name)})` : esc(sid); };
     return `<div class="stack" style="gap:8px">
@@ -140,6 +142,7 @@ const Insights = (() => {
 
   /* ----- follow-up conversation: chips are scripted (example quest), typed questions go to the live AI ----- */
   const chats = {};
+  const ck = (t) => Engine.state.activeQuest + ':' + t; // follow-up chats belong to one quest
   const CHIPS = [['why', 'Why might students think this?'], ['activity', 'Suggest a 5-minute activity for tomorrow'], ['exit', 'Draft an exit-ticket question']];
   function scriptedReply(st, a, kind) {
     const fu = SEED.SAMPLE_FOLLOWUPS[st.quest.templateId] || {};
@@ -149,7 +152,7 @@ const Insights = (() => {
     return intro + '\n' + items.map((th) => `• ${th.title}: ${fu[th.id][kind]}`).join('\n');
   }
   function chatBox(st, t, a) {
-    const msgs = chats[t] || [], chips = a.by === 'scripted' && SEED.SAMPLE_FOLLOWUPS[st.quest.templateId];
+    const msgs = chats[ck(t)] || [], chips = a.by === 'scripted' && SEED.SAMPLE_FOLLOWUPS[st.quest.templateId];
     const pending = msgs.length && msgs[msgs.length - 1].who === 'you';
     return `<div class="ins-chat">
       <div class="eyebrow">Plan the follow-up</div>
@@ -162,16 +165,16 @@ const Insights = (() => {
     </div>`;
   }
   async function chip(t, kind) {
-    const st = Engine.state, a = (st.analysis || {})[t]; if (!a) return;
-    const msgs = chats[t] = chats[t] || [];
+    const st = Engine.state, a = getA(st, t); if (!a) return;
+    const msgs = chats[ck(t)] = chats[ck(t)] || [];
     msgs.push({ who: 'you', text: CHIPS.find((c) => c[0] === kind)[1] }); window.WQ.render();
     await new Promise((r) => setTimeout(r, 450));
     msgs.push({ who: 'scripted', text: scriptedReply(st, a, kind) }); window.WQ.render();
   }
   async function ask(t, text) {
-    const st = Engine.state, a = (st.analysis || {})[t], q = String(text || '').trim();
+    const st = Engine.state, a = getA(st, t), q = String(text || '').trim();
     if (!a || !q || !liveOn()) return;
-    const msgs = chats[t] = chats[t] || [];
+    const msgs = chats[ck(t)] = chats[ck(t)] || [];
     const history = msgs.filter((m) => m.who !== 'scripted').slice(-6).map((m) => ({ role: m.who === 'you' ? 'user' : 'assistant', content: m.text }));
     msgs.push({ who: 'you', text: q }); window.WQ.render();
     let reply = '';
@@ -189,7 +192,7 @@ const Insights = (() => {
     const fin = finaleMisses(st);
     return `<div class="card">
       <div class="spread"><h3 style="margin:0">${Art.icon('lens', 18)} Misconceptions to address</h3>${sim ? '<span class="pill">includes simulated classmates</span>' : ''}</div>
-      <p class="hint-note">Wrong picks are counted automatically. Written answers are analysed only when you ask: they are sent to the AI with names replaced by “Student 1, 2…”. Teacher-only, never shown to students, never a grade.</p>
+      <p class="hint-note">Wrong picks are counted automatically. Written answers are analysed only when you ask: they are sent to the AI with names replaced by “Student 1, 2…”. Results stay on this device only (not in the shared class data), are never shown to students, and are never a grade.</p>
       <div class="stack" style="gap:14px">
         ${SEED.topics.map((t) => `<div class="ins-track">
           <div class="row" style="gap:8px;margin-bottom:6px"><span class="topic-chip ${SEED.topicMeta[t].color}">${t} · ${esc(SEED.topicMeta[t].name)}</span></div>
