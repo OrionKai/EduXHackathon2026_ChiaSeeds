@@ -8,7 +8,7 @@
 const SEED = {
   questId: 'fitz-lost-museum',
   title: 'The Lost Museum',
-  subtitle: 'A Mystery of Four Perspectives',
+  subtitle: 'A Mystery of Many Perspectives',
   tagline: 'Junior Curators of Cambridge',
   fictionDisclaimer:
     'All curator requests, mystery clues, awards and character dialogue are fiction. This is not an official Fitzwilliam Museum programme or a confirmed partnership. All school groups must pre-book real visits.',
@@ -260,7 +260,7 @@ const SEED = {
   master: {
     id: 'guardian_of_stories',
     title: 'Guardian of Stories',
-    text: 'Bring all five discoveries together to unlock the class’s master collectible.',
+    text: 'Bring every discovery together to unlock the class’s master collectible.',
     fact: 'Five perspectives, one guardian: stories survive when a whole class keeps them.',
   },
 

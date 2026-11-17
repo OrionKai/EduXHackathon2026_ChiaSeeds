@@ -74,7 +74,7 @@ const GEN_TOOLS = {
     input_schema: obj({ title: str, story_opening: str, tracks: { type: "array", items: obj({ letter: { type: "string", enum: TOPICS }, name: str, location: str, key_object: str, perspective: str, needs_contributor: { type: "boolean" } }) } }) },
   track: { name: "write_track", description: "Everything students need for one expert track.", strict: true,
     input_schema: obj({ name: str, location: str, key_object: str, narrative: str, observe: str, discuss: str, evidence_prompts: arr, hints: arr, fallback: str, teach_headline: str, check_correct: str, check_incorrect: str, needs_contributor: { type: "boolean" }, source_ids: arr, quiz: { type: "array", items: obj({ question: str, options: arr, correct_index: { type: "integer" } }) } }) },
-  finale: { name: "write_finale", description: "The escape-room finale that needs all four perspectives.", strict: true,
+  finale: { name: "write_finale", description: "The escape-room finale that needs every perspective.", strict: true,
     input_schema: obj({ title: str, cautious_statement: str, overclaim_statement: str, evidence_sentences: arr, perspectives_sentence: str, uncertainty_sentence: str, invite_sentence: str, trap_sentence: str }) },
   extras: { name: "write_extras", description: "Five optional team collectibles and two reflection questions.", strict: true,
     input_schema: obj({ collectibles: { type: "array", items: obj({ title: str, activity: str, fact: str }) }, reflection: arr }) },

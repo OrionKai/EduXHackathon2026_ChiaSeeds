@@ -166,7 +166,7 @@ const Assistant = (() => {
     const locked = st.quest.status === 'PUBLISHED';
     return `<section class="card" id="as-collectibles">
       <div class="spread"><h3 style="margin:0">${Art.icon('trophy', 18)} Collectibles</h3><span class="pill plain">optional · never block the quest</span></div>
-      <p class="hint-note" style="margin:6px 0 10px">One card per home team; all five unlock the class award (${esc(SEED.master.title)}). Choose how each one is earned.</p>
+      <p class="hint-note" style="margin:6px 0 10px">Collect every card to unlock the class award (${esc(SEED.master.title)}). Choose how each one is earned.</p>
       <div class="coll-grid">${st.content.collectibles.map((c) => editing === 'c:' + c.id && !locked ? collEditor(c) : `<div class="coll-item">
         <div class="row" style="gap:10px;flex-wrap:nowrap"><div class="collect-card claimed" style="width:64px;min-width:64px;cursor:default">${Art.collectibleArt[c.id] ? Art.collectibleArt[c.id]() : ''}</div>
           <div style="min-width:0"><strong>${esc(c.title || 'Untitled card')}</strong><br><small class="hint-note">Team ${c.home}</small></div></div>
@@ -350,7 +350,7 @@ const Assistant = (() => {
     msgs.push({ who: 'you', text: prompt }); paintMsgs();
     const have = new Set(Engine.state.sources.map((s) => s.url));
     SEED.topics.forEach((t) => { const m = TEMPLATES.lost_museum.missions[t]; if (!have.has(m.sourceUrl)) Engine.dispatch('addSource', { title: m.gallery + ' · official page', url: m.sourceUrl, text: m.sourceFact }); });
-    await say('Reading your sources: four Fitzwilliam gallery pages and your partner’s notes. Planning four perspectives: Evidence, Power & Memory, Multiple Lives, Connections & Voices…');
+    await say('Reading your sources: four Fitzwilliam gallery pages and your partner’s notes. Planning the perspectives: Evidence, Power & Memory, Multiple Lives, Connections & Voices…');
     const content = JSON.parse(JSON.stringify(TEMPLATES.lost_museum));
     if (q.title && q.title !== 'Untitled quest') content.title = q.title;
     Engine.dispatch('setContent', { content });

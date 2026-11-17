@@ -63,6 +63,9 @@
   const joinedList = () => { try { return JSON.parse(localStorage.getItem('wq-joined') || '[]'); } catch { return []; } };
   const who = (p) => (S().seats && S().seats[p.id] ? S().seats[p.id].nick : p.name);
   const collArt = (c) => { const keys = Object.keys(Art.collectibleArt); const i = Math.max(0, SEED.collectibles.findIndex((x) => x.id === c.id)); return (Art.collectibleArt[c.id] || Art.collectibleArt[keys[i % keys.length]])(); };
+  /* One page header for every screen in every role: context eyebrow, the screen's name, actions on the right. */
+  const pageHead = (eyebrow, title, actions = '', tone = '') =>
+    `<div class="spread page-head"><div><div class="eyebrow ${tone}">${eyebrow}</div><h2 style="margin:2px 0 0">${title}</h2></div>${actions ? `<div class="row" style="gap:8px">${actions}</div>` : ''}</div>`;
   const topicColor = (t) => SEED.topicMeta[t].color;
   const topicChip = (t) =>
     `<span class="topic-chip ${topicColor(t)}">${Art.icon(SEED.topicMeta[t].icon, 15)}${t} · ${SEED.topicMeta[t].label}</span>`;
@@ -89,7 +92,7 @@
       root.innerHTML = landingView(st) + overlays(st) + demoDrawer(st);
     } else {
       if (st.ui.role !== role) { st.ui.role = role; st.ui.screen = null; st.ui.lookUp = false; }
-      const screen = st.ui.screen || DEFAULT_SCREEN[role];
+      const screen = role === 'student' && !joinedHere(st) ? 'adventure' : st.ui.screen || DEFAULT_SCREEN[role];
       const badge = (id) => (id === 'facilitate' && sel.pendingInteractions().length ? ` <span class="pill peach">${sel.pendingInteractions().length}</span>` : id === 'live' && st.help.some((h) => h.open) ? ` <span class="pill peach">help</span>` : '');
       root.innerHTML = `
       <div class="shell">
@@ -97,7 +100,7 @@
           <a class="brand" href="#" aria-label="WorldQuest home">${Art.logo(42)}<h1>WorldQuest</h1></a>
           <div class="side-label">${ROLE_LABEL[role]}</div>
           <nav class="side-nav" aria-label="${ROLE_LABEL[role]} screens">
-            ${NAV[role].map(([id, ic, lb]) => `<button data-a="screen" data-screen="${id}" aria-current="${screen === id}">${Art.icon(ic, 19)}${lb}${badge(id)}</button>`).join('')}
+            ${(role === 'student' && !joinedHere(st) ? [['adventure', 'arrow', 'Join a quest']] : NAV[role]).map(([id, ic, lb]) => `<button data-a="screen" data-screen="${id}" aria-current="${screen === id}">${Art.icon(ic, 19)}${lb}${badge(id)}</button>`).join('')}
           </nav>
           <div class="side-tip"><strong>${Art.icon('leaf', 16)} Look up, not down</strong>
           The best clues are in the real world.</div>
@@ -236,9 +239,9 @@
         break;
       }
       case 'PEER_TEACH': {
-        const taught = SEED.topics.filter((t) => st.peerTeach[me.home][t].shared).length;
+        const mine = SEED.topicsFor(me.home), taught = mine.filter((t) => st.peerTeach[me.home][t].shared).length;
         title = 'Teach your home team';
-        body = `<p>Go back to home team <strong>${me.home}</strong>. Explain what you found as the ${track} expert, then listen to the others. A teammate answers a quick check after each one. <strong>${taught}/4</strong> taught so far.</p>`;
+        body = `<p>Go back to home team <strong>${me.home}</strong>. Explain what you found as the ${track} expert, then listen to the others. A teammate answers a quick check after each one. <strong>${taught}/${mine.length}</strong> taught so far.</p>`;
         break;
       }
       case 'FINALE':
@@ -247,7 +250,7 @@
         break;
       case 'REFLECTION':
         title = 'Reflect';
-        body = '<p>Answer the two reflection questions on your own, then look up and join the class discussion.</p>';
+        body = `<p>Answer the reflection question${SEED.reflection.length === 1 ? '' : 's'} on your own, then look up and join the class discussion.</p>`;
         break;
       default:
         title = 'Quest complete';
@@ -277,12 +280,9 @@
   }
 
   function adventureScreen(st, me) {
-    switch (st.phase) {
-      case 'LOBBY': return joinScreen(st, me);
-      default: break;
-    }
     if (!joinedHere(st)) return joinScreen(st, me);
     switch (st.phase) {
+      case 'LOBBY': return lobbyScreen(st, me) + phasePath(st);
       case 'BRIEFING': return briefingScreen(me) + phasePath(st);
       case 'EXPERT': return missionScreen(st, me) + phasePath(st);
       case 'PEER_TEACH': return teachScreen(st, me) + phasePath(st);
@@ -315,11 +315,17 @@
         <div class="hero-art">${Art.arch()}${Art.sticker('A clue awaits!', '🔍')}</div>
       </div>
       <div class="card">
-        <div class="spread"><h3>Waiting in the lobby</h3>${statusChip(st.quest.status === 'PUBLISHED' ? 'AVAILABLE' : 'LOCKED')}</div>
-        <p>${st.quest.status === 'PUBLISHED'
-          ? 'You’re in! Your educator will start the briefing soon.'
-          : 'Your educator hasn’t opened this quest yet. Hang tight.'}</p>
-        ${joinedHere(st) ? `<p class="hint-note">You are ${esc(who(me))} in home team ${me.home}, expert track ${me.topic} · ${esc(SEED.topicMeta[me.topic].name)}.</p>` : ''}
+        <h3>How it works</h3>
+        <ol class="ns-steps"><li><span>Join with the class code — you get a home team and an expert track.</span></li><li><span>Explore your place with your expert group and record what you find.</span></li><li><span>Teach your home team, then solve the finale together.</span></li></ol>
+      </div>`;
+  }
+
+  function lobbyScreen(st, me) {
+    return `<div class="card">
+        <div class="spread"><div><div class="eyebrow">${esc(SEED.title)}</div><h3 style="margin:2px 0 0">Waiting in the lobby</h3></div>${statusChip(st.quest.status === 'PUBLISHED' ? 'AVAILABLE' : 'LOCKED')}</div>
+        <p>${st.quest.status === 'PUBLISHED' ? 'Your educator will start the briefing soon.' : 'Your educator hasn’t opened this quest yet. Hang tight.'}</p>
+        <p class="hint-note">You are ${esc(who(me))} in home team ${me.home}, expert track ${me.topic} · ${esc(SEED.topicMeta[me.topic].name)}. Meanwhile, look at the quest map to see how the teams fit together.</p>
+        <button class="btn btn-ghost btn-sm" data-a="leave-class">Join a different class</button>
       </div>`;
   }
 
@@ -647,6 +653,7 @@
 
   function questMap(st, me) {
     return `
+      ${pageHead(esc(SEED.title), 'Quest map')}
       ${phasePath(st)}
       <div class="card wash-lavender">
         <div class="eyebrow">Learning with others</div>
@@ -673,10 +680,7 @@
   function albumScreen(st, viewer) {
     const n = sel.claimedCount();
     return `
-      <div class="spread">
-        <h2>The class discovery album</h2>
-        <span class="pill lavender">${n} / ${SEED.collectibles.length} collected</span>
-      </div>
+      ${pageHead(esc(st.quest.title), viewer === 'student' ? 'Class album' : 'Album', `<span class="pill lavender">${n} / ${SEED.collectibles.length} collected</span>`)}
       <div class="album-grid">
         ${SEED.collectibles.map((c) => {
           const claimed = !!st.claims[c.id];
@@ -698,21 +702,13 @@
         </div>
       </div>
       ${viewer === 'teacher' && SEED.collectibles.some((c) => c.kind === 'teacher' && !st.claims[c.id]) ? `<div class="row">${SEED.collectibles.filter((c) => c.kind === 'teacher' && !st.claims[c.id]).map((c) => `<button class="btn btn-sun btn-sm" data-a="award-card" data-card="${c.id}">${Art.icon('sparkle', 15)} Award “${esc(c.title)}” to team ${c.home}</button>`).join('')}</div>` : ''}
-      ${viewer === 'student' ? `<p class="hint-note">Each home team can earn one card. Cards never gate the main quest.</p>` : ''}`;
+      ${viewer === 'student' ? `<p class="hint-note">Cards are a bonus side quest — they never gate the main quest.</p>` : ''}`;
   }
 
   /* ================= teacher ================= */
 
   function teacherView(st) {
     const screen = st.ui.screen || 'dashboard';
-    const tabs = [
-      ['dashboard', 'map', 'Overview'],
-      ['builder', 'pencil', 'Quest builder'],
-      ['teams', 'team', 'Teams'],
-      ['live', 'eye', 'Live session'],
-      ['album', 'trophy', 'Album'],
-      ['report', 'book', 'Report'],
-    ];
     return `
       <div class="stack">
         ${screen === 'builder' ? teacherBuilder(st)
@@ -733,14 +729,13 @@
     const code = typeof Sync !== 'undefined' ? Sync.state.session : 'FITZ-DEMO';
     return `
       <div class="stack">
-        <div class="spread"><div><div class="eyebrow">Educator studio · class code <span class="mono">${esc(code)}</span></div><h2 style="margin:4px 0 0">My quests</h2></div>
-          <button class="btn btn-primary" data-a="new-quest" ${live ? 'disabled title="End the live session first"' : ''}>${Art.icon('plus', 16)} New quest</button></div>
+        ${pageHead(`Educator studio · class code <span class="mono">${esc(code)}</span>`, 'My quests', `<button class="btn btn-primary" data-a="new-quest" ${live ? 'disabled title="End the live session first"' : ''}>${Art.icon('plus', 16)} New quest</button>`)}
         ${st.ui.newQuest && !live ? `<div class="card new-quest">
           <div class="spread"><h3 style="margin:0">Start a new quest</h3><button class="btn btn-ghost btn-sm" data-a="new-quest-x">Cancel</button></div>
           <label class="fld" for="nq-title">Working title (optional)</label><input class="input" id="nq-title" placeholder="e.g. Pollinator Patrol at the community garden">
           <div class="grid-3" style="margin-top:10px">
             <button class="card choice-card" data-a="create-quest" data-tpl="blank">${Art.icon('pencil', 20)}<strong>Blank quest</strong><small>Write every part yourself, or ask the AI as you go.</small></button>
-            <button class="card choice-card" data-a="create-quest" data-tpl="ai">${Art.icon('sparkle', 20)}<strong>Generate with AI</strong><small>Add your sources, then the assistant drafts all four tracks, the finale and collectibles for you to review.</small></button>
+            <button class="card choice-card" data-a="create-quest" data-tpl="ai">${Art.icon('sparkle', 20)}<strong>Generate with AI</strong><small>Add your sources, then the assistant drafts every track, the finale and collectibles for you to review.</small></button>
             <button class="card choice-card" data-a="create-quest" data-tpl="lost_museum">${Art.icon('book', 20)}<strong>Example: The Lost Museum</strong><small>A complete Fitzwilliam quest to adapt.</small></button>
           </div></div>` : ''}
         <div class="grid-3">
@@ -755,7 +750,7 @@
         </div>
         ${live ? `<p class="hint-note" style="margin:0">A live session is running. Return it to the lobby (Live session → Back) before switching quests.</p>` : ''}
         <div class="grid-3">
-          <div class="card wash-mint"><div class="eyebrow teal">Students joined</div><h2 style="font-size:40px">${Object.keys(st.seats).length}<small style="font-size:20px">/20</small></h2><p style="margin:0">with class code <span class="mono">${esc(code)}</span></p></div>
+          <div class="card wash-mint"><div class="eyebrow teal">Students joined</div><h2 style="font-size:40px">${Object.keys(st.seats).length}<small style="font-size:20px">/${SEED.participants.length}</small></h2><p style="margin:0">with class code <span class="mono">${esc(code)}</span></p></div>
           <div class="card wash-peach"><div class="eyebrow coral">Pending reviews</div><h2 style="font-size:40px">${String(pend).padStart(2, '0')}</h2><p style="margin:0">${pend ? 'Evidence, finales or discoveries waiting in the live room.' : 'Nothing waiting — all clear.'}</p></div>
           <form class="card" data-form="partner">
             <div class="spread"><div class="eyebrow">Community partner for this quest</div>${statusChip(st.contributor.status)}</div>
@@ -772,8 +767,7 @@
     const q = st.quest, locked = q.status === 'PUBLISHED', dis = locked ? 'disabled' : '';
     const n = q.next || {};
     return `
-      <div class="spread" style="margin-bottom:12px"><div><div class="eyebrow">Quest builder</div><h2 style="margin:2px 0 0">${esc(q.title || 'Untitled quest')}</h2></div>
-        <button class="btn btn-ghost btn-sm" data-a="screen" data-screen="dashboard">${Art.icon('back', 15)} All quests</button></div>
+      ${pageHead(esc(q.title || 'Untitled quest'), 'Quest builder', `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="dashboard">${Art.icon('back', 15)} All quests</button>`)}
       <div class="builder-2col">
         <div class="stack builder-left">
           <div class="card">
@@ -845,8 +839,7 @@
     const checked = Object.keys(ex.checkins);
     const code = 'WQ-NEXT-' + String(st.activeQuest).toUpperCase();
     return `
-      <div class="spread" style="margin-bottom:12px"><div><div class="eyebrow">${esc(st.quest.title)}</div><h2 style="margin:2px 0 0">Next real experience</h2></div>
-        <label class="toggle"><input type="checkbox" data-a="next-enable" ${n.enabled ? 'checked' : ''}> Include one</label></div>
+      ${pageHead(esc(st.quest.title), 'Next experience', `<label class="toggle"><input type="checkbox" data-a="next-enable" ${n.enabled ? 'checked' : ''}> Include one</label>`)}
       <p class="hint-note" style="margin:-4px 0 14px">The quest is the bridge, not the destination: after it, the class applies what they learned with a real partner. Each team’s collectible levels up when they check in.</p>
       ${!n.enabled ? '' : `
       <div class="grid-2">
@@ -885,7 +878,7 @@
       <div class="grid-2" style="margin-top:16px">
         <div class="card stack" style="gap:8px">
           <div class="spread"><h3 style="margin:0">On the day</h3><span class="pill ${ex.unlocked ? 'mint' : 'plain'}">${ex.unlocked ? 'unlocked' : 'locked'}</span></div>
-          <p class="hint-note" style="margin:0">${ex.unlocked ? (ex.reason ? 'Unlocked early: “' + esc(ex.reason) + '”.' : 'Unlocked for the class.') : n.unlock === 'all' ? `Unlocks automatically when every home team’s finale is approved (${SEED.homeGroups.filter((h) => st.finale[h].status === 'APPROVED').length}/5 so far).` : 'You unlock it when you’re ready.'}</p>
+          <p class="hint-note" style="margin:0">${ex.unlocked ? (ex.reason ? 'Unlocked early: “' + esc(ex.reason) + '”.' : 'Unlocked for the class.') : n.unlock === 'all' ? `Unlocks automatically when every home team’s finale is approved (${SEED.homeGroups.filter((h) => st.finale[h].status === 'APPROVED').length}/${SEED.homeGroups.length} so far).` : 'You unlock it when you’re ready.'}</p>
           ${!ex.unlocked && n.status === 'accepted' ? `<div class="row"><input class="input" id="nx-reason" placeholder="${n.unlock === 'all' ? 'Reason to unlock early' : 'Note (optional)'}" style="flex:1;min-width:160px"><button class="btn btn-primary btn-sm" data-a="unlock-next">Unlock now</button></div>` : ''}
           ${n.status !== 'accepted' ? '<p class="hint-note" style="margin:0">Confirm the booking first.</p>' : ''}
           <p style="margin:0"><strong>${checked.length}</strong> checked in${checked.length ? ': ' + checked.map((id) => esc(who(SEED.byId[id]))).join(', ') : ''}</p>
@@ -903,13 +896,10 @@
     const viewExpert = st.ui.teamView === 'expert';
     return `
       <div class="stack">
-        <div class="spread">
-          <h2>Colour-coded Jigsaw matrix</h2>
-          <div class="stage-tabs">
+        ${pageHead(esc(st.quest.title), 'Teams', `<div class="stage-tabs">
             <button data-a="teamview" data-view="home" aria-pressed="${!viewExpert}">${Art.icon('team', 15)}Home teams</button>
             <button data-a="teamview" data-view="expert" aria-pressed="${viewExpert}">${Art.icon('lens', 15)}Expert groups</button>
-          </div>
-        </div>
+          </div>`)}
         <div class="card matrix" role="region" aria-label="${viewExpert ? 'Expert groups by track' : 'Home teams with their experts'}" tabindex="0">
           ${viewExpert ? expertMatrix(st) : homeMatrix(st)}
         </div>
@@ -945,13 +935,12 @@
     const idx = sel.phaseIndex();
     return `
       <div class="stack">
+        ${pageHead(esc(st.quest.title), 'Live session', `<button class="btn btn-secondary btn-sm" data-a="show-code">${Art.icon('team', 15)} Show class code</button><button class="btn btn-secondary btn-sm" data-a="qr-cards">${Art.icon('map', 15)} Station QR cards</button>`)}
         <div class="card">
           <div class="spread">
-            <h2>Live control room</h2>
-            <button class="btn btn-secondary btn-sm" data-a="show-code">${Art.icon('team', 15)} Show class code</button>
+            <h3 style="margin:0">Phase: ${esc(SEED.phaseMeta[st.phase].label)}</h3>
             <div class="row">
               <button class="btn btn-secondary btn-sm" data-a="rewind" ${idx === 0 ? 'disabled' : ''}>${Art.icon('back', 15)} Back</button>
-              <button class="btn btn-secondary btn-sm" data-a="qr-cards">${Art.icon('map', 15)} Station QR cards</button>
               <button class="btn btn-primary btn-sm" data-a="advance" ${idx >= SEED.phases.length - 1 ? 'disabled' : ''}>Advance phase ${Art.icon('arrow', 15)}</button>
             </div>
           </div>
@@ -1029,16 +1018,17 @@
   function teacherReport(st) {
     const verified = SEED.participants.filter((p) => st.evidence[p.id].status === 'VERIFIED');
     const simCount = verified.filter((p) => st.evidence[p.id].simulated).length;
-    const shares = SEED.homeGroups.reduce((n, h) => n + SEED.topics.filter((t) => st.peerTeach[h][t].shared).length, 0);
+    const shares = SEED.homeGroups.reduce((n, h) => n + SEED.topicsFor(h).filter((t) => st.peerTeach[h][t].shared).length, 0);
+    const teachTotal = SEED.homeGroups.reduce((n, h) => n + SEED.topicsFor(h).length, 0);
     const fins = SEED.homeGroups.filter((h) => st.finale[h].status === 'APPROVED').length;
     const refl = Object.entries(st.reflections);
     return `
       <div class="stack">
-        <h2>Learning report <span class="pill">demo data — not real learners</span></h2>
+        ${pageHead(esc(st.quest.title), 'Report', '<span class="pill">demo data — not real learners</span>')}
         <div class="grid-3">
           <div class="card wash-lavender"><div class="eyebrow">Evidence verified</div><h2 style="font-size:38px">${verified.length}/${SEED.participants.length}</h2><p style="margin:0">${simCount ? simCount + ' marked SIMULATED' : 'all from live demo play'}</p></div>
-          <div class="card wash-mint"><div class="eyebrow teal">Perspectives taught</div><h2 style="font-size:38px">${shares}/${SEED.participants.length}</h2><p style="margin:0">teach-backs across 5 home teams</p></div>
-          <div class="card wash-peach"><div class="eyebrow coral">Finales approved</div><h2 style="font-size:38px">${fins}/${SEED.homeGroups.length}</h2><p style="margin:0">cards claimed: ${sel.claimedCount()}/5 · master: ${st.master ? 'unlocked' : 'locked'}</p></div>
+          <div class="card wash-mint"><div class="eyebrow teal">Perspectives taught</div><h2 style="font-size:38px">${shares}/${teachTotal}</h2><p style="margin:0">teach-backs across ${SEED.homeGroups.length} home teams</p></div>
+          <div class="card wash-peach"><div class="eyebrow coral">Finales approved</div><h2 style="font-size:38px">${fins}/${SEED.homeGroups.length}</h2><p style="margin:0">cards claimed: ${sel.claimedCount()}/${SEED.collectibles.length} · master: ${st.master ? 'unlocked' : 'locked'}</p></div>
         </div>
         <div class="card"><h3>By home team</h3><div class="matrix"><table><thead><tr><th scope="col">Team</th><th scope="col">Evidence verified</th><th scope="col">Perspectives taught</th><th scope="col">Finale</th><th scope="col">Partner feedback</th></tr></thead><tbody>
           ${SEED.homeGroups.map((h) => { const mem = SEED.homeMembers(h); return `<tr><th scope="row">${h}</th><td>${mem.filter((p) => st.evidence[p.id].status === 'VERIFIED').length}/${mem.length}</td><td>${SEED.topicsFor(h).filter((t) => st.peerTeach[h][t].shared).length}/${SEED.topicsFor(h).length}</td><td>${statusChip(st.finale[h].status)}</td><td>${st.partnerFeedback[h] ? '✓' : '—'}</td></tr>`; }).join('')}
@@ -1050,7 +1040,7 @@
         <div class="card">
           <h3>Student reflections (${refl.length})</h3>
           ${refl.length === 0 ? '<p class="hint-note" style="margin:0">Individual reflections appear here after the reflection phase.</p>'
-            : refl.map(([pid, a]) => `<div class="evidence-quote" style="margin-bottom:8px"><strong>${esc(SEED.byId[pid].name)}</strong><br>“${esc(a[0])}” · “${esc(a[1])}”</div>`).join('')}
+            : refl.map(([pid, a]) => `<div class="evidence-quote" style="margin-bottom:8px"><strong>${esc(who(SEED.byId[pid]))}</strong><br>${(a || []).filter(Boolean).map((x) => `“${esc(x)}”`).join(' · ')}</div>`).join('')}
           <p class="hint-note" style="margin-top:12px">This report shows demonstration workflow data only — no learning-impact claims. A production build adds pre/post observation-vs-inference checks and per-group participation counts.</p>
         </div>
       </div>`;
@@ -1065,18 +1055,10 @@
     const pendD = sel.pendingInteractions();
     return `
       <div class="stack">
-        <div class="hero peach">
-          <div>
-            <div class="eyebrow coral">Community-powered learning</div>
-            <h1>Your knowledge <span class="accent-coral">brings it to life.</span></h1>
-            <p class="lede">Help educators create respectful, accurate missions rooted in people, places and real stories.</p>
-            <span class="pill">${esc(pq.partner.name)} · ${esc(pq.partner.org)}</span>
-          </div>
-          <div class="hero-art">${Art.arch({ door: '#6B5CE7', face: '#F6C5CF' })}${Art.sticker('A story to share', '💬')}</div>
-        </div>
-        <div class="card row" style="padding:12px 16px;gap:10px"><label class="fld" for="pq-sel" style="margin:0">Quest</label>
-          <select class="input" id="pq-sel" data-a="pq-sel" style="width:auto;flex:1;min-width:180px">${Object.entries(st.library).map(([id, r]) => `<option value="${id}" ${id === pqId ? 'selected' : ''}>${esc((id === st.activeQuest ? st.quest : r.quest).title)}${id === st.activeQuest ? ' (running with the class)' : ''}</option>`).join('')}</select></div>
-        ${screen === 'facilitate' || screen === 'work' ? (pqId === st.activeQuest ? (screen === 'facilitate' ? facilitateScreen(st, pendD) : partnerWork(st)) : `<div class="card"><p style="margin:0">Facilitation and student work are for the quest the class is running: <strong>${esc(st.quest.title)}</strong>.</p></div>`) : reviewScreen(st, pqId)}
+        ${screen === 'review'
+          ? pageHead(`Community partner · ${esc(pq.partner.name)}`, 'Review contribution', `<label class="sr-only" for="pq-sel">Quest</label><select class="input" id="pq-sel" data-a="pq-sel" style="width:auto;min-width:200px">${Object.entries(st.library).map(([id, r]) => `<option value="${id}" ${id === pqId ? 'selected' : ''}>${esc((id === st.activeQuest ? st.quest : r.quest).title)}${id === st.activeQuest ? ' (this class)' : ''}</option>`).join('')}</select>`, 'coral')
+          : pageHead(`Community partner · ${esc(st.quest.title)}`, screen === 'facilitate' ? 'Facilitate' : 'Student work', '', 'coral')}
+        ${screen === 'facilitate' || screen === 'work' ? (screen === 'facilitate' ? facilitateScreen(st, pendD) : partnerWork(st)) : reviewScreen(st, pqId)}
       </div>`;
   }
 
@@ -1169,7 +1151,7 @@
       html += `<div class="overlay" role="dialog" aria-modal="true" aria-label="Master award unlocked">
         <div class="overlay-panel master-panel">
           <div class="reveal">
-            <div class="eyebrow sun">5 / 5 discoveries · class award</div>
+            <div class="eyebrow sun">${SEED.collectibles.length} / ${SEED.collectibles.length} discoveries · class award</div>
             <h2>${esc(SEED.master.title)}</h2>
             ${Art.masterArt()}
             <p style="margin-top:14px">${esc(SEED.master.fact)}</p>

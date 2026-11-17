@@ -625,3 +625,6 @@ a.brand { text-decoration: none; color: inherit; }
 .qz-card { border: 1px solid var(--stroke); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 6px; background: var(--white); }
 .ed-sec { border: 1px solid var(--stroke); border-radius: 12px; padding: 8px 12px; background: var(--white); }
 .ed-sec > summary { cursor: pointer; font-weight: 700; }
+
+/* one page header style across roles */
+.page-head { margin-bottom: 4px; align-items: flex-end; }

@@ -115,6 +115,7 @@ const Engine = (() => {
     } catch (e) {
       /* corrupted or unavailable storage -> fresh demo */
     }
+    SEED.useStructure(SEED.defaultStructure());
     const f = freshState();
     syncRoster(f);
     snapInto(f);
@@ -142,6 +143,8 @@ const Engine = (() => {
     s.help = s.help || [];
     s.tracks = s.tracks || { A: 'AI', B: 'AI', C: 'AI', D: 'AI' };
     s.revisions = s.revisions || {};
+    /* self-heal: play data must match the quest's groups (e.g. a state saved under a different structure) */
+    if (SEED.participants.some((p) => !s.evidence || !s.evidence[p.id]) || SEED.homeGroups.some((h) => !s.finale || !s.finale[h] || !s.peerTeach || !s.peerTeach[h] || SEED.topicsFor(h).some((t) => !s.peerTeach[h][t]))) resetPlay(s);
     syncRoster(s);
     s.trackEdits = s.trackEdits || {};
     s.seats = s.seats || {};
@@ -274,6 +277,7 @@ const Engine = (() => {
     },
 
     resetDemo() {
+      SEED.useStructure(SEED.defaultStructure()); // seats must come from the default quest's groups, not the last quest's
       state = freshState();
       syncRoster(state);
       SEED.useStructure(state.quest.structure); SEED.useContent(state.content);
@@ -808,7 +812,7 @@ const Engine = (() => {
       if (n.length < 2 || n.length > 16) return { ok: false, msg: 'Pick a nickname of 2–16 characters (not your real name).' };
       if (Object.values(s.seats).some((x) => x.nick.toLowerCase() === n.toLowerCase())) return { ok: false, msg: 'That nickname is taken — try another.' };
       const p = SEED.participants.find((x) => !s.seats[x.id] && !s.evidence[x.id].simulated && s.evidence[x.id].status === 'AVAILABLE');
-      if (!p) return { ok: false, msg: 'This class is full (20 explorers).' };
+      if (!p) return { ok: false, msg: `This class is full (${SEED.participants.length} explorers).` };
       s.seats[p.id] = { nick: n, at: Date.now() };
       audit('student', `${n} joined as ${p.name} (home ${p.home}, expert ${p.topic}).`);
       return { ok: true, msg: `Welcome, ${n}! You’re in home team ${p.home}, expert track ${p.topic}.`, pid: p.id };
@@ -1077,6 +1081,7 @@ const Engine = (() => {
     emit({ type: 'remote' });
   }
   function freshShared() {
+    SEED.useStructure(SEED.defaultStructure());
     const { ui, ...rest } = freshState();
     return rest;
   }
