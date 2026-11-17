@@ -698,6 +698,11 @@ a.brand { text-decoration: none; color: inherit; }
 @media (max-width: 700px) { .j-move { margin-left: 0; } .j-add { margin-left: 0; } }
 
 /* ---------- community partner ---------- */
+.role-collaborator .spotlight-dashboard figure svg { width: 100%; height: auto; display: block; font-family: inherit; }
+.role-collaborator .spotlight-dashboard .spotlight-bar { height: 14px; border-radius: 999px; background: var(--lavender); overflow: hidden; }
+.role-collaborator .spotlight-dashboard .spotlight-bar > span { display: block; height: 100%; border-radius: inherit; }
+.role-collaborator .spotlight-dashboard .spotlight-avatar { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--white); color: var(--violet-deep); font-weight: 700; }
+.role-collaborator .spotlight-dashboard .spotlight-event { display: flex; align-items: center; gap: 12px; }
 .role-collaborator .partner-disclosure { margin-top: 10px; }
 .role-collaborator .partner-disclosure > summary {
   display: list-item;
