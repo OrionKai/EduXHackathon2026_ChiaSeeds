@@ -233,10 +233,12 @@
         const at = a.checkin === 'none' || !!st.checkins[me.id];
         const submitted = ev.status === 'SUBMITTED' || ev.status === 'VERIFIED';
         const how = a.checkin === 'qr' ? ' and scan the clue card' : String(a.checkin).startsWith('photo') ? ` and photograph <strong>${esc(SEED.keyObjectOf(me.topic))}</strong>${a.qr ? ' (or scan the clue card)' : ''}` : '';
-        const list = [[at, !at, st.checkinPhotos[me.id] ? 'Wait for your teacher to confirm your photo' : `Go to <strong>${place}</strong> with your expert group${how}`],
-          [at && (st.ui.missionTab === 'record' || submitted), at && !submitted, 'Look closely and talk it through — phone away'],
-          [submitted, at && !submitted, `Submit your evidence (${esc(SEED.ASSESS_TEXT.evidence[a.evidence]).toLowerCase()}${a.quiz && a.quiz.length ? ' + quick check' : ''})`],
-          [ev.status === 'VERIFIED', ev.status === 'SUBMITTED', ev.status === 'NEEDS_REVISION' ? 'Fix what your reviewer asked for, then submit again' : `Get it verified (${esc(SEED.ASSESS_TEXT.verify[a.verify]).toLowerCase()})`]];
+        const together = SEED.expertGroupOf(me.id).members.length > 1;
+        const hand = { notes: 'your notes', photo: 'your photo', notes_photo: 'your notes and photo' }[a.evidence] || 'your notes';
+        const list = [[at, !at, st.checkinPhotos[me.id] ? 'Wait for your teacher to confirm your photo' : `Go to <strong>${place}</strong>${together ? ' with your expert group' : ''}${how}`],
+          [at && (st.ui.missionTab === 'record' || submitted), at && !submitted, together ? 'Look closely and talk it through with your group — phone away' : 'Look closely — phone away'],
+          [submitted, at && !submitted, `Send ${hand}${a.quiz && a.quiz.length ? ' and answer the quick quiz' : ''}`],
+          [ev.status === 'VERIFIED', ev.status === 'SUBMITTED', ev.status === 'NEEDS_REVISION' ? 'Fix what your teacher asked for, then send it again' : a.verify === 'auto' ? 'Pass the quiz to finish' : a.verify === 'partner' ? 'Wait for the community partner to check it' : 'Wait for your teacher to check it']];
         title = ev.status === 'VERIFIED' ? 'Done! Wait for peer teaching' : 'Your expert mission';
         const grp = SEED.expertGroupOf(me.id), mates = grp.members.filter((p) => p.id !== me.id);
         body = (mates.length ? `<p style="margin:0 0 8px">Your expert group: <strong>${mates.map((p) => esc(who(p))).join(', ')}</strong> and you.</p>` : '') + steps(list);
@@ -694,6 +696,7 @@
 
   function albumScreen(st, viewer) {
     const n = sel.claimedCount();
+    if (!SEED.collectibles.length) return `${pageHead(esc(st.quest.title), 'Class album')}<div class="card"><p style="margin:0">This quest has no reward cards.</p></div>`;
     return `
       ${pageHead(esc(st.quest.title), 'Class album', `<span class="pill lavender">${n} / ${SEED.collectibles.length} collected</span>`)}
       <div class="album-grid">
@@ -749,11 +752,12 @@
           <div class="spread"><h3 style="margin:0">Start a new quest</h3><button class="btn btn-ghost btn-sm" data-a="new-quest-x">Cancel</button></div>
           <label class="fld" for="nq-title">Working title (optional)</label><input class="input" id="nq-title" placeholder="e.g. Pollinator Patrol at the community garden" value="${esc(st.ui.nqTitle || '')}">
           ${!st.ui.nqTpl ? `<p class="hint-note" style="margin:10px 0 6px">Step 1 of 2 · How do you want to start?</p>
-          <div class="grid-3">
+          <div class="grid-2">
             <button class="card choice-card" data-a="nq-pick" data-tpl="blank">${Art.icon('pencil', 20)}<strong>Blank quest</strong><small>Write every part yourself, or ask the assistant as you go.</small></button>
             <button class="card choice-card" data-a="nq-pick" data-tpl="ai">${Art.icon('sparkle', 20)}<strong>Generate with AI</strong><small>Add your sources, then the assistant drafts every track, the finale and collectibles for you to review.</small></button>
-            <button class="card choice-card" data-a="nq-pick" data-tpl="lost_museum">${Art.icon('book', 20)}<strong>Start from the example</strong><small>The Lost Museum: a complete Fitzwilliam quest to adapt.</small></button>
-          </div>` : (() => { const d = SEED.defaultStructure(); return `<form class="stack" data-form="new-quest" style="gap:8px;margin-top:10px">
+            <button class="card choice-card" data-a="nq-pick" data-tpl="two_explorers">${Art.icon('book', 20)}<strong>Example: Egypt Detectives</strong><small>Two students, two objects at the Fitzwilliam. A short, complete quest to adapt.</small></button>
+            <button class="card choice-card" data-a="nq-pick" data-tpl="lost_museum">${Art.icon('map', 20)}<strong>Example: The Lost Museum</strong><small>A whole class (20 students, four galleries) at the Fitzwilliam.</small></button>
+          </div>` : (() => { const tq = TEMPLATES[st.ui.nqTpl], d = (tq && tq.questDefaults && tq.questDefaults.structure) || SEED.defaultStructure(); return `<form class="stack" data-form="new-quest" style="gap:8px;margin-top:10px">
             <p class="hint-note" style="margin:0">Step 2 of 2 · How will the class be split? You can change this later in Quest settings.</p>
             <div class="grid-3" style="gap:10px">
               <div class="fld-group"><label class="fld" for="g-tracks">Tracks to start with</label><input class="input" id="g-tracks" type="number" min="1" max="6" value="${st.ui.nqTpl === 'blank' ? 1 : d.tracks}"></div>
@@ -762,7 +766,7 @@
             </div>
             <p class="hint-note" style="margin:0" id="g-summary">${structSummary(st.ui.nqTpl === 'blank' ? 1 : d.tracks, d.classSize, d.expertGroup)}</p>
             <p class="hint-note" style="margin:0">You can add or remove tracks any time in the builder.</p>
-            ${st.ui.nqTpl === 'lost_museum' ? '<p class="hint-note" style="margin:0">The example has 4 written tracks; with more, the extra tracks start empty.</p>' : ''}
+            ${tq && tq.questDefaults ? `<p class="hint-note" style="margin:0">This example has ${d.tracks} written tracks; if you add more, the extra ones start empty.</p>` : ''}
             <div class="row"><button class="btn btn-primary" type="submit">Create quest</button><button class="btn btn-ghost" type="button" data-a="nq-back">Back</button></div>
           </form>`; })()}</div>` : ''}
         <div class="grid-3">
@@ -793,7 +797,7 @@
       trip: !!(q.title && q.venue && q.objective),
       sources: st.sources.some((x) => x.kind !== 'partner' && x.text),
       tracks: !probs.some((p) => /^(Track|Add at least)/.test(p)) && SEED.topics.every((t) => st.tracks[t] === 'APPROVED'),
-      finale: !probs.some((p) => /^(Finale|Collectibles|Reflection)/.test(p)),
+      finale: !probs.some((p) => /^(Finale|Cards|Reflection)/.test(p)),
       publish: q.status === 'PUBLISHED',
     };
   }
@@ -835,7 +839,7 @@
       <form class="card" data-form="structure">
         <h3 style="margin:0 0 6px">How the class splits up</h3>
         <div class="grid-3" style="gap:10px">
-          <div class="fld-group"><label class="fld" for="g-tracks">Tracks (topics)</label><input class="input" id="g-tracks" type="number" min="1" max="6" value="${SEED.structure.tracks}" ${dis}></div>
+          <div class="fld-group"><label class="fld" for="g-tracks">Tracks (topics)</label><input class="input" id="g-tracks" type="number" min="1" max="6" value="${st.quest.structure.tracks === 0 ? 0 : SEED.structure.tracks}" ${dis}></div>
           <div class="fld-group"><label class="fld" for="g-size">Students</label><input class="input" id="g-size" type="number" min="2" max="60" value="${SEED.structure.classSize}" ${dis}></div>
           <div class="fld-group"><label class="fld" for="g-exp">Experts who explore together</label><input class="input" id="g-exp" type="number" min="1" max="30" value="${SEED.structure.expertGroup}" ${dis}></div>
         </div>
@@ -851,7 +855,7 @@
   function builderPublish(st, dis, locked) {
     const q = st.quest, probs = SEED.contentProblems(st.content), p = sel.partnerProgress();
     const fix = (txt, step, track = '') => `<li class="b-todo"><span>${esc(txt)}</span>${locked ? '' : `<button class="btn btn-ghost btn-sm" data-a="bfix" data-step="${step}" data-track="${track}">Fix</button>`}</li>`;
-    const todo = probs.map((x) => { const t = (x.match(/^Track ([A-F]):/) || [])[1];
+    const todo = probs.filter((x) => !(q.structure.tracks === 0 && /^Track /.test(x))).map((x) => { const t = (x.match(/^Track ([A-F]):/) || [])[1];
       return t ? fix(`Track ${t} still needs: ${x.split(': ')[1]}`, 'tracks', t) : /^Give the quest/.test(x) ? fix(x, 'trip') : /^Add at least/.test(x) ? fix(x, 'tracks') : fix(x, 'finale'); });
     SEED.topics.filter((t) => st.tracks[t] !== 'APPROVED' && !probs.some((x) => x.startsWith(`Track ${t}:`))).forEach((t) => todo.push(fix(`Approve Track ${t} (${SEED.missions[t].name || 'untitled'})`, 'tracks', t)));
     return `<div class="card">
@@ -881,6 +885,7 @@
   /* ---------------- next real experience (educator) ---------------- */
   function structSummary(t, n, g) {
     t = Number(t); n = Number(n); g = Number(g);
+    if (t === 0) return 'No tracks yet — add them in the Tracks step.';
     if (t < 2) return `${t} track so far — add at least one more before publishing, so students can teach each other.`;
     const teams = Math.ceil(n / t), last = n - (teams - 1) * t, gg = Math.max(1, Math.min(g, teams)), pl = (k, w) => `${k} ${w}${k === 1 ? '' : 's'}`;
     if (t >= 2 && teams > 1 && last === 1) return `The last home team would have just one student — try ${n - 1} or ${n + 1} students.`;

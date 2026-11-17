@@ -132,6 +132,12 @@ const Assistant = (() => {
     const locked = st.quest.status === 'PUBLISHED';
     const probs = SEED.contentProblems(st.content);
     const n = SEED.topics.filter((t) => st.tracks[t] === 'APPROVED').length;
+    if (st.quest.structure && st.quest.structure.tracks === 0) {
+      return `<section class="card" id="as-content"><h3 style="margin:0">${Art.icon('map', 18)} Tracks</h3>
+        <p style="margin:8px 0">No tracks yet. A track is one topic of the trip: in every team, one student becomes the expert on it, investigates it on site, then teaches the others.</p>
+        ${locked ? '' : `<button class="btn btn-primary btn-sm" type="button" data-as-addtrack>${Art.icon('plus', 14)} Add your first track</button>`}
+        <p class="hint-note" style="margin:8px 0 0">Or ask the assistant to draft tracks from your sources. Students need at least 2 tracks to teach each other.</p></section>`;
+    }
     if (editing && SEED.topics.includes(editing) && !locked) {
       const t = editing, m = SEED.missions[t];
       return `<section class="card" id="as-content">
@@ -158,7 +164,7 @@ const Assistant = (() => {
                 <button class="btn btn-secondary btn-sm" type="button" data-as-edit="${t}">${Art.icon('pencil', 14)} ${m.name ? 'Open' : 'Write'}</button>
                 ${st.tracks[t] === 'APPROVED' || tp.length ? '' : `<button class="btn btn-teal btn-sm" type="button" data-as-approve="${t}">${Art.icon('check', 14)} Approve</button>`}
                 ${mode === 'live' ? `<button class="btn btn-ghost btn-sm" type="button" data-as-ask="${t}">Ask AI to change</button>` : ''}
-                ${SEED.topics.length > 1 && st.phase === 'LOBBY' ? `<button class="btn btn-danger-ghost btn-sm" type="button" data-as-rmtrack="${t}" style="margin-left:auto">Remove</button>` : ''}</div>`}
+                ${st.phase === 'LOBBY' ? `<button class="btn btn-danger-ghost btn-sm" type="button" data-as-rmtrack="${t}" style="margin-left:auto">Remove</button>` : ''}</div>`}
             </div>`;
           }).join('')}
           ${!locked && SEED.topics.length < 6 && st.phase === 'LOBBY' ? `<button class="btn btn-secondary btn-sm" type="button" data-as-addtrack style="align-self:flex-start">${Art.icon('plus', 14)} Add a track</button>` : ''}
@@ -176,30 +182,32 @@ const Assistant = (() => {
   }
 
   function collectiblesSection(st) {
-    const locked = st.quest.status === 'PUBLISHED';
+    const locked = st.quest.status === 'PUBLISHED', cards = st.content.collectibles;
+    const rule = (c) => (c.kind === 'track' ? `their expert finishes ${esc(SEED.missions[c.track] && SEED.missions[c.track].name ? SEED.missions[c.track].name : 'Track ' + c.track)}` : esc((SEED.EARN_TEXT[c.kind] || '').replace(/^The team /, 'they ').toLowerCase()));
     return `<section class="card" id="as-collectibles">
-      <div class="spread"><h3 style="margin:0">${Art.icon('trophy', 18)} Collectibles</h3><span class="pill plain">optional · just for fun</span></div>
-      <p class="hint-note" style="margin:6px 0 10px">Collect every card to unlock the class award (${esc(SEED.master.title)}). Choose how each one is earned.</p>
-      <div class="coll-grid">${st.content.collectibles.map((c) => editing === 'c:' + c.id && !locked ? collEditor(c) : `<div class="coll-item">
-        <div class="row" style="gap:10px;flex-wrap:nowrap"><div class="collect-card claimed" style="width:64px;min-width:64px;cursor:default">${Art.collectibleArt[c.id] ? Art.collectibleArt[c.id]() : ''}</div>
-          <div style="min-width:0"><strong>${esc(c.title || 'Untitled card')}</strong><br><small class="hint-note">Team ${c.home}</small></div></div>
-        <p class="hint-note" style="margin:6px 0 4px"><strong>Earned when:</strong> ${c.kind === 'track' ? `the team’s ${esc(SEED.missions[c.track].name || 'Track ' + c.track)} expert is verified` : esc((SEED.EARN_TEXT[c.kind] || '').toLowerCase())}</p>
+      <div class="spread"><h3 style="margin:0">${Art.icon('trophy', 18)} Reward cards</h3><span class="pill plain">optional · just for fun</span></div>
+      <p class="hint-note" style="margin:6px 0 10px">Cards a team earns for the class album — for example when their expert finishes a track, or when they solve the finale. They never block the quest.${cards.length ? ` When the class has every card, it unlocks “${esc(SEED.master.title)}”.` : ''}</p>
+      ${cards.length ? `<div class="coll-grid">${cards.map((c) => editing === 'c:' + c.id && !locked ? collEditor(c) : `<div class="coll-item">
+        <div class="row" style="gap:10px;flex-wrap:nowrap"><div class="collect-card claimed" style="width:64px;min-width:64px;cursor:default">${Art.collectibleArt[c.id] ? Art.collectibleArt[c.id]() : Art.lockedArt()}</div>
+          <div style="min-width:0"><strong>${esc(c.title || 'Untitled card')}</strong><br><small class="hint-note">For team ${esc(c.home)}</small></div></div>
+        <p class="hint-note" style="margin:6px 0 4px">Earned when ${rule(c)}.</p>
         ${c.kind === 'bonus' && c.activity ? `<p class="hint-note" style="margin:0 0 4px">Activity: ${esc(c.activity)}</p>` : ''}
-        <div class="row" style="gap:4px">${c.hidden ? '<span class="pill plain">hidden until found</span>' : ''}${c.evolves ? '<span class="pill plain">levels up at the next experience</span>' : ''}</div>
-        ${locked ? '' : `<button class="btn btn-ghost btn-sm" type="button" data-as-edit="c:${c.id}" style="margin-top:6px">Edit</button>`}
-      </div>`).join('')}</div>
+        ${locked ? '' : `<div class="row" style="gap:6px;margin-top:6px"><button class="btn btn-ghost btn-sm" type="button" data-as-edit="c:${c.id}">Edit</button><button class="btn btn-danger-ghost btn-sm" type="button" data-as-rmcard="${c.id}">Remove</button></div>`}
+      </div>`).join('')}</div>` : '<p style="margin:0 0 8px">No cards yet.</p>'}
+      ${locked ? '' : `<button class="btn btn-secondary btn-sm" type="button" data-as-addcard style="margin-top:8px">${Art.icon('plus', 14)} Add a card</button>`}
     </section>`;
   }
   function collEditor(c) {
     return `<form class="coll-item stack as-editor" style="gap:6px" data-as-collform="${c.id}">
-      ${inp('ce-t', 'Name', c.title)}
+      ${inp('ce-t', 'Card name', c.title, 'e.g. Golden Scarab')}
+      <label class="fld" for="ce-home">Which team can earn it</label><select class="input" id="ce-home">${SEED.homeGroups.map((h) => `<option value="${h}" ${c.home === h ? 'selected' : ''}>Team ${h}</option>`).join('')}</select>
       <label class="fld" for="ce-k">Earned when</label><select class="input" id="ce-k">${Object.entries(SEED.EARN_TEXT).map(([k, l]) => `<option value="${k}" ${c.kind === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
-      <label class="fld" for="ce-tr">Track (for “one track verified”)</label><select class="input" id="ce-tr">${SEED.topics.map((t) => `<option value="${t}" ${c.track === t ? 'selected' : ''}>${t} · ${esc(SEED.missions[t].name || 'Track ' + t)}</option>`).join('')}</select>
-      ${inp('ce-a', 'Bonus activity (for “team bonus activity”)', c.activity)}
-      ${inp('ce-f', 'Fact shown when earned', c.fact)}
-      <label class="toggle"><input type="checkbox" id="ce-h" ${c.hidden ? 'checked' : ''}> Hidden until found</label>
-      <label class="toggle"><input type="checkbox" id="ce-e" ${c.evolves ? 'checked' : ''}> Levels up at the next experience</label>
-      <div class="row"><button class="btn btn-primary btn-sm" type="submit">Save</button><button class="btn btn-ghost btn-sm" type="button" data-as-edit-cancel>Cancel</button></div></form>`;
+      <label class="fld" for="ce-tr">Which track (if earned by finishing a track)</label><select class="input" id="ce-tr">${SEED.topics.map((t) => `<option value="${t}" ${c.track === t ? 'selected' : ''}>${t} · ${esc(SEED.missions[t].name || 'Track ' + t)}</option>`).join('')}</select>
+      ${inp('ce-a', 'Bonus activity (if earned by a bonus activity)', c.activity, 'e.g. Find a symbol that appears in two galleries')}
+      ${inp('ce-f', 'A fun fact shown when it’s earned', c.fact)}
+      <label class="toggle"><input type="checkbox" id="ce-h" ${c.hidden ? 'checked' : ''}> Keep it secret until it’s found</label>
+      <label class="toggle"><input type="checkbox" id="ce-e" ${c.evolves ? 'checked' : ''}> Levels up when the team checks in at the next real experience</label>
+      <div class="row"><button class="btn btn-primary btn-sm" type="submit">Save card</button><button class="btn btn-ghost btn-sm" type="button" data-as-edit-cancel>Cancel</button></div></form>`;
   }
 
   function storySection(st) {
@@ -326,12 +334,15 @@ const Assistant = (() => {
     const st = Engine.state, locked = st.quest.status === 'PUBLISHED';
     return `<div class="card as-sources" id="as-sources">
       <div class="spread"><h3 style="margin:0">${Art.icon('book', 18)} Approved sources</h3><span class="pill lavender">${st.sources.length} in library</span></div>
-      <p class="hint-note" style="margin:6px 0 10px">The assistant may only use these. Add your own notes, object records or links.</p>
-      <div class="stack" style="gap:8px">${SRC().map((s) => `<div class="as-src" id="as-src-${s.id}"><span class="as-cite">${s.id}</span>
+      <p class="hint-note" style="margin:6px 0 10px">The pages and notes the assistant is allowed to use — nothing else. Add your own notes, object records or links; remove anything you don’t trust.</p>
+      <div class="stack" style="gap:8px">${SRC().filter((s) => !s.partner).map((s) => `<div class="as-src" id="as-src-${s.id}"><span class="as-cite">${s.id}</span>
         <div style="min-width:0"><div class="spread"><strong>${esc(s.title)}</strong>
-          ${s.partner ? `<span class="pill ${st.contributor.status === 'APPROVED' ? 'mint' : 'peach'}">${st.contributor.status === 'APPROVED' ? 'partner-approved' : 'awaiting partner'}</span>`
-            : s.kind === 'educator' ? `<span class="row" style="gap:6px"><span class="pill plain">added by you</span>${locked ? '' : `<button class="btn btn-ghost btn-sm" type="button" data-as-rmsrc="${s.id}" aria-label="Remove ${s.id}">Remove</button>`}</span>` : '<span class="pill plain">official page</span>'}</div>
-        <p class="hint-note" style="margin:2px 0 0">${esc(s.fact || (s.partner ? 'Nothing from the partner yet.' : ''))} ${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">open</a>` : ''}</p></div></div>`).join('')}</div>
+          <span class="row" style="gap:6px"><span class="pill plain">${s.kind === 'educator' ? 'added by you' : 'web page'}</span>${locked ? '' : `<button class="btn btn-ghost btn-sm" type="button" data-as-rmsrc="${s.id}" aria-label="Remove ${s.id}">Remove</button>`}</span></div>
+        <p class="hint-note" style="margin:2px 0 0">${esc(s.fact)} ${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">open</a>` : ''}</p></div></div>`).join('') || '<p class="hint-note" style="margin:0">No sources yet. Add the pages or notes you trust below.</p>'}
+        ${SRC().filter((s) => s.partner).map((s) => { const c = st.contributor; return `<div class="as-src as-partner-src" id="as-src-${s.id}"><span class="as-cite">${s.id}</span>
+          <div style="min-width:0"><div class="spread"><strong>From your community partner</strong><span class="pill ${c.status === 'APPROVED' ? 'mint' : 'plain'}">${c.status === 'APPROVED' ? 'signed off' : c.text ? 'written · not signed off yet' : 'not written yet'}</span></div>
+          <p class="hint-note" style="margin:2px 0 0">Your partner writes this themselves, in their own view. The assistant can use it like any other source.</p>
+          ${c.text ? `<p style="margin:4px 0 0">“${esc(c.text)}”</p>` : ''}</div></div>`; }).join('')}</div>
       ${locked ? '' : `<details style="margin-top:10px" ${st.sources.length < 2 ? 'open' : ''}><summary class="as-chip" style="display:inline-flex">${Art.icon('plus', 14)} Add a source</summary>
         <form class="stack" style="gap:6px;margin-top:10px" data-as-src>
           <label class="fld" for="src-title">Title</label><input class="input" id="src-title" placeholder="e.g. Venue learning team notes">
@@ -433,12 +444,35 @@ const Assistant = (() => {
   function liveContext() {
     const tracks = {};
     SEED.topics.forEach((t) => { const { refPhoto, backupCode, evidenceKeys, ...f } = SEED.trackFields(Engine.state.content, t); tracks[t] = { ...f, status: Engine.state.tracks[t] }; });
-    return { quest: questBrief(), tracks, sources: SRC().filter((s) => s.fact).map((s) => ({ id: s.id, title: s.title, text: s.fact, url: s.url || '' })) };
+    const c = Engine.state.content, fin = SEED.finaleFields(c);
+    const extras = { groups: { tracks: Engine.state.quest.structure.tracks, class_size: SEED.structure.classSize, teams: SEED.homeGroups },
+      finale: { title: fin.title, question: fin.question, statements: fin.options, evidence_sentences: fin.evidence, perspective_sentences: fin.perspectives, uncertainty_sentences: fin.uncertainty, invite_sentences: fin.invite, overclaim_sentences: fin.traps, teacher_checks: fin.rubric },
+      cards: c.collectibles.map((k) => ({ id: k.id, title: k.title, team: k.home, earned_when: k.kind, track: k.track, activity: k.activity, fact: k.fact })), story: c.story.opening, reflection: c.reflection };
+    return { extras, quest: questBrief(), tracks, sources: SRC().filter((s) => s.fact).map((s) => ({ id: s.id, title: s.title, text: s.fact, url: s.url || '' })) };
   }
 
   /* One assistant tool call → one proposal the educator approves (tracks) or a settings change. */
   function applyEdit(e) {
     const i = e.input || {}, note = (i.summary || 'AI revision') + (i.source_ids && i.source_ids.length ? ` [${i.source_ids.join(', ')}]` : '');
+    const D = (t, p) => Engine.dispatch(t, p), list = (v) => (Array.isArray(v) ? v.map(String).map((y) => y.trim()).filter(Boolean) : []);
+    if (e.tool === 'set_groups') { const t = Math.max(1, Math.min(6, Number(i.tracks) || SEED.topics.length)), n = Math.max(2, Math.min(60, Number(i.class_size) || SEED.structure.classSize)); return D('setStructure', { tracks: t, classSize: n, expertGroup: Math.min(SEED.structure.expertGroup, Math.ceil(n / t)) }); }
+    if (e.tool === 'remove_track') return SEED.topics.includes(i.topic) ? D('removeTrack', { topic: i.topic }) : null;
+    if (e.tool === 'set_story') return i.opening ? D('editExtras', { opening: String(i.opening) }) : null;
+    if (e.tool === 'set_reflection') { const q = list(i.questions).slice(0, 5); return q.length ? D('editExtras', { reflection: q }) : null; }
+    if (e.tool === 'add_source') return D('addSource', { title: i.title, url: i.url || '', text: i.text });
+    if (e.tool === 'remove_card') return D('removeCollectible', { collectibleId: i.card_id });
+    if (e.tool === 'set_card') {
+      let id = i.card_id; if (!id || id === 'new' || !Engine.state.content.collectibles.some((k) => k.id === id)) { const r = D('addCollectible'); if (!r.ok) return r; id = r.id; }
+      const f = {}; ['title', 'activity', 'fact'].forEach((k) => { if (i[k]) f[k] = i[k]; }); if (i.earned_when) f.kind = i.earned_when; if (i.track) f.track = i.track; if (i.team) f.home = i.team;
+      return D('editCollectible', { collectibleId: id, fields: f });
+    }
+    if (e.tool === 'set_finale') {
+      const f = SEED.finaleFields(Engine.state.content), pick = (k, v) => { const l = list(v); if (l.length) f[k] = l; };
+      if (i.title) f.title = i.title; if (i.question) f.question = i.question;
+      const st = (i.statements || []).filter((y) => y && y.text); if (st.some((y) => y.correct) && st.some((y) => !y.correct)) f.options = st.map((y) => ({ text: y.text, correct: !!y.correct }));
+      pick('evidence', i.evidence_sentences); pick('perspectives', i.perspective_sentences); pick('uncertainty', i.uncertainty_sentences); pick('invite', i.invite_sentences); pick('traps', i.overclaim_sentences); pick('rubric', i.teacher_checks);
+      return D('editFinale', { fields: f });
+    }
     if (e.tool === 'update_quest_settings') {
       [['title', i.title], ['objective', i.objective], ['venue', i.venue], ['ages', i.ages]].forEach(([k, v]) => { if (v && String(v).trim()) Engine.dispatch('updateQuest', { field: k, value: String(v).trim() }); });
       if (Number(i.duration_minutes) > 0) Engine.dispatch('updateQuest', { field: 'duration', value: Number(i.duration_minutes) });
@@ -474,7 +508,7 @@ const Assistant = (() => {
     history.push({ role: 'user', content: text }, { role: 'assistant', content: data.reply });
     for (const e of data.edits || []) applyEdit(e);
     busy = false;
-    lastNotice = data.edits && data.edits.length ? `Claude proposed ${data.edits.length} change${data.edits.length > 1 ? 's' : ''} — review and approve them in Quest content.` : '';
+    lastNotice = data.edits && data.edits.length ? `Claude made ${data.edits.length} change${data.edits.length > 1 ? 's' : ''} — check them in the builder (changed tracks need your approval again).` : '';
     window.WQ.render();
   }
 
@@ -585,14 +619,16 @@ const Assistant = (() => {
       img.src = URL.createObjectURL(file);
     });
     on('[data-as-edit-cancel]', 'click', () => { editing = null; quizOpen = false; window.WQ.render(); });
-    on('[data-as-addtrack]', 'click', () => { const s = SEED.structure, t = s.tracks + 1, n = Math.max(s.classSize, t); const r = window.WQ.act('setStructure', { tracks: t, classSize: n, expertGroup: Math.min(s.expertGroup, Math.ceil(n / t)) }); if (r.ok) setTimeout(() => document.getElementById('as-track-' + SEED.topics[SEED.topics.length - 1])?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 30); });
+    on('[data-as-addcard]', 'click', () => { const r = window.WQ.act('addCollectible'); if (r.ok) { editing = 'c:' + r.id; window.WQ.render(); } });
+    on('[data-as-rmcard]', 'click', (b) => { if (confirm('Remove this card?')) window.WQ.act('removeCollectible', { collectibleId: b.dataset.asRmcard }); });
+    on('[data-as-addtrack]', 'click', () => { const s = SEED.structure, t = (Engine.state.quest.structure.tracks === 0 ? 0 : s.tracks) + 1, n = Math.max(s.classSize, t); const r = window.WQ.act('setStructure', { tracks: t, classSize: n, expertGroup: Math.min(s.expertGroup, Math.ceil(n / t)) }); if (r.ok) setTimeout(() => document.getElementById('as-track-' + SEED.topics[SEED.topics.length - 1])?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 30); });
     on('[data-as-rmtrack]', 'click', (b) => { const t = b.dataset.asRmtrack; if (confirm(`Remove track ${t} (${SEED.missions[t].name || 'untitled'})? Its content will be deleted.`)) { if (editing === t) editing = null; window.WQ.act('removeTrack', { topic: t }); } });
     on('[data-as-quiz]', 'click', (b) => { editing = b.dataset.asQuiz; quizOpen = true; refDraft = SEED.missions[editing].refPhoto || null; window.WQ.render(); setTimeout(() => document.querySelector('[data-qz]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 30); });
     on('[data-as-collform]', 'submit', (f, e) => {
       e.preventDefault();
       const v = (id) => f.querySelector('#' + id).value;
       editing = null;
-      window.WQ.act('editCollectible', { collectibleId: f.dataset.asCollform, fields: { title: v('ce-t'), kind: v('ce-k'), track: v('ce-tr'), activity: v('ce-a'), fact: v('ce-f'), hidden: f.querySelector('#ce-h').checked, evolves: f.querySelector('#ce-e').checked } });
+      window.WQ.act('editCollectible', { collectibleId: f.dataset.asCollform, fields: { title: v('ce-t'), home: v('ce-home'), kind: v('ce-k'), track: v('ce-tr'), activity: v('ce-a'), fact: v('ce-f'), hidden: f.querySelector('#ce-h').checked, evolves: f.querySelector('#ce-e').checked } });
     });
     on('[data-as-trackform]', 'submit', (f, e) => {
       e.preventDefault();

@@ -65,6 +65,7 @@ Google Fonts load when online, with safe system fallbacks offline.)
 For quick demos and screenshots, boot straight into a scripted state (every step still
 runs through the guarded engine actions):
 
+- The default demo quest is **Egypt Detectives** (2 students, 2 tracks); **The Lost Museum** (20 students, 4 tracks) is in My Quests — "Use with this class" switches to it.
 - Add `&offline=1` to keep it on this device: each link resets the demo, and without it that resets the shared class session too.
 - Student phones hide the Demo button and sync pill; add `?demo=1` (or use any `?fast=` link) to show them for the rest of that browser tab.
 - `?fast=expert&role=student` — expert mission open

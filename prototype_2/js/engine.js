@@ -92,6 +92,50 @@ const Engine = (() => {
     return { items, reviewed, open, contributed: c.status !== 'INVITED' && !!c.text, signedOff: c.status === 'APPROVED' };
   }
 
+  /* Build a quest from a template and make it the class's active quest. */
+  function makeQuest(s, { template, title, structure, id: fixedId, quiet }) {
+    if (s.phase !== 'LOBBY') return { ok: false, msg: 'End the live session first (Live session → back to the lobby).' };
+    const tpl = TEMPLATES[template] ? template : 'blank';
+    snapInto(s);
+    const qd = TEMPLATES[tpl].questDefaults || {};
+    const st = { ...SEED.defaultStructure(), ...(qd.structure || {}), ...(structure || {}) };
+    st.tracks = Number(st.tracks); st.classSize = Number(st.classSize); st.expertGroup = Number(st.expertGroup);
+    st.expertGroup = Math.max(1, Math.min(st.expertGroup, Math.ceil(st.classSize / st.tracks))); // can't be bigger than the experts per track
+    const bad = structureProblem(st.tracks, st.classSize, st.expertGroup);
+    if (bad) return { ok: false, msg: bad };
+    const id = fixedId || 'q' + Date.now().toString(36);
+    SEED.useStructure(st);
+    const content = clone(TEMPLATES[tpl]);
+    SEED.useContent(content);
+    const t = String(title || '').trim() || (tpl === 'blank' ? 'Untitled quest' : content.title);
+    content.title = t;
+    s.quest = { id, title: t, objective: qd.objective || '', venue: qd.venue || '',
+      duration: qd.duration || 60, classSize: 20, status: 'DRAFT', draftGenerated: true, safety: false, templateId: tpl, partner: { ...SEED.partnerDefaults }, next: { ...SEED.defaultNext(), ...(qd.next || {}) }, structure: st, audience: SEED.defaultAudience() };
+    SEED.ensureContentShape(content);
+    Object.keys(content.missions).forEach((k) => { if (!SEED.topics.includes(k)) delete content.missions[k]; });
+    Object.values(content.missions).forEach((m) => { m.backupCode = SEED.newBackupCode(); });
+    s.quest.classSize = st.classSize;
+    s.content = content;
+    s.tracks = Object.fromEntries(SEED.topics.map((x) => [x, tpl === 'blank' || !content.missions[x].name ? 'EMPTY' : 'TEMPLATE']));
+    s.revisions = {};
+    s.sources = TEMPLATES[tpl].sources ? clone(TEMPLATES[tpl].sources) : tpl === 'lost_museum' ? seedSources() : seedSources().filter((x) => x.kind === 'partner').map((x) => ({ ...x, id: 'S1' }));
+    s.contributor = normContributor({ text: tpl !== 'blank' ? SEED.contributor.defaultContribution : '', status: tpl !== 'blank' ? 'CONTRIBUTED' : 'INVITED', interactionPrompt: 0, extraPrompts: [], prompts: [...SEED.contributor.prompts] });
+    s.activeQuest = id;
+    SEED.useStructure(s.quest.structure); SEED.useContent(s.content);
+    resetPlay(s);
+    if (!quiet) audit('teacher', `Created quest “${t}” (${tpl === 'blank' ? 'blank' : 'from template ' + content.meta.name}).`);
+    return { ok: true, msg: `Created “${t}”.`, id };
+  }
+  function freshDemo() {
+    useDefaults();
+    const f = freshState();
+    syncRoster(f);
+    snapInto(f);
+    makeQuest(f, { template: 'two_explorers', id: 'q_eg', quiet: true });
+    snapInto(f);
+    f.journey = defaultJourney(f);
+    return f;
+  }
   /* Wrong picks are kept (counts only) so the educator can see common misconceptions. */
   const miss = (s, key) => { s.misses = s.misses || {}; s.misses[key] = (s.misses[key] || 0) + 1; };
   function freshState() {
@@ -128,7 +172,7 @@ const Engine = (() => {
       quest: {
         status: 'PARTNER_REVIEW', // DRAFT | PARTNER_REVIEW | APPROVED | PUBLISHED
         title: SEED.title,
-        objective: 'Interpret evidence from multiple perspectives',
+        objective: TEMPLATES.lost_museum.questDefaults.objective,
         duration: 60,
         classSize: 20,
         venue: 'The Fitzwilliam Museum, Cambridge',
@@ -137,8 +181,7 @@ const Engine = (() => {
         partner: { ...SEED.partnerDefaults },
         structure: SEED.defaultStructure(),
         audience: SEED.defaultAudience(),
-        next: { ...SEED.defaultNext(), enabled: true, activity: 'Still-life drawing class: draw a memorable object from the museum trip', provider: 'Riverside Art Studio', org: 'Example provider (simulated)',
-          when: 'Thu 3 Dec, 2–3:30pm', bring: 'Your team’s finale answer and field notes', fallback: 'In-class drawing session with the art department' },
+        next: { ...SEED.defaultNext(), ...TEMPLATES.lost_museum.questDefaults.next },
         draftGenerated: true,
       },
       contributor: normContributor({
@@ -191,12 +234,7 @@ const Engine = (() => {
     } catch (e) {
       /* corrupted or unavailable storage -> fresh demo */
     }
-    useDefaults();
-    const f = freshState();
-    syncRoster(f);
-    snapInto(f);
-    f.journey = defaultJourney(f);
-    return f;
+    return freshDemo();
   }
 
   function seedSources() {
@@ -372,10 +410,7 @@ const Engine = (() => {
     },
 
     resetDemo() {
-      useDefaults(); // seats must come from the default quest's groups, not the last quest's
-      state = freshState();
-      syncRoster(state);
-      state.journey = defaultJourney(state);
+      state = freshDemo();
       SEED.useStructure(state.quest.structure); SEED.useContent(state.content);
       snapInto(state);
       audit('system', 'Demo reset to seeded state.');
@@ -849,38 +884,7 @@ const Engine = (() => {
     },
 
     /* ----- quest library (educator) ----- */
-    createQuest(s, { template, title, structure }) {
-      if (s.phase !== 'LOBBY') return { ok: false, msg: 'End the live session first (Live session → back to the lobby).' };
-      const tpl = TEMPLATES[template] ? template : 'blank';
-      snapInto(s);
-      const st = { ...SEED.defaultStructure(), ...(structure || {}) };
-      st.tracks = Number(st.tracks); st.classSize = Number(st.classSize); st.expertGroup = Number(st.expertGroup);
-      st.expertGroup = Math.max(1, Math.min(st.expertGroup, Math.ceil(st.classSize / st.tracks))); // can't be bigger than the experts per track
-      const bad = structureProblem(st.tracks, st.classSize, st.expertGroup);
-      if (bad) return { ok: false, msg: bad };
-      const id = 'q' + Date.now().toString(36);
-      SEED.useStructure(st);
-      const content = clone(TEMPLATES[tpl]);
-      SEED.useContent(content);
-      const t = String(title || '').trim() || (tpl === 'blank' ? 'Untitled quest' : content.title);
-      content.title = t;
-      s.quest = { id, title: t, objective: tpl === 'lost_museum' ? 'Interpret evidence from multiple perspectives' : '', venue: tpl === 'lost_museum' ? 'The Fitzwilliam Museum, Cambridge' : '',
-        duration: 60, classSize: 20, status: 'DRAFT', draftGenerated: true, safety: false, templateId: tpl, partner: { ...SEED.partnerDefaults }, next: SEED.defaultNext(), structure: st, audience: SEED.defaultAudience() };
-      SEED.ensureContentShape(content);
-      Object.keys(content.missions).forEach((k) => { if (!SEED.topics.includes(k)) delete content.missions[k]; });
-      Object.values(content.missions).forEach((m) => { m.backupCode = SEED.newBackupCode(); });
-      s.quest.classSize = st.classSize;
-      s.content = content;
-      s.tracks = Object.fromEntries(SEED.topics.map((x) => [x, tpl === 'blank' || !content.missions[x].name ? 'EMPTY' : 'TEMPLATE']));
-      s.revisions = {};
-      s.sources = tpl === 'lost_museum' ? seedSources() : seedSources().filter((x) => x.kind === 'partner').map((x) => ({ ...x, id: 'S1' }));
-      s.contributor = normContributor({ text: tpl === 'lost_museum' ? SEED.contributor.defaultContribution : '', status: tpl === 'lost_museum' ? 'CONTRIBUTED' : 'INVITED', interactionPrompt: 0, extraPrompts: [], prompts: [...SEED.contributor.prompts] });
-      s.activeQuest = id;
-      SEED.useStructure(s.quest.structure); SEED.useContent(s.content);
-      resetPlay(s);
-      audit('teacher', `Created quest “${t}” (${tpl === 'blank' ? 'blank' : 'from template ' + content.meta.name}).`);
-      return { ok: true, msg: `Created “${t}”.`, id };
-    },
+    createQuest(s, opts) { return makeQuest(s, opts || {}); },
     openQuest(s, { id }) {
       if (id === s.activeQuest) return { ok: true, silent: true };
       if (!s.library[id]) return { ok: false, msg: 'Quest not found.' };
@@ -912,7 +916,18 @@ const Engine = (() => {
       if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Published quests are frozen — create a new quest to change it.' };
       if (s.phase !== 'LOBBY') return { ok: false, msg: 'End the live session first.' };
       const L = SEED.topics.slice(), i = L.indexOf(topic), st = s.quest.structure;
-      if (i < 0 || L.length <= 1) return { ok: false, msg: 'A quest needs at least one track.' };
+      if (i < 0) return { ok: false };
+      if (L.length <= 1) {
+        const old = s.content.missions[topic], b = SEED.buildTrack(topic, { name: '', evidence: [''], hints: [] });
+        s.content.missions[topic] = { ...b.mission, stationCode: old.stationCode };
+        s.content.topicMeta[topic] = { ...s.content.topicMeta[topic], name: 'Track ' + topic, label: 'Track ' + topic };
+        s.content.peerTeaching.checkOptions[topic] = b.check;
+        s.tracks[topic] = 'EMPTY'; delete s.revisions[topic];
+        s.quest.structure = { ...s.quest.structure, tracks: 0 };
+        SEED.syncFinaleObjects(s.content);
+        audit('teacher', 'Removed the last track — starting from zero.');
+        return { ok: true, msg: 'No tracks now — add one when you’re ready.' };
+      }
       const t = L.length - 1, n = Math.max(st.classSize, 2), g = Math.min(st.expertGroup, Math.ceil(n / t));
       const bad = structureProblem(t, n, g);
       if (bad) return { ok: false, msg: bad };
@@ -1003,7 +1018,8 @@ const Engine = (() => {
     },
     removeSource(s, { id }) {
       const i = s.sources.findIndex((x) => x.id === id);
-      if (i < 0 || s.sources[i].kind !== 'educator') return { ok: false, msg: 'Only sources you added can be removed.' };
+      if (i < 0) return { ok: false };
+      if (s.sources[i].kind === 'partner') return { ok: false, msg: 'Your partner’s notes come from them — they change them in their own view.' };
       if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'The quest is published — sources are frozen for this version.' };
       const [x] = s.sources.splice(i, 1);
       audit('teacher', `Removed source ${x.id}.`);
@@ -1074,6 +1090,24 @@ const Engine = (() => {
     },
 
     /* ----- collectibles (educator) ----- */
+    addCollectible(s) {
+      if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Published quests are frozen.' };
+      const used = new Set(s.content.collectibles.map((c) => c.home)), home = SEED.homeGroups.find((h) => !used.has(h)) || SEED.homeGroups[0];
+      const base = TEMPLATES.lost_museum.collectibles, i = s.content.collectibles.length;
+      const id = 'card_' + Date.now().toString(36);
+      s.content.collectibles.push({ id, title: '', activity: '', fact: '', home, color: base[i % base.length].color, category: 'Discovery', promptLabel: 'Your team’s discovery', ...SEED.defaultEarn(), kind: 'track', track: SEED.topics[0] });
+      s.bonus[id] = { status: 'AVAILABLE', answer: '', simulated: false };
+      return { ok: true, msg: 'Card added — give it a name and choose how it’s earned.', id };
+    },
+    removeCollectible(s, { collectibleId }) {
+      if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Published quests are frozen.' };
+      const i = s.content.collectibles.findIndex((c) => c.id === collectibleId);
+      if (i < 0) return { ok: false };
+      const [c] = s.content.collectibles.splice(i, 1);
+      delete s.bonus[collectibleId];
+      audit('teacher', `Removed the card “${c.title || 'untitled'}”.`);
+      return { ok: true, msg: 'Card removed.' };
+    },
     editCollectible(s, { collectibleId, fields }) {
       if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Published quests are frozen.' };
       const c = s.content.collectibles.find((x) => x.id === collectibleId);
@@ -1082,6 +1116,7 @@ const Engine = (() => {
       ['title', 'activity', 'fact'].forEach((k) => { if (typeof f[k] === 'string') c[k] = f[k].trim().slice(0, 200); });
       if (SEED.EARN_TEXT[f.kind]) c.kind = f.kind;
       if (SEED.topics.includes(f.track)) c.track = f.track;
+      if (SEED.homeGroups.includes(f.home)) c.home = f.home;
       if (typeof f.hidden === 'boolean') c.hidden = f.hidden;
       if (typeof f.evolves === 'boolean') c.evolves = f.evolves;
       audit('teacher', `Edited collectible “${c.title || c.id}”.`);
@@ -1308,7 +1343,7 @@ const Engine = (() => {
     if (s.bonus[card.id]) s.bonus[card.id].status = 'CLAIMED';
     audit(actor, `${card.title || 'Collectible'} claimed for ${card.home} (${why}).`);
     let masterNow = false;
-    if (!s.master && SEED.collectibles.every((c) => s.claims[c.id])) {
+    if (!s.master && SEED.collectibles.length && SEED.collectibles.every((c) => s.claims[c.id])) {
       s.master = { at: Date.now() };
       masterNow = true;
       audit('system', `${SEED.master.title} unlocked for the class (exactly once).`);
@@ -1362,9 +1397,7 @@ const Engine = (() => {
     emit({ type: 'remote' });
   }
   function freshShared() {
-    useDefaults();
-    const { ui, ...rest } = freshState();
-    rest.journey = defaultJourney(rest);
+    const { ui, ...rest } = freshDemo();
     return rest;
   }
 

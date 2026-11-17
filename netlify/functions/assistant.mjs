@@ -16,13 +16,14 @@ const SYSTEM = `You are the quest assistant inside WorldQuest, helping an educat
 
 The quest's expert tracks are listed under CURRENT TRACKS (one letter each, with their current fields and assessment). Each student investigates one track at a real location, then teaches their home team; an escape-room finale needs every perspective.
 
-What you can change, by calling tools (every change is a proposal the educator approves):
-- a track's wording: name, location, key object, the question it asks (narrative), what students do there (observe), discussion question, backup route (fallback), teach-back headline — revise_track;
-- a track's lists: evidence prompts, hints, success criteria (what a good answer includes) — set_track_list (send the whole new list);
-- how a track is assessed: check-in (photo checked by AI, photo checked by the teacher, QR clue card, none), evidence type (notes, photo, notes and photo), who verifies (teacher, community partner, automatic when the quick check is passed), and a multiple-choice quick check with a pass mark — set_assessment (send the whole assessment; copy unchanged values from CURRENT TRACKS);
-- the teach-back check statements a teammate chooses from, with which are correct and the misconception each wrong one shows — set_teachback_check;
-- the quest settings: title, learning objective, venue, session length, ages — update_quest_settings (empty string or 0 = leave unchanged).
-What you can't change: the number of tracks or the groups (Quest settings → Groups), the finale, collectibles, the next experience, or publishing. If asked, say where in the builder the educator can do it. If asked what you can do, list the above briefly.
+What you can change, by calling tools (track changes are proposals the educator approves; everything else applies directly and the educator can undo it by hand):
+- tracks: add or remove tracks and set the class size — set_groups / remove_track; a track's wording (name, location, key object, the big question, what students do, discussion, backup plan, what they teach their team) — revise_track; its lists (questions students answer in their notes, hints, what a good answer includes) — set_track_list; how it is assessed (photo / QR check-in, notes / photo, multiple-choice questions and pass mark, who checks) — set_assessment; the statements a teammate picks from — set_teachback_check;
+- the finale: title, the "which statement claims too much" question and statements, the sentences teams build their answer from, the tempting overclaims, and what the teacher checks — set_finale (empty = unchanged);
+- reward cards: add, edit or remove (name, team, how it's earned, bonus activity, fun fact) — set_card / remove_card;
+- the story opening and reflection questions — set_story / set_reflection;
+- approved sources: add one from text the educator gives you — add_source;
+- quest settings: title, learning goal, venue, minutes, ages — update_quest_settings.
+What only the educator can do: approve tracks, publish, run the live session; and only the partner can sign off. Never claim to have done those. If asked what you can do, list the above briefly.
 
 Rules you must follow:
 - Use ONLY facts from the APPROVED SOURCES provided. Each has an id (S1, S2, ...). Never invent facts, dates, object details or cultural interpretations. A quick-check question must be answerable by looking at the object or from an approved source, and only from that track's own evidence. If a request needs facts the sources don't contain, say so and suggest adding a source.
@@ -57,6 +58,23 @@ const TOOLS = [
     topic: { type: "string", enum: TOPICS },
     statements: { type: "array", items: { type: "object", additionalProperties: false, required: ["text", "correct", "misconception"],
       properties: { text: { type: "string" }, correct: { type: "boolean" }, misconception: { type: "string", description: "Short label of the misconception a wrong statement shows; empty for correct ones." } } } } }),
+  tool("set_groups", "Set how many tracks the quest has (1-6) and the class size (2-60). New tracks start empty; removing tracks deletes the last ones (use remove_track to remove a specific one).", {
+    tracks: { type: "integer" }, class_size: { type: "integer" } }),
+  tool("remove_track", "Remove one track; later tracks move up a letter.", { topic: { type: "string", enum: TOPICS } }),
+  tool("set_finale", "Change the finale. Use an empty string or empty list for anything that should stay unchanged.", {
+    title: { type: "string" }, question: { type: "string" },
+    statements: { type: "array", items: { type: "object", additionalProperties: false, required: ["text", "correct"], properties: { text: { type: "string" }, correct: { type: "boolean", description: "true = appropriately cautious" } } } },
+    evidence_sentences: { type: "array", items: { type: "string" } }, perspective_sentences: { type: "array", items: { type: "string" } },
+    uncertainty_sentences: { type: "array", items: { type: "string" } }, invite_sentences: { type: "array", items: { type: "string" } },
+    overclaim_sentences: { type: "array", items: { type: "string" } }, teacher_checks: { type: "array", items: { type: "string" } } }),
+  tool("set_card", "Add a reward card (card_id \"new\") or edit one (its id from CURRENT CARDS).", {
+    card_id: { type: "string" }, title: { type: "string" }, team: { type: "string", description: "Home team id like H1, or empty" },
+    earned_when: { type: "string", enum: ["track", "experts", "finale", "bonus", "egg", "teacher"] }, track: { type: "string", description: "Track letter for earned_when=track, or empty" },
+    activity: { type: "string" }, fact: { type: "string" } }),
+  tool("remove_card", "Remove a reward card.", { card_id: { type: "string" } }),
+  tool("set_story", "Replace the story opening students read at the briefing.", { opening: { type: "string" } }),
+  tool("set_reflection", "Replace the reflection questions (1-5).", { questions: { type: "array", items: { type: "string" } } }),
+  tool("add_source", "Add an approved source from text the educator gave you in this conversation.", { title: { type: "string" }, url: { type: "string" }, text: { type: "string" } }),
   tool("update_quest_settings", "Change the quest settings. Use an empty string or 0 for anything that should stay unchanged.", {
     title: { type: "string" }, objective: { type: "string" }, venue: { type: "string" }, duration_minutes: { type: "integer" }, ages: { type: "string" } }),
 ];
@@ -272,7 +290,7 @@ export default async (req) => {
   if (raw.length > 400000) return json({ error: "too_large" }, 413);
   let body;
   try { body = JSON.parse(raw); } catch { return json({ error: "bad_json" }, 400); }
-  const { message, quest, tracks, sources, history, mode } = body || {};
+  const { message, quest, tracks, sources, history, mode, extras } = body || {};
   if (mode === "insight_chat") {
     try {
       const out = await insightChat(body);
@@ -333,6 +351,7 @@ export default async (req) => {
   const context = `QUEST SETTINGS: ${JSON.stringify(quest || {})}
 CURRENT TRACKS (approved by the educator or awaiting approval): ${JSON.stringify(tracks || {})}
 APPROVED SOURCES: ${JSON.stringify(sources || [])}
+REST OF THE QUEST (groups, finale, cards, story, reflection): ${JSON.stringify(extras || {}).slice(0, 14000)}
 
 EDUCATOR'S REQUEST: ${message.trim()}`;
 
@@ -355,7 +374,7 @@ EDUCATOR'S REQUEST: ${message.trim()}`;
     const edits = response.content
       .filter((b) => b.type === "tool_use")
       .map((b) => ({ tool: b.name, input: b.input }))
-      .filter((e) => e.tool === "update_quest_settings" || TOPICS.includes(e.input?.topic))
+      .filter((e) => !["revise_track", "set_track_list", "set_assessment", "set_teachback_check", "add_hint", "remove_track"].includes(e.tool) || TOPICS.includes(e.input?.topic))
       .map((e) => ({ ...e, input: { ...e.input, source_ids: (e.input.source_ids || []).filter((id) => knownIds.has(id)) } }));
     return json({
       reply: reply || (edits.length ? "I've proposed the changes below — please review them." : "Done."),
