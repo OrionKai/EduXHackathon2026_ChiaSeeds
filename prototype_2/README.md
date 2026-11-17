@@ -65,11 +65,12 @@ Google Fonts load when online, with safe system fallbacks offline.)
 For quick demos and screenshots, boot straight into a scripted state (every step still
 runs through the guarded engine actions):
 
+- Add `&offline=1` to keep it on this device: each link resets the demo, and without it that resets the shared class session too.
 - `?fast=expert&role=student` — expert mission open
 - `?fast=teach&role=student` — peer-teaching board (own teach-back left to play)
 - `?fast=finale&role=student` — unlocked finale board
-- `?fast=album3&role=student&screen=album` — album at 3/5
-- `?fast=album5&role=student&screen=album` — album complete with master unlocked
+- `?fast=album3&role=student&screen=album` — album with 3 cards claimed
+- `?fast=album5&role=student&screen=album` — every card claimed, class award unlocked
 - `role` = `student` / `teacher` / `collaborator`, `screen` = that role's tab
 
 Reference screenshots at 390px and 1440px live in `artifacts/screenshots/`.

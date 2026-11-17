@@ -465,6 +465,19 @@ const Engine = (() => {
     },
 
     /* ----- peer teaching ----- */
+    /* The expert has explained their part; the check now appears on teammates' own phones. */
+    askTeachCheck(s, { home, topic, by }) {
+      if (!['PEER_TEACH', 'FINALE'].includes(s.phase)) return { ok: false, msg: 'Peer teaching opens when the educator starts that phase.' };
+      const cell = s.peerTeach[home] && s.peerTeach[home][topic];
+      const expert = SEED.expertOf(home, topic);
+      if (!cell || !expert) return { ok: false };
+      if (by && by !== expert.id) return { ok: false, msg: 'Only the expert can send their check.' };
+      if (cell.shared) return { ok: false, msg: 'Already shared.' };
+      if (s.evidence[expert.id].status !== 'VERIFIED') return { ok: false, msg: 'Your evidence must be verified first.' };
+      cell.asking = true;
+      audit('student', `${expert.name} explained ${SEED.topicMeta[topic].name} and sent the check to home team ${home}.`);
+      return { ok: true, msg: 'Check sent — a teammate answers it on their own phone.' };
+    },
     shareTeachBack(s, { home, topic, checkerId, answerId }) {
       if (!['PEER_TEACH', 'FINALE'].includes(s.phase))
         return { ok: false, msg: 'Peer teaching opens when the educator starts that phase.' };
@@ -481,7 +494,7 @@ const Engine = (() => {
       const opt = SEED.peerTeaching.checkOptions[topic].find((o) => o.id === answerId);
       if (!opt) return { ok: false, msg: 'Choose a teach-back answer.' };
       if (!opt.correct)
-        return { ok: false, msg: 'Not quite — that overstates what the evidence can show. Listen again and retry.' };
+        return { ok: false, msg: 'Not quite — ask the expert to explain that part again, then try another answer.' };
       cell.shared = true;
       cell.presenter = expert.id;
       cell.checker = checkerId;
@@ -492,10 +505,17 @@ const Engine = (() => {
     },
 
     /* ----- finale ----- */
-    setFinaleMatch(s, { home, objectId, tag }) {
+    setFinaleMatch(s, { home, objectId, tag, by }) {
       const f = s.finale[home];
       if (!sel.finaleUnlocked(home)) return { ok: false, msg: 'The finale is still locked.' };
       if (['SUBMITTED', 'APPROVED'].includes(f.status)) return { ok: false, msg: 'Already submitted.' };
+      /* Each expert places their own piece from their own phone (teammates without a device can be helped). */
+      if (by) {
+        const ownerOf = (tg) => { const t = SEED.topicsFor(home).find((x) => SEED.topicMeta[x].tag === tg); return t ? SEED.expertOf(home, t) : null; };
+        for (const o of [ownerOf(tag), ownerOf(f.match[objectId])]) {
+          if (o && o.id !== by && s.seats[o.id]) return { ok: false, msg: `That’s ${s.seats[o.id].nick}’s piece — ask them to place it from their phone.` };
+        }
+      }
       f.status = 'AVAILABLE';
       if (tag === null) delete f.match[objectId];
       else {

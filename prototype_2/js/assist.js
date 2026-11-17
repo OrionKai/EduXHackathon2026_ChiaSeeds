@@ -79,7 +79,7 @@ const Assistant = (() => {
         <form class="as-compose" data-as-form><label class="sr-only" for="as-in">Message the assistant</label>
           <input class="input" id="as-in" placeholder="${mode === 'live' ? 'Ask for a change, e.g. “make Track B shorter”' : 'Live AI is off — edit by hand below'}" autocomplete="off" ${busy ? 'disabled' : ''}>
           <button class="btn btn-primary btn-sm" type="submit" ${busy ? 'disabled' : ''}>Send</button></form>
-        <p class="hint-note" style="margin:0">AI drafts at design time only. Gameplay never calls AI, so the quest keeps working offline.</p>
+        <p class="hint-note" style="margin:0">AI drafts at design time. During play, AI is used only if a track uses the optional “Photo · AI checks” check-in — the photo is discarded after the check, and if AI is unavailable your teacher confirms instead.</p>
       </div>`;
   }
   function board() {
@@ -566,5 +566,11 @@ const Assistant = (() => {
     });
   }
 
+  /* Is the live AI endpoint deployed here? A GET costs nothing (the function answers 405); a plain static server answers 404. */
+  try {
+    fetch('/api/assistant', { method: 'GET' }).then((r) => {
+      if (r.status !== 405 && mode === 'live') { mode = 'simulated'; lastNotice = 'Live AI isn’t deployed on this server — scripted mode.'; window.WQ && window.WQ.render(); }
+    }).catch(() => { if (mode === 'live') { mode = 'simulated'; window.WQ && window.WQ.render(); } });
+  } catch {}
   return { chat, board, bind, generate, listEd, readList, setSpeed: (v) => { speed = v; }, setMode: (m) => { mode = m; } };
 })();

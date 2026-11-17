@@ -176,18 +176,26 @@ const SEED = {
       A: [
         { id: 'a_ok', text: 'They observed real physical details, and noted one artifact cannot represent everyone.', correct: true },
         { id: 'a_no', text: 'They proved everyone in ancient Egypt owned a decorated coffin.', correct: false },
+        { id: 'a_no2', text: 'They used the decoration to work out exactly what Nespawershefyt believed.', correct: false },
+        { id: 'a_no3', text: 'They showed the painting was for display in a museum, not for burial.', correct: false },
       ],
       B: [
         { id: 'b_ok', text: 'They showed a monumental object commemorates power — and leaves gaps in whose history survives.', correct: true },
         { id: 'b_no', text: 'They showed all ancient people were remembered equally.', correct: false },
+        { id: 'b_no2', text: 'They showed the lid proves Ramesses III was a popular ruler.', correct: false },
+        { id: 'b_no3', text: 'They showed the size of the lid tells us exactly how powerful Egypt was.', correct: false },
       ],
       C: [
         { id: 'c_ok', text: 'They compared two object types that answer different historical questions.', correct: true },
         { id: 'c_no', text: 'They found one object type that explains the whole society.', correct: false },
+        { id: 'c_no2', text: 'They showed painted pottery was only ever owned by the rich.', correct: false },
+        { id: 'c_no3', text: 'They showed an object keeps the same use for its whole life.', correct: false },
       ],
       D: [
         { id: 'd_ok', text: 'They gathered a contributor’s perspective and named whose voices might be missing.', correct: true },
         { id: 'd_no', text: 'They confirmed one person’s view counts as established museum fact.', correct: false },
+        { id: 'd_no2', text: 'They showed the relief tells us everything about the person carved on it.', correct: false },
+        { id: 'd_no3', text: 'They found that missing voices don’t matter as long as the object survives.', correct: false },
       ],
     },
   },
@@ -197,8 +205,8 @@ const SEED = {
     objects: [
       { id: 'coffin_nespawershefyt', label: 'Nespawershefyt’s coffin set', gallery: 'Gallery 19', answer: 'OBJECT_EVIDENCE' },
       { id: 'lid_ramesses_iii', label: 'Sarcophagus lid of Ramesses III', gallery: 'Gallery 20', answer: 'POWER_MEMORY' },
-      { id: 'gallery_21_object_types', label: 'Gallery 21 object types', gallery: 'Gallery 21', answer: 'MULTIPLE_LIVES' },
-      { id: 'gallery_24_and_contributor', label: 'Gallery 24 + contributor voices', gallery: 'Gallery 24', answer: 'CONNECTIONS_VOICES' },
+      { id: 'gallery_21_object_types', label: 'A piece of painted pottery', gallery: 'Gallery 21', answer: 'MULTIPLE_LIVES' },
+      { id: 'gallery_24_and_contributor', label: 'A grave relief from Palmyra', gallery: 'Gallery 24', answer: 'CONNECTIONS_VOICES' },
     ],
     overclaim: {
       question: 'Which exhibition principle is appropriately cautious?',
@@ -308,13 +316,13 @@ const TEMPLATES = {
 TEMPLATES.lost_museum.meta = { id: 'lost_museum', name: 'The Lost Museum', blurb: 'Fitzwilliam Museum, Cambridge · four galleries · ancient world' };
 /* How each track is assessed: check-in at the place, what evidence students submit, an optional
    multiple-choice check with a pass mark, and who verifies it. */
-SEED.defaultAssess = () => ({ checkin: 'photo_ai', evidence: 'notes', quiz: [], pass: 0, verify: 'teacher' });
+SEED.defaultAssess = () => ({ checkin: 'photo_teacher', evidence: 'notes', quiz: [], pass: 0, verify: 'teacher' });
 SEED.topics.forEach((t) => { TEMPLATES.lost_museum.missions[t].assess = SEED.defaultAssess(); });
 /* Something students can actually photograph at each station of the example quest. */
 Object.entries({ A: 'Nespawershefyt’s coffin set', B: 'the sarcophagus lid of Ramesses III', C: 'a piece of painted pottery', D: 'a grave relief from Palmyra' })
   .forEach(([t, k]) => { TEMPLATES.lost_museum.missions[t].keyObject = k; });
 SEED.ASSESS_TEXT = {
-  checkin: { photo_ai: 'Photo of the object, checked by AI', photo_teacher: 'Photo of the object, checked by the educator', qr: 'QR clue card or facilitator code', none: 'No check-in' },
+  checkin: { photo_ai: 'Photo of the object, checked by AI (sent to the AI, then discarded)', photo_teacher: 'Photo of the object, checked by the educator', qr: 'QR clue card or facilitator code', none: 'No check-in' },
   evidence: { notes: 'Written field notes', photo: 'A photo of the object', notes_photo: 'Field notes and a photo' },
   verify: { teacher: 'Educator verifies', partner: 'Community partner verifies', auto: 'Automatic when the quiz is passed' },
 };

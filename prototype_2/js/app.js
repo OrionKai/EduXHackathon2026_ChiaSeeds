@@ -476,35 +476,52 @@
           return `<div class="jig-tile ${meta.color} ${cell.shared ? 'shared' : ''}">
             <div class="topic-dot">${Art.icon(meta.icon, 18)}</div>
             <h4>${t} · ${esc(meta.name)}</h4>
-            <span class="who">${esc(expert.name)}${expert.id === me.id ? ' (you)' : ''}${cell.simulated ? ' · simulated' : ''}</span>
-            <div style="margin-top:8px">${cell.shared ? statusChip('VERIFIED').replace('Verified', 'Shared') : evs === 'VERIFIED' ? statusChip('AVAILABLE').replace('Available', 'Ready to teach') : statusChip('LOCKED').replace('Locked', 'Evidence not verified')}</div>
-            ${!cell.shared && evs === 'VERIFIED' ? `<div style="margin-top:10px"><button class="btn btn-sm btn-secondary" data-a="teach-open" data-topic="${t}">${Art.icon('voices', 15)} Log teach-back</button></div>` : ''}
+            <span class="who">${esc(who(expert))}${expert.id === me.id ? ' (you)' : ''}${cell.simulated ? ' · simulated' : ''}</span>
+            <div style="margin-top:8px">${cell.shared ? statusChip('VERIFIED').replace('Verified', 'Shared') : evs !== 'VERIFIED' ? statusChip('LOCKED').replace('Locked', 'Evidence not verified') : cell.asking ? '<span class="pill peach">check sent</span>' : statusChip('AVAILABLE').replace('Available', 'Ready to teach')}</div>
+            ${cell.shared || evs !== 'VERIFIED' ? '' : teachAction(st, me, t, expert, cell)}
           </div>`;
         }).join('')}
       </div>
-      ${st.ui.teachTopic ? teachForm(st, me, st.ui.teachTopic) : ''}
+      ${st.ui.teachTopic && !shared[st.ui.teachTopic].shared ? teachForm(st, me, st.ui.teachTopic) : ''}
       ${doneCount === myTopics.length ? `<div class="card wash-mint burst"><strong>${Art.icon('check', 17)} All ${myTopics.length} perspectives shared!</strong> The finale unlocks when your educator opens the next phase.</div>` : ''}`;
   }
 
+  /* Who can do what on this phone: the expert sends the check; a teammate answers it on their own phone.
+     Teammates without a device (simulated in the demo) can be answered for, clearly labelled. */
+  const onDevice = (st, p) => !!st.seats[p.id] || p.id === st.ui.student;
+  function teachAction(st, me, t, expert, cell) {
+    const btn = (a, label, icon) => `<div style="margin-top:10px"><button class="btn btn-sm btn-secondary" data-a="${a}" data-topic="${t}">${Art.icon(icon, 15)} ${label}</button></div>`;
+    const mates = SEED.homeMembers(me.home).filter((p) => p.id !== expert.id);
+    const offline = mates.filter((p) => !onDevice(st, p));
+    if (expert.id === me.id) {
+      if (!cell.asking) return btn('teach-ask', 'I’ve explained it — send the check', 'voices');
+      return `<p class="hint-note" style="margin:8px 0 0">Waiting for a teammate to answer on their phone…</p>${offline.length ? btn('teach-open', 'Answer for a teammate without a phone', 'team') : ''}`;
+    }
+    if (cell.asking) return btn('teach-open', `Answer ${esc(who(expert))}’s check`, 'check');
+    return onDevice(st, expert) ? `<p class="hint-note" style="margin:8px 0 0">Listen to ${esc(who(expert))} first.</p>` : '';
+  }
+  /* Options in a stable shuffled order, so the right answer isn't always first. */
+  const shuffled = (opts, salt) => opts.slice().sort((a, b) => hashStr(salt + a.id) - hashStr(salt + b.id));
+  const hashStr = (x) => { let h = 7; for (const ch of String(x)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; };
   function teachForm(st, me, topic) {
     const home = me.home;
     const expert = SEED.expertOf(home, topic);
-    const mates = SEED.homeMembers(home).filter((p) => p.id !== expert.id);
-    const opts = SEED.peerTeaching.checkOptions[topic];
+    const forOther = expert.id === me.id; // the expert answering for a teammate who has no device
+    const mates = SEED.homeMembers(home).filter((p) => p.id !== expert.id && (forOther ? !onDevice(st, p) : true));
+    const opts = shuffled(SEED.peerTeaching.checkOptions[topic], home + topic);
     return `
       <form class="card" data-form="teach" data-topic="${topic}">
-        <div class="spread"><h3>${esc(expert.name)} teaches ${esc(SEED.topicMeta[topic].name)}</h3>${topicChip(topic)}</div>
-        <p class="hint-note">${esc(SEED.peerTeaching.prompt)} The expert talks for ~2 minutes off-screen; then a teammate answers:</p>
-        <div class="fld-group">
-          <label class="fld" for="checker">Which teammate answers the check?</label>
-          <select class="input" id="checker" name="checker">${mates.map((p) => `<option value="${p.id}">${esc(who(p))}</option>`).join('')}</select>
-        </div>
-        <div class="fld-group" role="radiogroup" aria-label="Teach-back answer">
+        <div class="spread"><h3>Quick check: ${esc(SEED.topicMeta[topic].name)}</h3>${topicChip(topic)}</div>
+        <p class="hint-note">${forOther ? 'Your teammate has no phone in this session (simulated in the demo). Let them choose, then enter their answer.' : `${esc(who(expert))} just explained their part. Which statement fits what they found?`}</p>
+        ${forOther ? `<div class="fld-group"><label class="fld" for="checker">Teammate answering</label>
+          <select class="input" id="checker" name="checker">${mates.map((p) => `<option value="${p.id}">${esc(who(p))}${st.evidence[p.id].simulated ? ' · simulated' : ''}</option>`).join('')}</select></div>`
+          : `<input type="hidden" name="checker" value="${me.id}">`}
+        <div class="fld-group" role="radiogroup" aria-label="Your answer">
           ${opts.map((o) => `<label class="tile-pick" style="display:flex;gap:9px;align-items:flex-start">
             <input type="radio" name="answer" value="${o.id}" style="margin-top:4px;accent-color:var(--violet)"> <span>${esc(o.text)}</span></label>`).join('')}
         </div>
         <div class="row">
-          <button class="btn btn-primary" type="submit">${Art.icon('check', 17)} Mark as shared</button>
+          <button class="btn btn-primary" type="submit">${Art.icon('check', 17)} Submit answer</button>
           <button class="btn btn-ghost" type="button" data-a="teach-close">Cancel</button>
         </div>
       </form>`;
@@ -543,22 +560,25 @@
         <p style="max-width:56ch">Use every expert’s knowledge. Three puzzle panels, one shared answer.</p>
       </div>
       <div class="card">
-        <h3>Panel 1 · Match the evidence</h3>
-        <p class="hint-note">Tap an object, then the perspective it helps investigate. (Fully keyboard accessible — no dragging needed.)</p>
+        <h3>Panel 1 · Everyone places their piece</h3>
+        <p class="hint-note">Each expert places the object they investigated into their own perspective, from their own phone. Tap the object, then your perspective. Explain your choice to the team out loud.</p>
+        <div class="card wash-lavender" style="padding:12px 16px;margin:0 0 12px"><div class="eyebrow">Only on your phone</div>
+          <p style="margin:0">You studied <strong>${esc(SEED.keyObjectOf(me.topic))}</strong> in ${esc(SEED.missions[me.topic].gallery)}. Find it on the board and place it under <strong>${esc(SEED.topicMeta[me.topic].name)}</strong>. Your teammates hold the other pieces — ask them.</p></div>
         <div class="match-board">
           <div class="stack" style="gap:8px" role="group" aria-label="Objects">
             ${fin.objects.filter((o) => SEED.topicsFor(home).some((t) => SEED.topicMeta[t].tag === o.answer)).map((o) => {
               const placedTag = f.match[o.id];
               return `<button type="button" class="match-obj ${placedTag ? 'placed' : ''}" data-a="pick-obj" data-obj="${o.id}" aria-pressed="${picked === o.id}">
-                ${Art.icon('lens', 15)} ${esc(o.label)} <small>· ${esc(o.gallery)}</small>${placedTag ? `<span class="assigned" style="color:var(--success)">→ ${esc(tagName(placedTag))}</span>` : ''}</button>`;
+                ${Art.icon('lens', 15)} ${esc(o.label)}${placedTag ? `<span class="assigned" style="color:var(--success)">→ ${esc(tagName(placedTag))}</span>` : ''}</button>`;
             }).join('')}
           </div>
           <div class="stack" style="gap:8px" role="group" aria-label="Perspectives">
             ${SEED.topicsFor(home).map((t) => {
               const tag = SEED.topicMeta[t].tag;
               const obj = Object.entries(f.match).find(([, v]) => v === tag);
+              const owner = SEED.expertOf(home, t), mine = owner && owner.id === me.id, theirs = owner && !mine && onDevice(st, owner);
               return `<button type="button" class="match-slot ${obj ? 'filled' : ''}" data-a="pick-slot" data-tag="${tag}">
-                ${topicChip(t)}<span class="assigned">${obj ? esc(fin.objects.find((o) => o.id === obj[0]).label) + ' ✦' : 'place an object here'}</span></button>`;
+                ${topicChip(t)}<span class="assigned">${obj ? esc(fin.objects.find((o) => o.id === obj[0]).label) + ' ✦' : mine ? 'your piece goes here' : theirs ? esc(who(owner)) + ' places this' : 'place it for ' + esc(who(owner || {})) + ' (no phone)'}</span></button>`;
             }).join('')}
           </div>
         </div>
@@ -634,6 +654,7 @@
           <div class="eyebrow">Two-minute reflection</div>
           <h3>Before you go…</h3>
           ${SEED.reflection.map((q, i) => `<div class="fld-group"><label class="fld" for="refl-${i}">${esc(q)}</label><textarea id="refl-${i}" class="input" name="r${i}" rows="2">${esc(st.ui.drafts?.[me.id]?.['r' + i] || '')}</textarea></div>`).join('')}
+          <p class="hint-note" style="margin:0 0 10px">Your teacher reads this. (In this prototype, class data sits in one shared demo database; a real deployment keeps reflections teacher-only.)</p>
           <button class="btn btn-primary" type="submit">${Art.icon('check', 17)} Save my reflection</button>
         </form>`}`;
   }
@@ -1214,6 +1235,7 @@
           case 'lookup': return act('setLookUp', { on: true });
           case 'lookup-off': return act('setLookUp', { on: false });
           case 'teach-open': S().ui.teachTopic = el.dataset.topic; render(); return;
+          case 'teach-ask': { const me = SEED.byId[S().ui.student]; return act('askTeachCheck', { home: me.home, topic: el.dataset.topic, by: me.id }); }
           case 'teach-close': S().ui.teachTopic = null; render(); return;
           case 'pick-obj': S().ui.pickedObject = S().ui.pickedObject === el.dataset.obj ? null : el.dataset.obj; render(); return;
           case 'pick-slot': {
@@ -1221,7 +1243,7 @@
             const me = SEED.byId[S().ui.student];
             if (!obj) { toast('Tap an object first, then its perspective.', 'error'); return; }
             S().ui.pickedObject = null;
-            return act('setFinaleMatch', { home: me.home, objectId: obj, tag: el.dataset.tag }), render();
+            return act('setFinaleMatch', { home: me.home, objectId: obj, tag: el.dataset.tag, by: me.id }), render();
           }
           case 'overclaim': { const me = SEED.byId[S().ui.student]; return act('setFinaleOverclaim', { home: me.home, optionId: el.dataset.opt }), render(); }
           case 'tile': { const me = SEED.byId[S().ui.student]; return act('toggleFinaleTile', { home: me.home, tileId: el.dataset.tile }), render(); }
@@ -1411,9 +1433,12 @@
     if (fast) {
       const d = Engine.dispatch;
       d('resetDemo');
+      d('updateQuest', { field: 'safety', value: true });
       d('approveContribution');
-      d('generateDraft');
+      SEED.topics.forEach((t) => d('approveTrack', { topic: t }));
       d('publishQuest');
+      const j = d('joinClass', { nick: 'Demo explorer' });
+      if (j && j.pid) { markJoined(j.pid, 'Demo explorer'); d('setStudent', { id: j.pid }); }
       d('advancePhase'); // BRIEFING
       if (['expert', 'teach', 'finale', 'album3', 'album5'].includes(fast)) d('advancePhase'); // EXPERT
       if (fast !== 'expert' && fast !== 'briefing') {
@@ -1421,7 +1446,8 @@
         const me = SEED.byId[Engine.state.ui.student];
         const answers = {};
         SEED.missions[me.topic].evidenceFields.forEach((f) => (answers[f.key] = '[Demo answer] ' + f.label));
-        if (me.topic === 'D') d('verifyInteraction', { participantId: me.id });
+        if (SEED.missions[me.topic].needsFacilitator) d('verifyInteraction', { participantId: me.id });
+        d('checkIn', { participantId: me.id, code: SEED.missions[me.topic].backupCode });
         d('submitEvidence', { participantId: me.id, answers });
         d('reviewEvidence', { participantId: me.id, verdict: 'VERIFIED', reviewer: 'teacher' });
         d('simulateClassmates');
@@ -1431,13 +1457,14 @@
         const me = SEED.byId[Engine.state.ui.student];
         const checker = SEED.homeMembers(me.home).find((p) => p.id !== me.id);
         const answer = SEED.peerTeaching.checkOptions[me.topic].find((o) => o.correct);
+        d('askTeachCheck', { home: me.home, topic: me.topic, by: me.id });
         d('shareTeachBack', { home: me.home, topic: me.topic, checkerId: checker.id, answerId: answer.id });
         d('advancePhase'); // FINALE
       }
       if (fast === 'album3' || fast === 'album5') {
         d('simulateBonusSubmissions');
-        const n = fast === 'album5' ? 5 : 3;
-        SEED.collectibles.slice(0, n).forEach((c) => d('approveBonus', { collectibleId: c.id }));
+        const n = fast === 'album5' ? SEED.collectibles.length : 3; // album5 = every card
+        SEED.collectibles.slice(0, n).forEach((c) => (Engine.state.bonus[c.id] && Engine.state.bonus[c.id].status === 'SUBMITTED' ? d('approveBonus', { collectibleId: c.id }) : d('awardCollectible', { collectibleId: c.id })));
         lastReveal = null;
         if (fast === 'album5') d('markMasterSeen');
       }
