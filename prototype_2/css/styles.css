@@ -658,3 +658,10 @@ a.brand { text-decoration: none; color: inherit; }
   .me-row .identity-chip .nick { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .demo-drawer { top: calc(52px + env(safe-area-inset-top, 0px)); }
 }
+
+/* ---------- misconception insights (educator report) ---------- */
+.ins-track { border-top: 1px dashed var(--stroke); padding-top: 12px; }
+.miss-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.miss-list li { display: flex; gap: 10px; align-items: baseline; }
+.miss-n { font-weight: 700; color: #A44A3C; min-width: 2.2em; }
+.ins-theme { background: var(--paper); border-radius: 12px; padding: 10px 14px; }

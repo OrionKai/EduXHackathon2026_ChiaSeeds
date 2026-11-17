@@ -14,11 +14,13 @@
 const Engine = (() => {
   const STORAGE_KEY = 'worldquest-prototype2-v1';
   const QUEST_KEYS = ['quest', 'content', 'tracks', 'revisions', 'sources', 'contributor'];
-  const PLAY_KEYS = ['phase', 'evidence', 'peerTeach', 'finale', 'bonus', 'claims', 'master', 'reflections', 'seats', 'checkins', 'checkinPhotos', 'help', 'partnerFeedback', 'interactions', 'experience', 'evolved'];
+  const PLAY_KEYS = ['phase', 'evidence', 'peerTeach', 'finale', 'bonus', 'claims', 'master', 'reflections', 'seats', 'checkins', 'checkinPhotos', 'help', 'partnerFeedback', 'interactions', 'experience', 'evolved', 'misses', 'analysis'];
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
   /* ---------- initial state ---------- */
 
+  /* Wrong picks are kept (counts only) so the educator can see common misconceptions. */
+  const miss = (s, key) => { s.misses = s.misses || {}; s.misses[key] = (s.misses[key] || 0) + 1; };
   function freshState() {
     const evidence = {};
     for (const p of SEED.participants) {
@@ -151,6 +153,8 @@ const Engine = (() => {
     s.checkinPhotos = s.checkinPhotos || {};
     s.experience = s.experience || { unlocked: false, reason: '', checkins: {} };
     s.evolved = s.evolved || {};
+    s.misses = s.misses || {};
+    s.analysis = s.analysis || {};
     s.quest.next = { ...SEED.defaultNext(), ...(s.quest.next || {}) };
     (s.content.collectibles || []).forEach((c) => { if (!c.kind) Object.assign(c, SEED.defaultEarn()); });
     s.contributor.extraPrompts = s.contributor.extraPrompts || [];
@@ -425,7 +429,8 @@ const Engine = (() => {
       let score = null;
       if ((as.quiz || []).length) {
         score = as.quiz.filter((q, i) => quiz && Number(quiz[i]) === q.a).length;
-        if (score < (as.pass || 0)) return { ok: false, msg: `You got ${score} of ${as.quiz.length} — you need ${as.pass}. Look again at the object and retry.` };
+        as.quiz.forEach((q, i) => { if (quiz && quiz[i] != null && quiz[i] !== '' && Number(quiz[i]) !== q.a) miss(s, `quiz:${p.topic}:${i}:${Number(quiz[i])}`); });
+        if (score < (as.pass || 0)) return { ok: false, commit: true, msg: `You got ${score} of ${as.quiz.length} — you need ${as.pass}. Look again at the object and retry.` };
       }
       if (mission.needsFacilitator && !s.interactions[participantId])
         return {
@@ -465,6 +470,14 @@ const Engine = (() => {
     },
 
     /* ----- peer teaching ----- */
+    /* Educator-only: store an analysis of one track's written answers (AI or scripted). */
+    setAnalysis(s, { topic, result }) {
+      if (!SEED.topics.includes(topic) || !result || !Array.isArray(result.themes)) return { ok: false };
+      s.analysis = s.analysis || {};
+      s.analysis[topic] = result;
+      audit('teacher', `Analysed ${SEED.topicMeta[topic].name} answers (${result.by === 'ai' ? 'AI suggestion' : 'scripted'}).`);
+      return { ok: true, msg: result.themes.length ? `${result.themes.length} possible misconception${result.themes.length > 1 ? 's' : ''} found — check before acting.` : 'No clear misconceptions found.' };
+    },
     /* The expert has explained their part; the check now appears on teammates' own phones. */
     askTeachCheck(s, { home, topic, by }) {
       if (!['PEER_TEACH', 'FINALE'].includes(s.phase)) return { ok: false, msg: 'Peer teaching opens when the educator starts that phase.' };
@@ -493,8 +506,10 @@ const Engine = (() => {
         return { ok: false, msg: 'The expert cannot answer their own comprehension check — pick a teammate.' };
       const opt = SEED.peerTeaching.checkOptions[topic].find((o) => o.id === answerId);
       if (!opt) return { ok: false, msg: 'Choose a teach-back answer.' };
-      if (!opt.correct)
-        return { ok: false, msg: 'Not quite — ask the expert to explain that part again, then try another answer.' };
+      if (!opt.correct) {
+        miss(s, `teach:${topic}:${answerId}`);
+        return { ok: false, commit: true, msg: 'Not quite — ask the expert to explain that part again, then try another answer.' };
+      }
       cell.shared = true;
       cell.presenter = expert.id;
       cell.checker = checkerId;
@@ -555,18 +570,24 @@ const Engine = (() => {
       const tags = SEED.topicsFor(home).map((t) => SEED.topicMeta[t].tag);
       for (const o of SEED.finale.objects.filter((x) => tags.includes(x.answer))) {
         if (!f.match[o.id]) return { ok: false, msg: 'Match every object to a perspective first.' };
-        if (f.match[o.id] !== o.answer)
-          return { ok: false, msg: 'One of the matches does not fit — discuss as a team and try a different pairing.' };
+        if (f.match[o.id] !== o.answer) {
+          miss(s, `match:${o.id}:${f.match[o.id]}`);
+          return { ok: false, commit: true, msg: 'One of the pieces is in the wrong place — discuss as a team and try again.' };
+        }
       }
       // Panel 2 — cautious principle.
       const chosen = SEED.finale.overclaim.options.find((o) => o.id === f.overclaim);
       if (!chosen) return { ok: false, msg: 'Choose a statement in panel 2.' };
-      if (!chosen.correct)
-        return { ok: false, msg: 'That principle overclaims. Which statement stays within the evidence?' };
+      if (!chosen.correct) {
+        miss(s, 'overclaim:' + chosen.id);
+        return { ok: false, commit: true, msg: 'That principle overclaims. Which statement stays within the evidence?' };
+      }
       // Panel 3 — structural check of the composed introduction.
       const picked = SEED.finale.compose.tiles.filter((t) => f.tiles.includes(t.id));
-      if (picked.some((t) => t.trap))
-        return { ok: false, msg: 'One chosen sentence claims too much — your introduction should avoid overclaiming.' };
+      if (picked.some((t) => t.trap)) {
+        picked.filter((t) => t.trap).forEach((t) => miss(s, 'trap:' + t.id));
+        return { ok: false, commit: true, msg: 'One chosen sentence claims too much — your introduction should avoid overclaiming.' };
+      }
       const counts = {};
       for (const t of picked) counts[t.cat] = (counts[t.cat] || 0) + 1;
       const needs = SEED.finale.compose.needs;
@@ -978,11 +999,15 @@ const Engine = (() => {
         if (p.id === s.ui.student || s.seats[p.id] || (s.checkins[p.id] && s.checkins[p.id].via !== 'SIMULATED')) continue;
         const ev = s.evidence[p.id];
         if (ev.status !== 'VERIFIED') {
-          if (p.topic === 'D') s.interactions[p.id] = true;
-          s.checkins[p.id] = s.checkins[p.id] || { at: Date.now(), via: 'SIMULATED' };
           const mission = SEED.missions[p.topic];
-          const answers = {};
-          for (const f of mission.evidenceFields) answers[f.key] = '[Simulated demo answer] ' + f.label;
+          if (mission.needsFacilitator) s.interactions[p.id] = true;
+          s.checkins[p.id] = s.checkins[p.id] || { at: Date.now(), via: 'SIMULATED' };
+          const answers = {}, bank = (SEED.SAMPLE_INSIGHTS[s.quest.templateId] || {})[p.topic];
+          const k = SEED.participants.filter((x) => x.topic === p.topic).indexOf(p);
+          for (const f of mission.evidenceFields) {
+            answers[f.key] = bank && f.key === bank.field ? bank.answers[k % bank.answers.length].text
+              : bank && f.placeholder ? f.placeholder.replace(/^e\.g\.\s*/i, '').replace(/…$/, '.') : '[Simulated demo answer] ' + f.label;
+          }
           ev.quiz = mission.assess && mission.assess.quiz && mission.assess.quiz.length ? { score: mission.assess.quiz.length, total: mission.assess.quiz.length } : null;
           ev.answers = answers;
           ev.status = 'VERIFIED';
@@ -1003,6 +1028,10 @@ const Engine = (() => {
             cell.checker = checker.id;
             cell.answerId = SEED.peerTeaching.checkOptions[t].find((o) => o.correct).id;
             cell.simulated = true;
+            const wrong = SEED.peerTeaching.checkOptions[t].filter((o) => !o.correct);
+            const hIdx = SEED.homeGroups.indexOf(h);
+            const typical = ((SEED.SAMPLE_INSIGHTS[s.quest.templateId] || {})[t] || {}).simMiss;
+            if (wrong.length && hIdx % 5 !== 4) miss(s, `teach:${t}:${typical && hIdx % 3 !== 2 && wrong.some((o) => o.id === typical) ? typical : wrong[(hIdx + t.charCodeAt(0)) % wrong.length].id}`);
             maybeUnlockFinale(s, h);
             changed++;
           }
@@ -1081,7 +1110,7 @@ const Engine = (() => {
     const action = actions[type];
     if (!action) return { ok: false, msg: 'Unknown action: ' + type };
     const result = action(state, payload) || { ok: true };
-    if (result.ok) {
+    if (result.ok || result.commit) {
       if (!UI_ACTIONS.has(type)) autoRules(state);
       if (!UI_ACTIONS.has(type) && state.library) snapInto(state);
       emit({ type, payload, result });

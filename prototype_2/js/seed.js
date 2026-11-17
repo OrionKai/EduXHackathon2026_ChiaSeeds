@@ -175,27 +175,27 @@ const SEED = {
     checkOptions: {
       A: [
         { id: 'a_ok', text: 'They observed real physical details, and noted one artifact cannot represent everyone.', correct: true },
-        { id: 'a_no', text: 'They proved everyone in ancient Egypt owned a decorated coffin.', correct: false },
-        { id: 'a_no2', text: 'They used the decoration to work out exactly what Nespawershefyt believed.', correct: false },
-        { id: 'a_no3', text: 'They showed the painting was for display in a museum, not for burial.', correct: false },
+        { id: 'a_no', text: 'They proved everyone in ancient Egypt owned a decorated coffin.', correct: false, miss: 'Generalising from one burial' },
+        { id: 'a_no2', text: 'They used the decoration to work out exactly what Nespawershefyt believed.', correct: false, miss: 'Reading beliefs straight off an object' },
+        { id: 'a_no3', text: 'They showed the painting was for display in a museum, not for burial.', correct: false, miss: 'Confusing today’s display with original use' },
       ],
       B: [
         { id: 'b_ok', text: 'They showed a monumental object commemorates power — and leaves gaps in whose history survives.', correct: true },
-        { id: 'b_no', text: 'They showed all ancient people were remembered equally.', correct: false },
-        { id: 'b_no2', text: 'They showed the lid proves Ramesses III was a popular ruler.', correct: false },
-        { id: 'b_no3', text: 'They showed the size of the lid tells us exactly how powerful Egypt was.', correct: false },
+        { id: 'b_no', text: 'They showed all ancient people were remembered equally.', correct: false, miss: 'Assuming monuments record everyone' },
+        { id: 'b_no2', text: 'They showed the lid proves Ramesses III was a popular ruler.', correct: false, miss: 'Monument = popularity' },
+        { id: 'b_no3', text: 'They showed the size of the lid tells us exactly how powerful Egypt was.', correct: false, miss: 'Size = exact power' },
       ],
       C: [
         { id: 'c_ok', text: 'They compared two object types that answer different historical questions.', correct: true },
-        { id: 'c_no', text: 'They found one object type that explains the whole society.', correct: false },
-        { id: 'c_no2', text: 'They showed painted pottery was only ever owned by the rich.', correct: false },
-        { id: 'c_no3', text: 'They showed an object keeps the same use for its whole life.', correct: false },
+        { id: 'c_no', text: 'They found one object type that explains the whole society.', correct: false, miss: 'One object type explains a society' },
+        { id: 'c_no2', text: 'They showed painted pottery was only ever owned by the rich.', correct: false, miss: 'Assuming who owned things' },
+        { id: 'c_no3', text: 'They showed an object keeps the same use for its whole life.', correct: false, miss: 'Objects have one fixed use' },
       ],
       D: [
         { id: 'd_ok', text: 'They gathered a contributor’s perspective and named whose voices might be missing.', correct: true },
-        { id: 'd_no', text: 'They confirmed one person’s view counts as established museum fact.', correct: false },
-        { id: 'd_no2', text: 'They showed the relief tells us everything about the person carved on it.', correct: false },
-        { id: 'd_no3', text: 'They found that missing voices don’t matter as long as the object survives.', correct: false },
+        { id: 'd_no', text: 'They confirmed one person’s view counts as established museum fact.', correct: false, miss: 'Treating a perspective as fact' },
+        { id: 'd_no2', text: 'They showed the relief tells us everything about the person carved on it.', correct: false, miss: 'An image shows the whole person' },
+        { id: 'd_no3', text: 'They found that missing voices don’t matter as long as the object survives.', correct: false, miss: 'Ignoring missing voices' },
       ],
     },
   },
@@ -211,7 +211,9 @@ const SEED = {
     overclaim: {
       question: 'Which exhibition principle is appropriately cautious?',
       options: [
-        { id: 'absolute', text: '“Every object tells us everything about every person who used it.”', correct: false },
+        { id: 'absolute', text: '“Every object tells us everything about every person who used it.”', correct: false, miss: 'Objects tell us everything' },
+        { id: 'expert', text: '“If a museum expert or community member says it, it is a fact.”', correct: false, miss: 'Treating a perspective as fact' },
+        { id: 'biggest', text: '“The largest objects tell us the most important history.”', correct: false, miss: 'Size = importance' },
         { id: 'cautious', text: '“Objects provide different evidence; historical interpretations require context and multiple perspectives.”', correct: true },
       ],
     },
@@ -346,7 +348,7 @@ SEED.buildTrack = (t, f) => {
     },
     label: (f.name || 'Track ' + t).split(/\s+/)[0].replace(/[^\w’'-]/g, '').slice(0, 14) || 'Track ' + t,
     check: (Array.isArray(f.checks) && f.checks.length ? f.checks : [{ text: f.checkCorrect || '', correct: true }, { text: f.checkIncorrect || '', correct: false }])
-      .map((x, i) => ({ id: t.toLowerCase() + '_' + (i + 1), text: String(x.text || '').trim(), correct: !!x.correct })),
+      .map((x, i) => ({ id: x.id || t.toLowerCase() + '_' + (i + 1), text: String(x.text || '').trim(), correct: !!x.correct, ...(x.miss ? { miss: String(x.miss) } : {}) })),
   };
 };
 /* Flat fields back out of a track, for the editor. */
@@ -357,7 +359,7 @@ SEED.trackFields = (c, t) => {
     narrative: m.narrative, observe: m.observe, discuss: m.discuss,
     evidence: m.evidenceFields.map((e) => e.label), hints: m.hints, fallback: m.fallback, teachHeadline: m.teachHeadline,
     checkCorrect: (opts.find((o) => o.correct) || {}).text || '', checkIncorrect: (opts.find((o) => !o.correct) || {}).text || '',
-    checks: opts.map((o) => ({ text: o.text, correct: !!o.correct })),
+    checks: opts.map((o) => ({ id: o.id, text: o.text, correct: !!o.correct, miss: o.miss || '' })),
     needsContributor: !!m.needsFacilitator, sourceFact: m.sourceFact, sourceUrl: m.sourceUrl, backupCode: m.backupCode,
     assess: JSON.parse(JSON.stringify(m.assess || SEED.defaultAssess())), refPhoto: m.refPhoto || null,
   };
@@ -378,7 +380,7 @@ SEED.buildFinale = (c, f) => {
   c.finale.title = f.title || c.finale.title || 'Restore the story';
   const opts = Array.isArray(f.options) && f.options.length ? f.options : [{ text: f.cautious || '', correct: true }, { text: f.overclaim || '', correct: false }];
   c.finale.overclaim = { question: String(f.question || c.finale.overclaim.question || 'Which statement stays within the evidence?').trim(),
-    options: opts.map((o, i) => ({ id: 'o' + (i + 1), text: String(o.text || '').trim(), correct: !!o.correct })).filter((o) => o.text) };
+    options: opts.map((o, i) => ({ id: o.id || 'o' + (i + 1), text: String(o.text || '').trim(), correct: !!o.correct, ...(o.miss ? { miss: String(o.miss) } : {}) })).filter((o) => o.text) };
   const needs = { ...c.finale.compose.needs, ...(f.needs || {}) };
   Object.keys(needs).forEach((k) => { needs[k] = Math.max(0, Number(needs[k]) || 0); });
   c.finale.compose = { ...c.finale.compose, tiles, needs, max: Math.max(1, Number(f.max) || c.finale.compose.max || 6) };
@@ -386,7 +388,7 @@ SEED.buildFinale = (c, f) => {
 };
 SEED.finaleFields = (c) => {
   const T = c.finale.compose.tiles, by = (cat) => T.filter((x) => x.cat === cat && !x.trap).map((x) => x.text);
-  const out = { title: c.finale.title, question: c.finale.overclaim.question, options: c.finale.overclaim.options.map((o) => ({ text: o.text, correct: !!o.correct })),
+  const out = { title: c.finale.title, question: c.finale.overclaim.question, options: c.finale.overclaim.options.map((o) => ({ id: o.id, text: o.text, correct: !!o.correct, miss: o.miss || '' })),
     traps: T.filter((x) => x.trap).map((x) => x.text), needs: { ...c.finale.compose.needs }, max: c.finale.compose.max || 6, rubric: [...(c.finale.rubric || [])] };
   Object.keys(SEED.FINALE_CATS).forEach((cat) => { out[cat] = by(cat); });
   return out;
@@ -537,3 +539,49 @@ SEED.ensureContentShape = (c) => {
 
 SEED.AUDIENCES = { secondary: 'Secondary school', university: 'University', adult: 'Adult / community learners' };
 SEED.defaultAudience = () => ({ kind: 'secondary', ages: '13–16' });
+
+/* Example quest only: realistic answers for simulated classmates (some with typical misconceptions),
+   and the scripted analysis of them used when live AI is off. Keyed by template, then track. */
+SEED.SAMPLE_INSIGHTS = {
+  lost_museum: {
+    A: { simMiss: 'a_no2', field: 'uncertainty', strengths: 'Most answers name a real limit of the evidence (who paid, who the person was).',
+      answers: [
+        { text: 'It can’t tell us whether ordinary people had coffins like this.' },
+        { text: 'Nothing really — the painting shows exactly what Egyptians believed about the afterlife.', theme: 'beliefs' },
+        { text: 'It can’t tell us how much it cost or who paid for it.' },
+        { text: 'It shows all Egyptians were buried this way, so there isn’t much it can’t tell us.', theme: 'general' },
+        { text: 'We don’t know what Nespawershefyt was like as a person, only how they were buried.' }],
+      themes: {
+        beliefs: { title: 'Reading beliefs straight off the object', explain: 'Treats the decoration as proof of exactly what people believed, rather than evidence that needs other sources.', ask: 'What else would we need, besides the coffin, to know what Nespawershefyt believed?' },
+        general: { title: 'One burial stands for everyone', explain: 'Generalises from one high-status coffin to all Egyptians.', ask: 'Who might not have had a coffin like this — and how could we find out?' } } },
+    B: { simMiss: 'b_no2', field: 'uncertainty', strengths: 'Several students noticed that workers, women and children are missing from the monument.',
+      answers: [
+        { text: 'Ordinary workers who built the tomb aren’t remembered here.' },
+        { text: 'It shows Ramesses was loved by everyone, so it covers most people.', theme: 'popular' },
+        { text: 'It doesn’t tell us about women or children in the palace.' },
+        { text: 'Everyone important is on it, so it tells us about the whole of Egypt.', theme: 'popular' },
+        { text: 'Because it’s so big, Ramesses must have been the most powerful king ever.', theme: 'size' }],
+      themes: {
+        popular: { title: 'A monument means the ruler was popular', explain: 'Reads a royal monument as evidence of popularity or of everyone’s experience, not as how power chose to be remembered.', ask: 'Who decided what went on this lid — and who didn’t get a say?' },
+        size: { title: 'Bigger means more powerful', explain: 'Uses size as a direct measure of power instead of one clue among several.', ask: 'What else, besides size, could tell us how powerful a ruler was?' } } },
+    C: { simMiss: 'c_no', field: 'limitation', strengths: 'Good comparisons of what different object types can and can’t answer.',
+      answers: [
+        { text: 'Pottery only tells us about some uses, not about laws or beliefs.' },
+        { text: 'Painted pottery was only for rich people, so it only tells us about the rich.', theme: 'rich' },
+        { text: 'One type can’t show the whole society.' },
+        { text: 'There isn’t really a limitation if you look at enough pots.', theme: 'more' },
+        { text: 'Pots get reused, so the use we see might not be the first one.' }],
+      themes: {
+        rich: { title: 'Assuming who owned things', explain: 'States who used an object type as fact without evidence from the gallery.', ask: 'What in the case would tell us who actually used this pottery?' },
+        more: { title: 'More of the same fills every gap', explain: 'Thinks many examples of one object type can answer every question about a society.', ask: 'What questions could a thousand pots still not answer?' } } },
+    D: { simMiss: 'd_no', field: 'remaining_uncertainty', strengths: 'Strong open questions about missing voices and how objects arrived in Cambridge.',
+      answers: [
+        { text: 'We still don’t know how the person on the relief saw themselves.' },
+        { text: 'None — the contributor told us what it means, so now we know.', theme: 'fact' },
+        { text: 'Whose voices from Palmyra are missing from the gallery?' },
+        { text: 'The contributor is from the community so their view is the official answer.', theme: 'fact' },
+        { text: 'How did some of these objects end up in Cambridge?' }],
+      themes: {
+        fact: { title: 'Treating one perspective as the answer', explain: 'Records the contributor’s view as settled fact instead of one perspective to weigh with the evidence.', ask: 'How is a perspective different from a fact — and why do we need both?' } } },
+  },
+};

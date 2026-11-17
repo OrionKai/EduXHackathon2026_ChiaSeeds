@@ -572,5 +572,5 @@ const Assistant = (() => {
       if (r.status !== 405 && mode === 'live') { mode = 'simulated'; lastNotice = 'Live AI isn’t deployed on this server — scripted mode.'; window.WQ && window.WQ.render(); }
     }).catch(() => { if (mode === 'live') { mode = 'simulated'; window.WQ && window.WQ.render(); } });
   } catch {}
-  return { chat, board, bind, generate, listEd, readList, setSpeed: (v) => { speed = v; }, setMode: (m) => { mode = m; } };
+  return { getMode: () => mode, chat, board, bind, generate, listEd, readList, setSpeed: (v) => { speed = v; }, setMode: (m) => { mode = m; } };
 })();

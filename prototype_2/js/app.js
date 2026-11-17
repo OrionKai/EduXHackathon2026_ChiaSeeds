@@ -1059,10 +1059,11 @@
         <div class="card"><h3>By home team</h3><div class="matrix"><table><thead><tr><th scope="col">Team</th><th scope="col">Evidence verified</th><th scope="col">Perspectives taught</th><th scope="col">Finale</th><th scope="col">Partner feedback</th></tr></thead><tbody>
           ${SEED.homeGroups.map((h) => { const mem = SEED.homeMembers(h); return `<tr><th scope="row">${h}</th><td>${mem.filter((p) => st.evidence[p.id].status === 'VERIFIED').length}/${mem.length}</td><td>${SEED.topicsFor(h).filter((t) => st.peerTeach[h][t].shared).length}/${SEED.topicsFor(h).length}</td><td>${statusChip(st.finale[h].status)}</td><td>${st.partnerFeedback[h] ? '✓' : '—'}</td></tr>`; }).join('')}
           </tbody></table></div></div>
+        ${typeof Insights !== 'undefined' ? Insights.section(st) : ''}
         <div class="card"><h3>What students explained (live, not simulated)</h3>
           ${(() => { const live = verified.filter((p) => !st.evidence[p.id].simulated); return live.length === 0 ? '<p class="hint-note" style="margin:0">Verified evidence from real students appears here, with their own words.</p>'
             : live.map((p) => { const m = SEED.missions[p.topic], a = st.evidence[p.id].answers || {}; return `<div class="evidence-quote" style="margin-bottom:8px"><strong>${esc(who(p))}</strong> · ${topicChip(p.topic)}<br>${m.evidenceFields.slice(-2).map((f) => `<em>${esc(f.label)}:</em> ${esc(a[f.key])}`).join('<br>')}</div>`; }).join(''); })()}
-          <p class="hint-note" style="margin-top:10px">Look for misconceptions in the last field: does the student state a limit of the evidence, or overclaim?</p></div>
+          <p class="hint-note" style="margin-top:10px" hidden>Look for misconceptions in the last field: does the student state a limit of the evidence, or overclaim?</p></div>
         <div class="card">
           <h3>Student reflections (${refl.length})</h3>
           ${refl.length === 0 ? '<p class="hint-note" style="margin:0">Individual reflections appear here after the reflection phase.</p>'
@@ -1192,6 +1193,7 @@
   /* ================= events ================= */
 
   function bind() {
+    if (typeof Insights !== 'undefined') Insights.bind(root);
     root.querySelectorAll('[data-a]').forEach((el) => {
       const a = el.dataset.a;
       if (a === 'pq-sel') { el.addEventListener('change', () => { S().ui.pq = el.value; render(); }); return; }
