@@ -183,13 +183,13 @@ const Assistant = (() => {
 
   function collectiblesSection(st) {
     const locked = st.quest.status === 'PUBLISHED', cards = st.content.collectibles;
-    const rule = (c) => (c.kind === 'track' ? `their expert finishes ${esc(SEED.missions[c.track] && SEED.missions[c.track].name ? SEED.missions[c.track].name : 'Track ' + c.track)}` : esc((SEED.EARN_TEXT[c.kind] || '').replace(/^The team /, 'they ').toLowerCase()));
+    const rule = (c) => (c.kind === 'track' ? `each student who finishes ${!c.track || c.track === 'any' ? 'any track' : esc(SEED.missions[c.track] && SEED.missions[c.track].name ? SEED.missions[c.track].name : 'Track ' + c.track)} gets their own` : esc((SEED.EARN_TEXT[c.kind] || '').replace(/^A /, 'a ').replace(/^You /, 'you ')));
     return `<section class="card" id="as-collectibles">
       <div class="spread"><h3 style="margin:0">${Art.icon('trophy', 18)} Reward cards</h3><span class="pill plain">optional · just for fun</span></div>
-      <p class="hint-note" style="margin:6px 0 10px">Cards a team earns for the class album — for example when their expert finishes a track, or when they solve the finale. They never block the quest.${cards.length ? ` When the class has every card, it unlocks “${esc(SEED.master.title)}”.` : ''}</p>
+      <p class="hint-note" style="margin:6px 0 10px">Fun extras for the class album. A <strong>badge</strong> is personal — e.g. every student who finishes their track gets one. A <strong>team card</strong> can be earned by every team — e.g. for solving the finale. They never block the quest.${cards.length ? ` When the class has every card, it unlocks “${esc(SEED.master.title)}”.` : ''}</p>
       ${cards.length ? `<div class="coll-grid">${cards.map((c) => editing === 'c:' + c.id && !locked ? collEditor(c) : `<div class="coll-item">
         <div class="row" style="gap:10px;flex-wrap:nowrap"><div class="collect-card claimed" style="width:64px;min-width:64px;cursor:default">${Art.collectibleArt[c.id] ? Art.collectibleArt[c.id]() : Art.lockedArt()}</div>
-          <div style="min-width:0"><strong>${esc(c.title || 'Untitled card')}</strong><br><small class="hint-note">For team ${esc(c.home)}</small></div></div>
+          <div style="min-width:0"><strong>${esc(c.title || 'Untitled card')}</strong><br><small class="hint-note">${c.kind === 'track' || c.kind === 'egg' ? 'Badge · one per student' : 'Team card · one per team'}</small></div></div>
         <p class="hint-note" style="margin:6px 0 4px">Earned when ${rule(c)}.</p>
         ${c.kind === 'bonus' && c.activity ? `<p class="hint-note" style="margin:0 0 4px">Activity: ${esc(c.activity)}</p>` : ''}
         ${locked ? '' : `<div class="row" style="gap:6px;margin-top:6px"><button class="btn btn-ghost btn-sm" type="button" data-as-edit="c:${c.id}">Edit</button><button class="btn btn-danger-ghost btn-sm" type="button" data-as-rmcard="${c.id}">Remove</button></div>`}
@@ -200,13 +200,12 @@ const Assistant = (() => {
   function collEditor(c) {
     return `<form class="coll-item stack as-editor" style="gap:6px" data-as-collform="${c.id}">
       ${inp('ce-t', 'Card name', c.title, 'e.g. Golden Scarab')}
-      <label class="fld" for="ce-home">Which team can earn it</label><select class="input" id="ce-home">${SEED.homeGroups.map((h) => `<option value="${h}" ${c.home === h ? 'selected' : ''}>Team ${h}</option>`).join('')}</select>
       <label class="fld" for="ce-k">Earned when</label><select class="input" id="ce-k">${Object.entries(SEED.EARN_TEXT).map(([k, l]) => `<option value="${k}" ${c.kind === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
-      <label class="fld" for="ce-tr">Which track (if earned by finishing a track)</label><select class="input" id="ce-tr">${SEED.topics.map((t) => `<option value="${t}" ${c.track === t ? 'selected' : ''}>${t} · ${esc(SEED.missions[t].name || 'Track ' + t)}</option>`).join('')}</select>
+      <label class="fld" for="ce-tr">Which track (if earned by finishing a track)</label><select class="input" id="ce-tr"><option value="any" ${!c.track || c.track === 'any' ? 'selected' : ''}>Any track</option>${SEED.topics.map((t) => `<option value="${t}" ${c.track === t ? 'selected' : ''}>${t} · ${esc(SEED.missions[t].name || 'Track ' + t)}</option>`).join('')}</select>
       ${inp('ce-a', 'Bonus activity (if earned by a bonus activity)', c.activity, 'e.g. Find a symbol that appears in two galleries')}
       ${inp('ce-f', 'A fun fact shown when it’s earned', c.fact)}
       <label class="toggle"><input type="checkbox" id="ce-h" ${c.hidden ? 'checked' : ''}> Keep it secret until it’s found</label>
-      <label class="toggle"><input type="checkbox" id="ce-e" ${c.evolves ? 'checked' : ''}> Levels up when the team checks in at the next real experience</label>
+      <label class="toggle"><input type="checkbox" id="ce-e" ${c.evolves ? 'checked' : ''}> Levels up when they check in at the next real experience</label>
       <div class="row"><button class="btn btn-primary btn-sm" type="submit">Save card</button><button class="btn btn-ghost btn-sm" type="button" data-as-edit-cancel>Cancel</button></div></form>`;
   }
 
@@ -447,7 +446,7 @@ const Assistant = (() => {
     const c = Engine.state.content, fin = SEED.finaleFields(c);
     const extras = { groups: { tracks: Engine.state.quest.structure.tracks, class_size: SEED.structure.classSize, teams: SEED.homeGroups },
       finale: { title: fin.title, question: fin.question, statements: fin.options, evidence_sentences: fin.evidence, perspective_sentences: fin.perspectives, uncertainty_sentences: fin.uncertainty, invite_sentences: fin.invite, overclaim_sentences: fin.traps, teacher_checks: fin.rubric },
-      cards: c.collectibles.map((k) => ({ id: k.id, title: k.title, team: k.home, earned_when: k.kind, track: k.track, activity: k.activity, fact: k.fact })), story: c.story.opening, reflection: c.reflection };
+      cards: c.collectibles.map((k) => ({ id: k.id, title: k.title, earned_when: k.kind, track: k.track, activity: k.activity, fact: k.fact })), story: c.story.opening, reflection: c.reflection };
     return { extras, quest: questBrief(), tracks, sources: SRC().filter((s) => s.fact).map((s) => ({ id: s.id, title: s.title, text: s.fact, url: s.url || '' })) };
   }
 
@@ -628,7 +627,7 @@ const Assistant = (() => {
       e.preventDefault();
       const v = (id) => f.querySelector('#' + id).value;
       editing = null;
-      window.WQ.act('editCollectible', { collectibleId: f.dataset.asCollform, fields: { title: v('ce-t'), home: v('ce-home'), kind: v('ce-k'), track: v('ce-tr'), activity: v('ce-a'), fact: v('ce-f'), hidden: f.querySelector('#ce-h').checked, evolves: f.querySelector('#ce-e').checked } });
+      window.WQ.act('editCollectible', { collectibleId: f.dataset.asCollform, fields: { title: v('ce-t'), kind: v('ce-k'), track: v('ce-tr'), activity: v('ce-a'), fact: v('ce-f'), hidden: f.querySelector('#ce-h').checked, evolves: f.querySelector('#ce-e').checked } });
     });
     on('[data-as-trackform]', 'submit', (f, e) => {
       e.preventDefault();

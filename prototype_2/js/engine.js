@@ -14,7 +14,7 @@
 const Engine = (() => {
   const STORAGE_KEY = 'worldquest-prototype2-v1';
   const QUEST_KEYS = ['quest', 'content', 'tracks', 'revisions', 'sources', 'contributor'];
-  const PLAY_KEYS = ['phase', 'evidence', 'peerTeach', 'finale', 'bonus', 'claims', 'master', 'reflections', 'seats', 'checkins', 'checkinPhotos', 'help', 'partnerFeedback', 'interactions', 'experience', 'evolved', 'misses', 'analysis', 'partnerFlags'];
+  const PLAY_KEYS = ['phase', 'evidence', 'peerTeach', 'finale', 'bonus', 'claims', 'master', 'reflections', 'seats', 'checkins', 'checkinPhotos', 'help', 'partnerFeedback', 'interactions', 'experience', 'evolved', 'misses', 'analysis', 'partnerFlags', 'earned'];
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
   /* ---------- initial state ---------- */
@@ -162,10 +162,7 @@ const Engine = (() => {
         simulated: false,
       };
     }
-    const bonus = {};
-    for (const c of SEED.collectibles) {
-      bonus[c.id] = { status: 'AVAILABLE', answer: '', simulated: false }; // AVAILABLE | SUBMITTED | CLAIMED
-    }
+    const bonus = {}; // `${cardId}@${home}` -> a team's bonus activity submission
     return {
       v: 1,
       phase: 'LOBBY',
@@ -195,7 +192,8 @@ const Engine = (() => {
       peerTeach,
       finale,
       bonus,
-      claims: {}, // collectibleId -> { home, at }
+      claims: {}, // cardId -> { holder, at }: the class album (a card is “found” the first time anyone earns it)
+      earned: {}, // `${cardId}@${studentId or teamId}` -> { at }: who has each card
       master: null, // { at } — exactly once
       masterSeen: false,
       reflections: {}, // participantId -> [a1, a2]
@@ -271,7 +269,9 @@ const Engine = (() => {
     s.evolved = s.evolved || {};
     s.misses = s.misses || {};
     s.bonus = s.bonus || {};
-    SEED.collectibles.forEach((c) => { if (!s.bonus[c.id]) s.bonus[c.id] = { status: 'AVAILABLE', answer: '', simulated: false }; });
+    s.earned = s.earned || {};
+    Object.entries(s.claims || {}).forEach(([id, c]) => { if (c && c.home && !s.earned[id + '@' + c.home]) s.earned[id + '@' + c.home] = { at: c.at || Date.now() }; });
+    Object.keys(s.bonus).forEach((k) => { if (!k.includes('@')) { const c = (s.content.collectibles || []).find((x) => x.id === k); if (c && c.home) s.bonus[k + '@' + c.home] = s.bonus[k]; delete s.bonus[k]; } });
     s.analysis = s.analysis || {};
     s.quest.next = { ...SEED.defaultNext(), ...(s.quest.next || {}) };
     if (!s.journey || !Array.isArray(s.journey.steps) || !s.journey.steps.length) s.journey = defaultJourney(s);
@@ -380,7 +380,13 @@ const Engine = (() => {
     partnerItems: (qid) => partnerItems(recOf(state, qid)),
     partnerProgress: (qid) => partnerProgress(recOf(state, qid)),
     stepTitle: (st) => stepTitle(state, st),
-    pendingBonus: () => SEED.collectibles.filter((c) => (state.bonus[c.id] || {}).status === 'SUBMITTED'),
+    pendingBonus: () => Object.entries(state.bonus).filter(([, b]) => b && b.status === 'SUBMITTED').map(([k, b]) => { const [id, home] = k.split('@'); return { card: SEED.collectibles.find((c) => c.id === id), home, b }; }).filter((x) => x.card),
+    /* Cards: personal (a student's track badge, a hidden find) or team (finale, every expert done, bonus, awarded). */
+    cardScope: (c) => cardScope(c),
+    holdersOf: (c) => holdersOf(c),
+    hasCard: (c, holder) => !!state.earned[c.id + '@' + holder],
+    earnedBy: (c) => holdersOf(c).filter((h) => state.earned[c.id + '@' + (h.id || h)]).length,
+    bonusOf: (c, home) => state.bonus[c.id + '@' + home] || { status: 'AVAILABLE', answer: '' },
 
     phaseIndex: () => SEED.phases.indexOf(state.phase),
   };
@@ -785,7 +791,7 @@ const Engine = (() => {
         f.status = 'APPROVED';
         f.rubric = rubric;
         audit('teacher', `Approved ${home}’s finale answer.`);
-        return { ok: true, msg: `${home}’s introduction approved — main quest complete for that team.` };
+        return { ok: true, msg: `Team ${home}’s answer approved — main quest complete for that team.` };
       }
       f.status = 'NEEDS_REVISION';
       f.note = note || 'Strengthen the uncertainty sentence and cite a second object.';
@@ -794,46 +800,40 @@ const Engine = (() => {
     },
 
     /* ----- optional collectibles (never gate the main quest) ----- */
-    submitBonus(s, { collectibleId, answer }) {
+    submitBonus(s, { collectibleId, home, answer }) {
       const card = SEED.collectibles.find((c) => c.id === collectibleId);
-      if (!card) return { ok: false };
-      const b = s.bonus[collectibleId];
-      if (card.kind && card.kind !== 'bonus') return { ok: false, msg: 'This card is earned another way.' };
-      if (s.claims[collectibleId]) return { ok: false, msg: 'This card has already been earned.' };
-      if (b.status === 'SUBMITTED') return { ok: false, msg: 'Already submitted — awaiting educator approval.' };
-      if (!answer || !answer.trim()) return { ok: false, msg: 'Write your team’s discovery first.' };
-      if (!['FINALE', 'REFLECTION', 'COMPLETE'].includes(s.phase))
-        return { ok: false, msg: 'Bonus discoveries open during the finale phase — the main quest comes first.' };
-      b.answer = answer.trim();
-      b.status = 'SUBMITTED';
-      audit('student', `${card.home} submitted the ${card.title} bonus discovery.`);
-      return { ok: true, msg: 'Discovery submitted — awaiting educator approval.' };
+      if (!card || !SEED.homeGroups.includes(home)) return { ok: false };
+      if (card.kind !== 'bonus') return { ok: false, msg: 'This card is earned another way.' };
+      if (s.earned[card.id + '@' + home]) return { ok: false, msg: 'Your team already has this card.' };
+      const k = card.id + '@' + home, b = s.bonus[k] || { status: 'AVAILABLE', answer: '', simulated: false };
+      if (b.status === 'SUBMITTED') return { ok: false, msg: 'Already sent — waiting for your teacher.' };
+      if (!answer || !answer.trim()) return { ok: false, msg: 'Write your team’s answer first.' };
+      if (!['FINALE', 'REFLECTION', 'COMPLETE'].includes(s.phase)) return { ok: false, msg: 'Bonus activities open at the finale — the main quest comes first.' };
+      s.bonus[k] = { ...b, answer: answer.trim(), status: 'SUBMITTED' };
+      audit('student', `Team ${home} sent the “${card.title}” bonus activity.`);
+      return { ok: true, msg: 'Sent — your teacher will check it.' };
     },
-
-    awardCollectible(s, { collectibleId }) {
+    awardCollectible(s, { collectibleId, home }) {
       const card = SEED.collectibles.find((c) => c.id === collectibleId);
-      if (!card) return { ok: false };
-      if (s.claims[collectibleId]) return { ok: false, msg: 'Already claimed.' };
-      return claim(s, card, 'teacher', 'awarded by the educator');
+      if (!card || !SEED.homeGroups.includes(home)) return { ok: false, msg: 'Choose a team.' };
+      if (s.earned[card.id + '@' + home]) return { ok: false, msg: 'That team already has it.' };
+      return claim(s, card, home, 'teacher', 'awarded by the teacher');
     },
     foundEgg(s, { participantId }) {
       const p = SEED.byId[participantId];
       if (!p || !['EXPERT', 'PEER_TEACH', 'FINALE'].includes(s.phase)) return { ok: false };
-      const card = SEED.collectibles.find((c) => c.home === p.home && c.kind === 'egg');
-      if (!card || s.claims[card.id]) return { ok: false };
-      return claim(s, card, 'student', `${p.name} looked up and found it`);
-    },
-
-    /* Idempotent claim: approving twice, or two racing approvals, yields one claim;
-       the master award is granted exactly once, inside the same action. */
-    approveBonus(s, { collectibleId }) {
-      const card = SEED.collectibles.find((c) => c.id === collectibleId);
+      const card = SEED.collectibles.find((c) => c.kind === 'egg' && !s.earned[c.id + '@' + p.id]);
       if (!card) return { ok: false };
-      if (s.claims[collectibleId]) return { ok: false, msg: 'Already claimed — claims are idempotent.' };
-      const b = s.bonus[collectibleId];
-      if (b.status !== 'SUBMITTED') return { ok: false, msg: 'No submitted discovery to approve.' };
+      return claim(s, card, p.id, 'student', `${p.name} looked up and found it`);
+    },
+    approveBonus(s, { collectibleId, home }) {
+      const card = SEED.collectibles.find((c) => c.id === collectibleId);
+      const k = collectibleId + '@' + home, b = s.bonus[k];
+      if (!card || !b) return { ok: false };
+      if (s.earned[k]) return { ok: false, msg: 'Already earned — approving twice never double-awards.' };
+      if (b.status !== 'SUBMITTED') return { ok: false, msg: 'Nothing sent to approve.' };
       b.status = 'CLAIMED';
-      return claim(s, card, 'teacher', 'bonus discovery approved');
+      return claim(s, card, home, 'teacher', 'bonus activity approved');
     },
 
     markMasterSeen(s) {
@@ -941,7 +941,7 @@ const Engine = (() => {
       }
       const last = L[L.length - 1];
       delete c.missions[last]; delete c.peerTeaching.checkOptions[last]; delete s.tracks[last]; delete s.revisions[last];
-      (c.collectibles || []).forEach((x) => { if (x.kind === 'track') { const j = L.indexOf(x.track); if (x.track === topic) Object.assign(x, SEED.defaultEarn()); else if (j > i) x.track = L[j - 1]; } });
+      (c.collectibles || []).forEach((x) => { if (x.kind === 'track' && x.track !== 'any') { const j = L.indexOf(x.track); if (x.track === topic) x.track = 'any'; else if (j > i) x.track = L[j - 1]; } });
       const r = actions.setStructure(s, { tracks: t, classSize: n, expertGroup: g });
       if (!r.ok) return r;
       audit('teacher', `Removed the track “${gone}”.`);
@@ -1092,11 +1092,9 @@ const Engine = (() => {
     /* ----- collectibles (educator) ----- */
     addCollectible(s) {
       if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Published quests are frozen.' };
-      const used = new Set(s.content.collectibles.map((c) => c.home)), home = SEED.homeGroups.find((h) => !used.has(h)) || SEED.homeGroups[0];
       const base = TEMPLATES.lost_museum.collectibles, i = s.content.collectibles.length;
       const id = 'card_' + Date.now().toString(36);
-      s.content.collectibles.push({ id, title: '', activity: '', fact: '', home, color: base[i % base.length].color, category: 'Discovery', promptLabel: 'Your team’s discovery', ...SEED.defaultEarn(), kind: 'track', track: SEED.topics[0] });
-      s.bonus[id] = { status: 'AVAILABLE', answer: '', simulated: false };
+      s.content.collectibles.push({ id, title: '', activity: '', fact: '', color: base[i % base.length].color, category: 'Discovery', promptLabel: 'Your team’s discovery', ...SEED.defaultEarn(), kind: 'track', track: SEED.topics[0] });
       return { ok: true, msg: 'Card added — give it a name and choose how it’s earned.', id };
     },
     removeCollectible(s, { collectibleId }) {
@@ -1104,7 +1102,7 @@ const Engine = (() => {
       const i = s.content.collectibles.findIndex((c) => c.id === collectibleId);
       if (i < 0) return { ok: false };
       const [c] = s.content.collectibles.splice(i, 1);
-      delete s.bonus[collectibleId];
+      Object.keys(s.bonus).forEach((k) => { if (k.startsWith(collectibleId + '@')) delete s.bonus[k]; });
       audit('teacher', `Removed the card “${c.title || 'untitled'}”.`);
       return { ok: true, msg: 'Card removed.' };
     },
@@ -1115,8 +1113,7 @@ const Engine = (() => {
       const f = fields || {};
       ['title', 'activity', 'fact'].forEach((k) => { if (typeof f[k] === 'string') c[k] = f[k].trim().slice(0, 200); });
       if (SEED.EARN_TEXT[f.kind]) c.kind = f.kind;
-      if (SEED.topics.includes(f.track)) c.track = f.track;
-      if (SEED.homeGroups.includes(f.home)) c.home = f.home;
+      if (SEED.topics.includes(f.track) || f.track === 'any') c.track = f.track;
       if (typeof f.hidden === 'boolean') c.hidden = f.hidden;
       if (typeof f.evolves === 'boolean') c.evolves = f.evolves;
       audit('teacher', `Edited collectible “${c.title || c.id}”.`);
@@ -1232,11 +1229,10 @@ const Engine = (() => {
       if (!byTeacher && String(code || '').trim().toUpperCase() !== ('WQ-' + st.id).toUpperCase()) return { ok: false, msg: 'That isn’t the check-in code for this experience.' };
       if (st.checkins[participantId]) return { ok: true, silent: true };
       st.checkins[participantId] = Date.now();
-      const card = SEED.collectibles.find((c) => c.home === p.home);
-      let evolved = false;
-      if (card && card.evolves && s.claims[card.id] && !s.evolved[card.id]) { s.evolved[card.id] = true; evolved = true; }
+      let card = null, evolved = false;
+      SEED.collectibles.filter((c) => c.evolves).forEach((c) => { [p.id, p.home].forEach((h) => { const k = c.id + '@' + h; if (s.earned[k] && !s.evolved[k]) { s.evolved[k] = true; evolved = true; card = card || c; } }); });
       audit(byTeacher ? 'teacher' : 'student', `${p.name} checked in at ${stepTitle(s, st)}${evolved ? ' — ' + card.title + ' levelled up' : ''}.`);
-      return { ok: true, msg: evolved ? `Checked in — your team’s ${card.title} levelled up!` : 'Checked in. Enjoy!' };
+      return { ok: true, msg: evolved ? `Checked in — ${card.title} levelled up!` : 'Checked in. Enjoy!' };
     },
 
     /* ----- help: always one tap away ----- */
@@ -1316,14 +1312,11 @@ const Engine = (() => {
       if (!['FINALE', 'REFLECTION', 'COMPLETE'].includes(s.phase))
         return { ok: false, msg: 'Bonus discoveries open during the finale phase.' };
       let n = 0;
-      for (const c of SEED.collectibles) {
-        const b = s.bonus[c.id];
-        if (b.status === 'AVAILABLE' && !s.claims[c.id]) {
-          b.answer = '[Simulated demo discovery] ' + c.activity;
-          b.status = 'SUBMITTED';
-          b.simulated = true;
-          n++;
-        }
+      for (const c of SEED.collectibles.filter((x) => x.kind === 'bonus')) for (const h of SEED.homeGroups) {
+        const k = c.id + '@' + h;
+        if (s.earned[k] || (s.bonus[k] && s.bonus[k].status === 'SUBMITTED')) continue;
+        s.bonus[k] = { answer: '[Simulated] ' + (c.activity || 'Our discovery'), status: 'SUBMITTED', simulated: true };
+        n++;
       }
       audit('teacher', `SIMULATED demo action: submitted ${n} bonus discoveries.`);
       return { ok: true, msg: n ? `${n} team discoveries submitted (SIMULATED) — approve them to fill the album.` : 'Nothing left to simulate.' };
@@ -1338,28 +1331,37 @@ const Engine = (() => {
   /* ---------- dispatch ---------- */
 
   /* ---------- collectibles: one claim path, used by approvals and automatic rules ---------- */
-  function claim(s, card, actor, why) {
-    s.claims[card.id] = { home: card.home, at: Date.now() };
-    if (s.bonus[card.id]) s.bonus[card.id].status = 'CLAIMED';
-    audit(actor, `${card.title || 'Collectible'} claimed for ${card.home} (${why}).`);
+  function cardScope(c) { return c.kind === 'track' || c.kind === 'egg' ? 'student' : 'team'; }
+  function holdersOf(c) {
+    if (cardScope(c) === 'team') return SEED.homeGroups.slice();
+    return SEED.participants.filter((p) => c.kind !== 'track' || !c.track || c.track === 'any' || p.topic === c.track);
+  }
+  function claim(s, card, holder, actor, why) {
+    const k = card.id + '@' + holder;
+    if (s.earned[k]) return { ok: false, msg: 'Already earned.' };
+    s.earned[k] = { at: Date.now() };
+    if (s.bonus[k]) s.bonus[k].status = 'CLAIMED';
+    const first = !s.claims[card.id];
+    if (first) s.claims[card.id] = { holder, at: Date.now() };
+    const who = SEED.byId[holder] ? SEED.byId[holder].name : 'team ' + holder;
+    audit(actor, `${card.title || 'A card'} earned by ${who} (${why}).`);
     let masterNow = false;
     if (!s.master && SEED.collectibles.length && SEED.collectibles.every((c) => s.claims[c.id])) {
       s.master = { at: Date.now() };
       masterNow = true;
       audit('system', `${SEED.master.title} unlocked for the class (exactly once).`);
     }
-    return { ok: true, msg: `${card.title || 'A card'} added to the class album!`, reveal: card.id, master: masterNow };
+    return { ok: true, msg: `${card.title || 'A card'} earned!`, reveal: first ? card.id : null, master: masterNow };
   }
   const allFinished = (s) => SEED.homeGroups.every((h) => s.finale[h].status === 'APPROVED');
   function autoRules(s) {
     SEED.collectibles.forEach((c) => {
-      if (s.claims[c.id]) return;
-      const team = SEED.homeMembers(c.home);
-      const met = c.kind === 'finale' ? s.finale[c.home].status === 'APPROVED'
-        : c.kind === 'experts' ? team.every((p) => s.evidence[p.id].status === 'VERIFIED')
-        : c.kind === 'track' ? (() => { const p = SEED.expertOf(c.home, c.track); return p && s.evidence[p.id].status === 'VERIFIED'; })()
-        : false;
-      if (met) claim(s, c, 'system', SEED.EARN_TEXT[c.kind].toLowerCase());
+      if (c.kind === 'track') holdersOf(c).forEach((p) => { if (!s.earned[c.id + '@' + p.id] && s.evidence[p.id] && s.evidence[p.id].status === 'VERIFIED') claim(s, c, p.id, 'system', 'finished their track'); });
+      if (c.kind === 'finale' || c.kind === 'experts') SEED.homeGroups.forEach((h) => {
+        if (s.earned[c.id + '@' + h]) return;
+        const met = c.kind === 'finale' ? s.finale[h].status === 'APPROVED' : SEED.homeMembers(h).every((p) => s.evidence[p.id].status === 'VERIFIED');
+        if (met) claim(s, c, h, 'system', c.kind === 'finale' ? 'solved the finale' : 'every expert finished');
+      });
     });
     for (const st of (s.journey && s.journey.steps) || []) {
       if (st.type === 'quest' && !st.done && st.questId === s.activeQuest && (s.phase === 'COMPLETE' || allFinished(s))) {

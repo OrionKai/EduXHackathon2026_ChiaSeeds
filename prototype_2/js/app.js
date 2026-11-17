@@ -609,31 +609,29 @@
     return t ? SEED.topicMeta[t].name : tag;
   }
 
+  /* How a card is earned, said to a student. */
+  function cardRule(c) {
+    if (c.kind === 'track') return 'Finish your track — the badge is yours.';
+    return { experts: 'When everyone in your team finishes their track.', finale: 'When your team solves the finale.', bonus: esc(c.activity || 'A bonus activity for your team.'),
+      egg: 'Hidden somewhere: try tilting your phone up at the right spot.', teacher: 'Your teacher can award it to your team.' }[c.kind] || '';
+  }
   function bonusCardFor(st, me) {
-    const card = SEED.collectibles.find((c) => c.home === me.home);
-    if (!card) return '';
-    const b = st.bonus[card.id], claimed = !!st.claims[card.id];
-    if (card.hidden && !claimed) return '';
-    const rule = card.kind === 'track' ? `Your team’s ${esc(SEED.missions[card.track].name || 'Track ' + card.track)} expert is verified` : esc(SEED.EARN_TEXT[card.kind] || '');
-    return `
-      <div class="card" style="background:var(--grad-collect)">
-        <div class="spread"><div class="eyebrow sun">Team collectible · optional</div>${claimed ? statusChip('CLAIMED') : card.kind === 'bonus' ? statusChip(b.status) : '<span class="pill plain">not yet</span>'}</div>
-        <div class="grid-2" style="grid-template-columns: 110px 1fr; gap:16px">
-          <div class="collect-card ${claimed ? 'claimed' : 'locked'}" style="max-width:110px;cursor:default">${claimed ? collArt(card) : Art.lockedArt()}</div>
-          <div>
-            <h3>${esc(card.title)}${st.evolved[card.id] ? ' <span class="pill sun">Level 2</span>' : ''}</h3>
-            ${claimed ? `<p style="margin:0"><strong>Earned for the class album!</strong> ${esc(card.fact)}</p>`
-              : card.kind !== 'bonus' ? `<p class="hint-note" style="margin:0">Earned when: ${rule}.</p>`
-              : b.status === 'SUBMITTED' ? `<p style="margin:0">Submitted — awaiting educator approval.</p>`
-              : `<p class="hint-note">${esc(card.activity)} This never blocks the main quest.</p><form data-form="bonus" data-card="${card.id}">
-                  <label class="fld" for="bonus-a">${esc(card.promptLabel || 'Your team’s discovery')}</label>
-                  <textarea class="input" id="bonus-a" name="answer" rows="2"></textarea>
-                  <div style="margin-top:10px"><button class="btn btn-sun btn-sm" type="submit">${Art.icon('sparkle', 16)} Submit discovery</button></div>
-                </form>`}
-            ${claimed && card.evolves && !st.evolved[card.id] && st.journey.steps.some((x) => x.type === 'experience') ? `<p class="hint-note" style="margin:6px 0 0">Levels up when your team checks in at the next experience.</p>` : ''}
-          </div>
-        </div>
-      </div>`;
+    const cards = SEED.collectibles.filter((c) => sel.cardScope(c) === 'team' || sel.holdersOf(c).some((p) => p.id === me.id))
+      .map((c) => ({ c, holder: sel.cardScope(c) === 'student' ? me.id : me.home })).filter(({ c, holder }) => !c.hidden || sel.hasCard(c, holder));
+    if (!cards.length) return '';
+    return `<div class="card" style="background:var(--grad-collect)">
+      <div class="spread"><div class="eyebrow sun">Your cards · optional</div><button class="btn btn-ghost btn-sm" data-a="screen" data-screen="album">Class album</button></div>
+      <div class="stack" style="gap:10px;margin-top:8px">${cards.map(({ c, holder }) => {
+        const has = sel.hasCard(c, holder), b = c.kind === 'bonus' ? sel.bonusOf(c, me.home) : null, lv2 = st.evolved[c.id + '@' + holder];
+        return `<div class="my-card ${has ? 'has' : ''}">
+          <div class="collect-card ${has ? 'claimed' : 'locked'}" style="width:56px;min-width:56px;cursor:default">${has ? collArt(c) : Art.lockedArt()}</div>
+          <div style="min-width:0;flex:1"><div class="spread"><strong>${esc(c.title)}${lv2 ? ' <span class="pill sun">Level 2</span>' : ''}</strong><span class="pill ${has ? 'mint' : 'plain'}">${has ? (sel.cardScope(c) === 'student' ? 'yours ✓' : 'your team’s ✓') : sel.cardScope(c) === 'student' ? 'just for you' : 'for your team'}</span></div>
+            <p class="hint-note" style="margin:2px 0 0">${has ? esc(c.fact) : cardRule(c)}</p>
+            ${!has && b ? (b.status === 'SUBMITTED' ? '<p class="hint-note" style="margin:4px 0 0">Sent — waiting for your teacher.</p>'
+              : ['FINALE', 'REFLECTION', 'COMPLETE'].includes(st.phase) ? `<form data-form="bonus" data-card="${c.id}" data-home="${me.home}" class="row" style="margin-top:6px"><label class="sr-only" for="bonus-${c.id}">${esc(c.promptLabel || 'Your team’s answer')}</label>
+                <input class="input" id="bonus-${c.id}" name="answer" placeholder="${esc(c.promptLabel || 'Your team’s answer')}" style="flex:1;min-width:150px"><button class="btn btn-sun btn-sm" type="submit">Send</button></form>` : '<p class="hint-note" style="margin:4px 0 0">Opens at the finale.</p>') : ''}
+            ${has && c.evolves && !lv2 && st.journey.steps.some((x) => x.type === 'experience') ? '<p class="hint-note" style="margin:4px 0 0">Levels up when you check in at the next real experience.</p>' : ''}</div>
+        </div>`; }).join('')}</div></div>`;
   }
 
 
@@ -698,14 +696,15 @@
     const n = sel.claimedCount();
     if (!SEED.collectibles.length) return `${pageHead(esc(st.quest.title), 'Class album')}<div class="card"><p style="margin:0">This quest has no reward cards.</p></div>`;
     return `
-      ${pageHead(esc(st.quest.title), 'Class album', `<span class="pill lavender">${n} / ${SEED.collectibles.length} collected</span>`)}
+      ${pageHead(esc(st.quest.title), 'Class album', `<span class="pill lavender">${n} / ${SEED.collectibles.length} found by the class</span>`)}
       <div class="album-grid">
         ${SEED.collectibles.map((c) => {
-          const claimed = !!st.claims[c.id];
-          const justNow = lastReveal === c.id;
-          return `<button type="button" class="collect-card ${claimed ? 'claimed' : 'locked'} ${justNow ? 'just-claimed' : ''}" data-a="card-info" data-card="${c.id}" aria-label="${esc(c.title)}: ${claimed ? 'collected by team ' + c.home : 'not yet discovered'}">
-            ${claimed ? collArt(c) + '<span class="holo"></span><span class="claim-stamp">' + Art.icon('check', 15) + '</span>' : Art.lockedArt()}
-            <span class="card-strip"><strong>${claimed ? esc(c.title) : c.hidden ? 'Hidden card' : 'Mystery card'}${st.evolved[c.id] ? ' · Lv 2' : ''}</strong><small>${claimed ? esc(c.category) + ' · team ' + c.home : 'Team ' + c.home + (viewer === 'teacher' ? ' · ' + esc(SEED.EARN_TEXT[c.kind] || '') : ' · not discovered')}</small></span>
+          const found = !!st.claims[c.id], justNow = lastReveal === c.id, scope = sel.cardScope(c), total = sel.holdersOf(c).length, got = sel.earnedBy(c);
+          const me = SEED.byId[st.ui.student], mine = viewer === 'student' && me && sel.hasCard(c, scope === 'student' ? me.id : me.home);
+          const who = `${got} of ${total} ${scope === 'student' ? 'student' : 'team'}${total === 1 ? '' : 's'}`;
+          return `<button type="button" class="collect-card ${found ? 'claimed' : 'locked'} ${justNow ? 'just-claimed' : ''}" data-a="card-info" data-card="${c.id}" aria-label="${esc(c.title)}: ${found ? 'earned by ' + who : 'not found yet'}">
+            ${found ? collArt(c) + '<span class="holo"></span>' + (mine ? '<span class="claim-stamp">' + Art.icon('check', 15) + '</span>' : '') : Art.lockedArt()}
+            <span class="card-strip"><strong>${found || !c.hidden ? esc(c.title) : 'Hidden card'}</strong><small>${found ? `${scope === 'student' ? 'Badge' : 'Team card'} · ${who}` : scope === 'student' ? 'Badge · not earned yet' : 'Team card · not earned yet'}</small></span>
           </button>`;
         }).join('')}
       </div>
@@ -719,8 +718,8 @@
           </div>
         </div>
       </div>
-      ${viewer === 'teacher' && SEED.collectibles.some((c) => c.kind === 'teacher' && !st.claims[c.id]) ? `<div class="row">${SEED.collectibles.filter((c) => c.kind === 'teacher' && !st.claims[c.id]).map((c) => `<button class="btn btn-sun btn-sm" data-a="award-card" data-card="${c.id}">${Art.icon('sparkle', 15)} Award “${esc(c.title)}” to team ${c.home}</button>`).join('')}</div>` : ''}
-      ${viewer === 'student' ? `<p class="hint-note">Cards are a bonus side quest — they never gate the main quest.</p>` : ''}`;
+      ${viewer === 'teacher' ? SEED.collectibles.filter((c) => c.kind === 'teacher').map((c) => { const left = SEED.homeGroups.filter((h) => !sel.hasCard(c, h)); return left.length ? `<div class="card row" style="gap:6px;padding:12px 16px"><strong style="margin-right:6px">Award “${esc(c.title)}” to:</strong>${left.map((h) => `<button class="btn btn-sun btn-sm" data-a="award-card" data-card="${c.id}" data-home="${h}">Team ${h}</button>`).join('')}</div>` : ''; }).join('') : ''}
+      ${viewer === 'student' ? `<p class="hint-note">Badges are yours; team cards belong to your team. They’re just for fun — they never block the quest.</p>` : ''}`;
   }
 
   /* ================= teacher ================= */
@@ -1000,11 +999,11 @@
               }).join('')}
             </div>
             <div class="card">
-              <div class="spread"><h3>${Art.icon('trophy', 18)} Bonus discoveries</h3><span class="pill lavender">${sel.claimedCount()}/${SEED.collectibles.length} claimed</span></div>
-              ${bonusQ.length === 0 ? `<p class="hint-note" style="margin:0">Optional team discoveries appear here during the finale phase. Claims are idempotent — approving twice can never double-award.</p>` : ''}
-              ${bonusQ.map((c) => `<div class="queue-row"><div class="meta"><strong>${esc(c.title)}</strong> <small>team ${c.home}${st.bonus[c.id].simulated ? ' · SIMULATED' : ''}</small>
-                <div class="evidence-quote">${esc(st.bonus[c.id].answer)}</div></div>
-                <button class="btn btn-sun btn-sm" data-a="approve-bonus" data-card="${c.id}">${Art.icon('sparkle', 15)} Approve &amp; claim</button></div>`).join('')}
+              <div class="spread"><h3>${Art.icon('trophy', 18)} Bonus discoveries</h3><span class="pill lavender">${sel.claimedCount()}/${SEED.collectibles.length} found</span></div>
+              ${bonusQ.length === 0 ? `<p class="hint-note" style="margin:0">Teams’ bonus activities appear here from the finale on. Approving twice can never give a card twice.</p>` : ''}
+              ${bonusQ.map((x) => `<div class="queue-row"><div class="meta"><strong>${esc(x.card.title)}</strong> <small>team ${x.home}${x.b.simulated ? ' · SIMULATED' : ''}</small>
+                <div class="evidence-quote">${esc(x.b.answer)}</div></div>
+                <button class="btn btn-sun btn-sm" data-a="approve-bonus" data-card="${x.card.id}" data-home="${x.home}">${Art.icon('sparkle', 15)} Approve</button></div>`).join('')}
             </div>
           </div>
         </div>
@@ -1156,7 +1155,7 @@
           case 'help': return act('requestHelp', { participantId: S().ui.student });
           case 'resolve-help': return act('resolveHelp', { id: el.dataset.id });
           case 'qr-cards': return StationCards.open();
-          case 'award-card': return act('awardCollectible', { collectibleId: el.dataset.card });
+          case 'award-card': return act('awardCollectible', { collectibleId: el.dataset.card, home: el.dataset.home });
           case 'show-code': return JoinCode.open(sessionCode(), S().quest.title);
           case 'demo-toggle': S().ui.demoOpen = !S().ui.demoOpen; render(); return;
           case 'safety': return act('updateQuest', { field: 'safety', value: el.checked }), render();
@@ -1185,7 +1184,7 @@
           case 'card-info': {
             const c = SEED.collectibles.find((x) => x.id === el.dataset.card);
             const claimed = S().claims[c.id];
-            toast(claimed ? `${c.title} — ${c.fact}` : `${c.title}: team ${c.home}’s discovery is still out there…`, 'success');
+            toast(claimed ? `${c.title} — ${c.fact}` : `${c.hidden ? 'A hidden card' : c.title}: not found yet.`, 'success');
             return;
           }
           case 'generate': return act('generateDraft');
@@ -1199,7 +1198,7 @@
           case 'preturn-ev': return act('reviewEvidence', { participantId: el.dataset.pid, verdict: 'NEEDS_REVISION', reviewer: 'collaborator' });
           case 'return-ev': return act('reviewEvidence', { participantId: el.dataset.pid, verdict: 'NEEDS_REVISION', reviewer: 'teacher' });
           case 'return-finale': return act('reviewFinale', { home: el.dataset.home, approve: false });
-          case 'approve-bonus': return act('approveBonus', { collectibleId: el.dataset.card });
+          case 'approve-bonus': return act('approveBonus', { collectibleId: el.dataset.card, home: el.dataset.home });
           case 'sim-class': return act('simulateClassmates');
           case 'sim-bonus': return act('simulateBonusSubmissions');
           case 'approve-contrib': return act('approveContribution', { questId: el.dataset.qid });
@@ -1343,7 +1342,7 @@
           const r = act('shareTeachBack', { home: me.home, topic, checkerId: checker, answerId: answer || '' });
           if (r.ok) { S().ui.teachTopic = null; render(); }
         } else if (kind === 'bonus') {
-          act('submitBonus', { collectibleId: form.dataset.card, answer: form.querySelector('[name="answer"]').value });
+          act('submitBonus', { collectibleId: form.dataset.card, home: form.dataset.home, answer: form.querySelector('[name="answer"]').value });
         } else if (kind === 'reflection') {
           const me = SEED.byId[S().ui.student];
           act('submitReflection', { participantId: me.id, answers: SEED.reflection.map((q, i) => (form.querySelector(`[name="r${i}"]`) || {}).value || '') });
@@ -1409,7 +1408,8 @@
       if (fast === 'album3' || fast === 'album5') {
         d('simulateBonusSubmissions');
         const n = fast === 'album5' ? SEED.collectibles.length : 3; // album5 = every card
-        SEED.collectibles.slice(0, n).forEach((c) => (Engine.state.bonus[c.id] && Engine.state.bonus[c.id].status === 'SUBMITTED' ? d('approveBonus', { collectibleId: c.id }) : d('awardCollectible', { collectibleId: c.id })));
+        const home = SEED.byId[Engine.state.ui.student].home;
+        SEED.collectibles.slice(0, n).forEach((c) => { if (sel.cardScope(c) === 'team') d('awardCollectible', { collectibleId: c.id, home }); });
         lastReveal = null;
         if (fast === 'album5') d('markMasterSeen');
       }
@@ -1442,8 +1442,8 @@
       upSince = upSince || Date.now();
       if (Date.now() - upSince < 700) return;
       upSince = Date.now() + 60000;
-      const me = SEED.byId[S().ui.student], card = SEED.collectibles.find((c) => c.home === me.home && c.kind === 'egg');
-      if (joinedHere(S()) && card && !S().claims[card.id]) act('foundEgg', { participantId: me.id });
+      const me = SEED.byId[S().ui.student], card = SEED.collectibles.find((c) => c.kind === 'egg' && !sel.hasCard(c, me.id));
+      if (joinedHere(S()) && card) act('foundEgg', { participantId: me.id });
     });
   }
   function finishPendingJoin() {

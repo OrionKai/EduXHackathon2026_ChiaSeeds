@@ -480,10 +480,12 @@ SEED.keyObjectOf = (t) => {
    finale = the team's finale is approved · experts = all four of the team's experts are verified
    track = the team's expert for one track is verified · egg = hidden: a phone tilted up at the location
    teacher = the educator awards it by hand */
-SEED.EARN_TEXT = { track: 'Their expert finishes a track', experts: 'Every expert in the team finishes their track', finale: 'The team solves the finale',
-  bonus: 'The team does a bonus activity (you approve it)', egg: 'Hidden: found by tilting the phone up at the place', teacher: 'You award it yourself' };
+SEED.EARN_TEXT = { track: 'A student finishes their track (their own badge)', experts: 'A team’s experts all finish their tracks', finale: 'A team solves the finale',
+  bonus: 'A team does a bonus activity (you approve it)', egg: 'A student finds it by tilting their phone up at the place', teacher: 'You award it to a team' };
 SEED.defaultEarn = () => ({ kind: 'bonus', track: 'A', hidden: false, evolves: true });
-TEMPLATES.lost_museum.collectibles.forEach((c) => Object.assign(c, SEED.defaultEarn()));
+TEMPLATES.lost_museum.collectibles.forEach((c) => { Object.assign(c, SEED.defaultEarn()); delete c.home; });
+TEMPLATES.lost_museum.collectibles.unshift(...['A', 'B', 'C', 'D'].map((t, i) => ({ id: 'badge_' + t.toLowerCase(), title: TEMPLATES.lost_museum.topicMeta[t].name + ' badge', color: ['violet', 'teal', 'sun', 'coral'][i], category: 'Badge',
+  kind: 'track', track: t, hidden: false, evolves: true, activity: '', fact: 'You finished your track and taught your team.', promptLabel: '' })));
 TEMPLATES.blank.collectibles.forEach((c) => Object.assign(c, SEED.defaultEarn()));
 /* The next real experience after the quest (booked with a provider, unlocked for the class). */
 SEED.defaultNext = () => ({ enabled: false, activity: '', provider: '', org: '', when: '', bring: '', fallback: '', staff: '2', unlock: 'all', status: 'none', request: '', counterWhen: '' });
@@ -548,7 +550,7 @@ SEED.ensureContentShape = (c) => {
     if (!c.topicMeta[t].label) c.topicMeta[t].label = 'Track ' + t;
   });
   SEED.syncFinaleObjects(c);
-  c.collectibles = (c.collectibles || []).map((x, i) => (SEED.homeGroups.includes(x.home) ? x : { ...x, home: SEED.homeGroups[i % SEED.homeGroups.length] }));
+  c.collectibles = c.collectibles || [];
   return c;
 };
 
@@ -676,11 +678,13 @@ TEMPLATES.two_explorers = (() => {
       rubric: ['Uses both objects', 'Says what we don’t know', 'Both students helped'],
     },
     collectibles: [
-      { id: 'sharp_eyes', title: 'Sharp Eyes', home: 'H1', color: 'violet', category: 'Looking', kind: 'experts', track: 'A', hidden: false, evolves: true,
-        activity: '', fact: 'Looking closely is how real archaeologists start.', promptLabel: '' },
-      { id: 'label_writers', title: 'Label Writers', home: 'H1', color: 'sun', category: 'Teamwork', kind: 'finale', track: 'A', hidden: false, evolves: true,
+      { id: 'coffin_badge', title: 'Coffin Expert', color: 'violet', category: 'Badge', kind: 'track', track: 'A', hidden: false, evolves: true,
+        activity: '', fact: 'You looked closely at a coffin over 2,500 years old.', promptLabel: '' },
+      { id: 'lid_badge', title: 'Lid Expert', color: 'teal', category: 'Badge', kind: 'track', track: 'B', hidden: false, evolves: true,
+        activity: '', fact: 'You found out who a king’s giant lid was made for.', promptLabel: '' },
+      { id: 'label_writers', title: 'Label Writers', color: 'sun', category: 'Teamwork', kind: 'finale', track: 'any', hidden: false, evolves: true,
         activity: '', fact: 'Two detectives, one honest label.', promptLabel: '' }],
-    master: { id: 'egypt_detectives', title: 'Egypt Detectives Award', text: 'Collect both cards to earn it.', fact: 'You looked closely, taught each other and wrote an honest label.' },
+    master: { id: 'egypt_detectives', title: 'Egypt Detectives Award', text: 'Earn every card as a class to unlock it.', fact: 'You looked closely, taught each other and wrote an honest label.' },
     reflection: ['What did your partner teach you?', 'What would you still like to find out?'],
     meta: { id: 'two_explorers', name: 'Egypt Detectives', blurb: 'Fitzwilliam Museum · two objects · two students' },
     questDefaults: { objective: 'Notice what objects can and can’t tell us about the past', venue: 'The Fitzwilliam Museum, Cambridge', duration: 45,

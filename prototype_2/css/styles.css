@@ -726,3 +726,7 @@ a.brand { text-decoration: none; color: inherit; }
 .ed-sec > summary { cursor: pointer; font-weight: 700; }
 .b-save { position: sticky; bottom: 0; background: var(--white); padding: 10px 0; }
 @media (max-width: 1100px) { .b-layout { grid-template-columns: 1fr; } .b-side { position: static; } }
+
+/* ---------- a student's cards ---------- */
+.my-card { display: flex; gap: 12px; align-items: flex-start; padding: 8px; border-radius: 12px; background: rgba(255,255,255,.7); }
+.my-card.has { background: #fff; }
