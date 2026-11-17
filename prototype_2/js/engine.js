@@ -154,9 +154,7 @@ const Engine = (() => {
     for (const h of SEED.homeGroups) {
       finale[h] = {
         status: 'LOCKED', // LOCKED | AVAILABLE | SUBMITTED | APPROVED | NEEDS_REVISION
-        match: {}, // objectId -> evidence tag
-        overclaim: null,
-        tiles: [],
+        answers: {}, // stepId -> { pick, done, tries } for multiple choice, { text } for a team answer
         note: '',
         rubric: null,
         simulated: false,
@@ -268,6 +266,9 @@ const Engine = (() => {
     s.experience = s.experience || { unlocked: false, reason: '', checkins: {} };
     s.evolved = s.evolved || {};
     s.misses = s.misses || {};
+    if (s.content) SEED.migrateFinale(s.content);
+    Object.values(s.library || {}).forEach((r) => r.content && SEED.migrateFinale(r.content));
+    Object.values(s.finale || {}).forEach((f) => { f.answers = f.answers || {}; });
     s.bonus = s.bonus || {};
     s.earned = s.earned || {};
     Object.entries(s.claims || {}).forEach(([id, c]) => { if (c && c.home && !s.earned[id + '@' + c.home]) s.earned[id + '@' + c.home] = { at: c.at || Date.now() }; });
@@ -700,103 +701,55 @@ const Engine = (() => {
     },
 
     /* ----- finale ----- */
-    setFinaleMatch(s, { home, objectId, tag, by }) {
-      const f = s.finale[home];
+    /* Multiple-choice step: the team picks an answer; a wrong pick is counted (misconceptions) and they try again. */
+    finaleChoice(s, { home, stepId, optionId }) {
+      const f = s.finale[home], step = (SEED.finale.steps || []).find((x) => x.id === stepId && x.type === 'choice');
+      if (!f || !step) return { ok: false };
       if (!sel.finaleUnlocked(home)) return { ok: false, msg: 'The finale is still locked.' };
-      if (['SUBMITTED', 'APPROVED'].includes(f.status)) return { ok: false, msg: 'Already submitted.' };
-      /* Each expert places their own piece from their own phone (teammates without a device can be helped). */
-      if (by) {
-        const ownerOf = (tg) => { const t = SEED.topicsFor(home).find((x) => SEED.topicMeta[x].tag === tg); return t ? SEED.expertOf(home, t) : null; };
-        for (const o of [ownerOf(tag), ownerOf(f.match[objectId])]) {
-          if (o && o.id !== by && s.seats[o.id]) return { ok: false, msg: `That’s ${s.seats[o.id].nick}’s piece — ask them to place it from their phone.` };
-        }
-      }
-      f.status = 'AVAILABLE';
-      if (tag === null) delete f.match[objectId];
-      else {
-        for (const k of Object.keys(f.match)) if (f.match[k] === tag) delete f.match[k];
-        f.match[objectId] = tag;
-      }
+      if (['SUBMITTED', 'APPROVED'].includes(f.status)) return { ok: false, msg: 'Already sent to your teacher.' };
+      const opt = step.options.find((o) => o.id === optionId);
+      if (!opt) return { ok: false };
+      const a = f.answers[stepId] = { ...(f.answers[stepId] || {}), tries: ((f.answers[stepId] || {}).tries || 0) + 1 };
+      if (f.status === 'LOCKED') f.status = 'AVAILABLE';
+      if (!opt.correct) { miss(s, `fchoice:${stepId}:${optionId}`); return { ok: false, commit: true, msg: 'Not quite — talk it over and try again.' }; }
+      a.pick = optionId; a.done = true;
+      return { ok: true, msg: 'Yes! That’s right.' };
+    },
+    /* Team answer step: saved as they write (any teammate's phone). */
+    finaleWrite(s, { home, stepId, text }) {
+      const f = s.finale[home], step = (SEED.finale.steps || []).find((x) => x.id === stepId && x.type === 'write');
+      if (!f || !step || ['SUBMITTED', 'APPROVED'].includes(f.status)) return { ok: false };
+      f.answers[stepId] = { text: String(text || '').slice(0, 2000) };
       return { ok: true, silent: true };
     },
-    setFinaleOverclaim(s, { home, optionId }) {
-      const f = s.finale[home];
-      if (!sel.finaleUnlocked(home)) return { ok: false, msg: 'The finale is still locked.' };
-      if (['SUBMITTED', 'APPROVED'].includes(f.status)) return { ok: false, msg: 'Already submitted.' };
-      f.overclaim = optionId;
-      return { ok: true, silent: true };
-    },
-    toggleFinaleTile(s, { home, tileId }) {
-      const f = s.finale[home];
-      if (!sel.finaleUnlocked(home)) return { ok: false, msg: 'The finale is still locked.' };
-      if (['SUBMITTED', 'APPROVED'].includes(f.status)) return { ok: false, msg: 'Already submitted.' };
-      const i = f.tiles.indexOf(tileId);
-      if (i >= 0) f.tiles.splice(i, 1);
-      else {
-        const max = SEED.finale.compose.max || 6;
-        if (f.tiles.length >= max) return { ok: false, msg: `${max} sentences is the limit — remove one first.` };
-        f.tiles.push(tileId);
-      }
-      return { ok: true, silent: true };
-    },
-
     submitFinale(s, { home }) {
       const f = s.finale[home];
       if (!sel.finaleUnlocked(home))
-        return { ok: false, msg: 'The finale is locked: every perspective must be verified and taught first.' };
-      if (['SUBMITTED', 'APPROVED'].includes(f.status)) return { ok: false, msg: 'Already submitted.' };
-
-      // Panel 1 — evidence match must be complete and correct.
-      const tags = SEED.topicsFor(home).map((t) => SEED.topicMeta[t].tag);
-      for (const o of SEED.finale.objects.filter((x) => tags.includes(x.answer))) {
-        if (!f.match[o.id]) return { ok: false, msg: 'Match every object to a perspective first.' };
-        if (f.match[o.id] !== o.answer) {
-          miss(s, `match:${o.id}:${f.match[o.id]}`);
-          return { ok: false, commit: true, msg: 'One of the pieces is in the wrong place — discuss as a team and try again.' };
-        }
-      }
-      // Panel 2 — cautious principle.
-      const chosen = SEED.finale.overclaim.options.find((o) => o.id === f.overclaim);
-      if (!chosen) return { ok: false, msg: 'Choose a statement in panel 2.' };
-      if (!chosen.correct) {
-        miss(s, 'overclaim:' + chosen.id);
-        return { ok: false, commit: true, msg: 'That principle overclaims. Which statement stays within the evidence?' };
-      }
-      // Panel 3 — structural check of the composed introduction.
-      const picked = SEED.finale.compose.tiles.filter((t) => f.tiles.includes(t.id));
-      if (picked.some((t) => t.trap)) {
-        picked.filter((t) => t.trap).forEach((t) => miss(s, 'trap:' + t.id));
-        return { ok: false, commit: true, msg: 'One chosen sentence claims too much — your introduction should avoid overclaiming.' };
-      }
-      const counts = {};
-      for (const t of picked) counts[t.cat] = (counts[t.cat] || 0) + 1;
-      const needs = SEED.finale.compose.needs;
-      for (const cat of Object.keys(needs)) {
-        if ((counts[cat] || 0) < needs[cat]) {
-          const hints = { evidence: 'evidence sentence', perspectives: 'sentence about different perspectives', uncertainty: 'sentence naming an uncertainty', invite: 'sentence inviting a question' };
-          return { ok: false, msg: `Your answer needs at least ${needs[cat]} ${hints[cat] || cat}${needs[cat] > 1 ? 's' : ''}.` };
-        }
-      }
+        return { ok: false, msg: 'The finale is locked: every expert must be checked and have taught the team first.' };
+      if (['SUBMITTED', 'APPROVED'].includes(f.status)) return { ok: false, msg: 'Already sent.' };
+      const steps = SEED.finale.steps || [];
+      const open = steps.findIndex((x) => (x.type === 'choice' ? !(f.answers[x.id] || {}).done : String((f.answers[x.id] || {}).text || '').trim().length < 10));
+      if (open >= 0) return { ok: false, msg: `Finish step ${open + 1} first.` };
       f.status = 'SUBMITTED';
-      audit('student', `${home} submitted their finale answer.`);
-      return { ok: true, msg: 'Submitted — your educator will review it.' };
+      audit('student', `Team ${home} sent their finale.`);
+      return { ok: true, msg: 'Sent — your teacher will check it.' };
     },
 
     reviewFinale(s, { home, approve, rubric, note }) {
       const f = s.finale[home];
       if (f.status !== 'SUBMITTED') return { ok: false, msg: 'Nothing to review for this team.' };
       if (approve) {
-        if (!rubric || SEED.finale.rubric.some((r) => !rubric[r]))
-          return { ok: false, msg: 'Tick every rubric item to approve.' };
+        if (SEED.finaleChecks(s.content).some((c) => !(rubric || {})[c.key]))
+          return { ok: false, msg: 'Tick everything a good answer includes before approving — or send it back with a note.' };
         f.status = 'APPROVED';
         f.rubric = rubric;
         audit('teacher', `Approved ${home}’s finale answer.`);
         return { ok: true, msg: `Team ${home}’s answer approved — main quest complete for that team.` };
       }
       f.status = 'NEEDS_REVISION';
-      f.note = note || 'Strengthen the uncertainty sentence and cite a second object.';
-      audit('teacher', `Returned ${home}’s introduction for revision.`);
-      return { ok: true, msg: `${home}’s introduction returned with a note.` };
+      f.note = note || 'Have another look at your answer — check it includes everything on the list.';
+      audit('teacher', `Sent team ${home}’s finale back with a note.`);
+      return { ok: true, msg: `Sent back to team ${home} with a note.` };
     },
 
     /* ----- optional collectibles (never gate the main quest) ----- */

@@ -18,7 +18,7 @@ The quest's expert tracks are listed under CURRENT TRACKS (one letter each, with
 
 What you can change, by calling tools (track changes are proposals the educator approves; everything else applies directly and the educator can undo it by hand):
 - tracks: add or remove tracks and set the class size — set_groups / remove_track; a track's wording (name, location, key object, the big question, what students do, discussion, backup plan, what they teach their team) — revise_track; its lists (questions students answer in their notes, hints, what a good answer includes) — set_track_list; how it is assessed (photo / QR check-in, notes / photo, multiple-choice questions and pass mark, who checks) — set_assessment; the statements a teammate picks from — set_teachback_check;
-- the finale: title, the "which statement claims too much" question and statements, the sentences teams build their answer from, the tempting overclaims, and what the teacher checks — set_finale (empty = unchanged);
+- the final team challenge: its title, what students are told, and its steps — multiple-choice questions the team answers together and team answers the teacher checks against "what a good answer includes" — set_finale;
 - reward cards: add, edit or remove (name, team, how it's earned, bonus activity, fun fact) — set_card / remove_card;
 - the story opening and reflection questions — set_story / set_reflection;
 - approved sources: add one from text the educator gives you — add_source;
@@ -61,12 +61,13 @@ const TOOLS = [
   tool("set_groups", "Set how many tracks the quest has (1-6) and the class size (2-60). New tracks start empty; removing tracks deletes the last ones (use remove_track to remove a specific one).", {
     tracks: { type: "integer" }, class_size: { type: "integer" } }),
   tool("remove_track", "Remove one track; later tracks move up a letter.", { topic: { type: "string", enum: TOPICS } }),
-  tool("set_finale", "Change the finale. Use an empty string or empty list for anything that should stay unchanged.", {
-    title: { type: "string" }, question: { type: "string" },
-    statements: { type: "array", items: { type: "object", additionalProperties: false, required: ["text", "correct"], properties: { text: { type: "string" }, correct: { type: "boolean", description: "true = appropriately cautious" } } } },
-    evidence_sentences: { type: "array", items: { type: "string" } }, perspective_sentences: { type: "array", items: { type: "string" } },
-    uncertainty_sentences: { type: "array", items: { type: "string" } }, invite_sentences: { type: "array", items: { type: "string" } },
-    overclaim_sentences: { type: "array", items: { type: "string" } }, teacher_checks: { type: "array", items: { type: "string" } } }),
+  tool("set_finale", "Rewrite the final team challenge: a title, what students are told, and its steps in order. Leave steps empty to keep the current steps.", {
+    title: { type: "string" }, intro: { type: "string" },
+    steps: { type: "array", items: { type: "object", additionalProperties: false, required: ["type", "question", "options", "checks"], properties: {
+      type: { type: "string", enum: ["choice", "write"], description: "choice = multiple choice the team answers together; write = the team writes an answer and the teacher checks it" },
+      question: { type: "string" },
+      options: { type: "array", items: { type: "object", additionalProperties: false, required: ["text", "correct"], properties: { text: { type: "string" }, correct: { type: "boolean" } } }, description: "For choice steps; empty for write steps" },
+      checks: { type: "array", items: { type: "string" }, description: "For write steps: what a good answer includes; empty for choice steps" } } } } }),
   tool("set_card", "Add a reward card (card_id \"new\") or edit one (its id from CURRENT CARDS).", {
     card_id: { type: "string" }, title: { type: "string" }, team: { type: "string", description: "Home team id like H1, or empty" },
     earned_when: { type: "string", enum: ["track", "experts", "finale", "bonus", "egg", "teacher"] }, track: { type: "string", description: "Track letter for earned_when=track, or empty" },

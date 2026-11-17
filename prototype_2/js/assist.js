@@ -173,11 +173,13 @@ const Assistant = (() => {
   }
 
   function finaleSection(st) {
-    const locked = st.quest.status === 'PUBLISHED', f = SEED.finaleFields(st.content);
+    const locked = st.quest.status === 'PUBLISHED', fin = st.content.finale, steps = fin.steps || [];
+    const kinds = (t) => steps.filter((x) => x.type === t).length;
     return `<section class="card" id="as-finale">
-      <div class="spread"><h3 style="margin:0">${Art.icon('puzzle', 18)} Finale: ${esc(st.content.finale.title || 'Untitled')}</h3>${locked ? '' : `<button class="btn btn-ghost btn-sm" type="button" data-as-edit="finale">${editing === 'finale' ? 'Close' : 'Edit'}</button>`}</div>
-      <p class="hint-note" style="margin:6px 0 0">The team puzzle at the end. It opens once every expert in a team has been checked and has taught the others. Each expert places their object (${st.content.finale.objects.map((o) => esc(o.label || '—')).join(' · ')}), the team picks the statement that doesn’t claim too much, then builds a short answer from ${f.evidence.length} evidence sentences.</p>
-      ${editing === 'finale' && !locked ? finaleEditor(f) : ''}
+      <div class="spread"><h3 style="margin:0">${Art.icon('puzzle', 18)} Final team challenge: ${esc(fin.title || 'Untitled')}</h3>${locked ? '' : `<button class="btn btn-secondary btn-sm" type="button" data-as-edit="finale">${editing === 'finale' ? 'Close' : 'Edit'}</button>`}</div>
+      <p class="hint-note" style="margin:6px 0 8px">What each team does together at the end, once all its experts have been checked and have taught the team. Build it from steps: <strong>multiple choice</strong> (the team picks the right answer) and <strong>team answer</strong> (they write it together and you check it).</p>
+      ${editing === 'finale' && !locked ? finaleEditor(fin) : `<ol class="fin-list">${steps.map((x) => `<li><span class="pill plain">${x.type === 'choice' ? 'Multiple choice' : 'Team answer'}</span> ${esc((x.type === 'choice' ? x.question : x.prompt) || 'Not written yet')}</li>`).join('') || '<li class="hint-note">No steps yet.</li>'}</ol>
+        <p class="hint-note" style="margin:6px 0 0">${kinds('choice')} multiple choice · ${kinds('write')} team answer${kinds('write') === 1 ? '' : 's'}</p>`}
     </section>`;
   }
 
@@ -307,20 +309,27 @@ const Assistant = (() => {
       verify: v === 'auto' && !quiz.length ? 'teacher' : v };
   }
 
-  function finaleEditor(f) {
-    const cats = Object.entries(SEED.FINALE_CATS);
-    return `<form class="stack as-editor" style="gap:8px;margin-top:10px" data-as-finaleform>
-      ${sec('Basics', true, inp('fe-title', 'Finale title', f.title))}
-      ${sec('Puzzle 2: which statement claims too much?', false, `${inp('fe-q', 'Question', f.question)}
-        <span class="fld">Statements (tick the cautious ones)</span>${checkListEd('fe-opts', f.options, 'A statement', 'Add statement')}`)}
-      ${sec('Puzzle 3: build the team’s answer', false, `${cats.map(([k, l]) => `<div class="stack" style="gap:4px"><div class="spread"><span class="fld">${l}</span>
-          <label class="row" style="gap:6px;font-size:13px">at least <input class="input" type="number" min="0" data-need="${k}" value="${f.needs[k] || 0}" style="width:70px"></label></div>
-          ${listEd('fe-' + k, f[k], 'A sentence students can choose', 'Add sentence')}</div>`).join('')}
-        <span class="fld">Tempting overclaims (students must leave these out)</span>${listEd('fe-traps', f.traps, 'An overclaiming sentence', 'Add overclaim')}
-        <div class="row"><label class="fld" for="fe-max" style="margin:0">Most sentences a team may pick</label><input class="input" id="fe-max" type="number" min="1" value="${f.max}" style="width:90px"></div>`)}
-      ${sec('What you check before approving their answer', false, listEd('fe-rubric', f.rubric, 'A rubric item', 'Add item'))}
-      <div class="row"><button class="btn btn-primary btn-sm" type="submit">Save finale</button><button class="btn btn-ghost btn-sm" type="button" data-as-edit-cancel>Cancel</button></div></form>`;
+  function finStep(x) {
+    const head = (label) => `<div class="spread"><strong>${label}</strong><span class="row" style="gap:4px"><button type="button" class="btn btn-ghost btn-sm" data-fs-move="-1" aria-label="Move step up">↑</button><button type="button" class="btn btn-ghost btn-sm" data-fs-move="1" aria-label="Move step down">↓</button><button type="button" class="btn btn-danger-ghost btn-sm" data-fs-rm>Remove</button></span></div>`;
+    if (x.type === 'write') return `<div class="fstep" data-fstep data-type="write" data-id="${x.id}">${head(`${Art.icon('pencil', 15)} Team answer`)}
+      <label class="fld">The question the team answers together</label><textarea class="input" data-fs-q rows="2" placeholder="e.g. Write a label for the two objects, in 2 to 4 sentences.">${esc(x.prompt)}</textarea>
+      <span class="fld">What a good answer includes</span><p class="hint-note" style="margin:-2px 0 2px">Students see this as a checklist; you tick it when you approve their answer.</p>
+      ${listEd('fc-' + x.id, x.checks, 'e.g. Says what we still don’t know', 'Add a point')}</div>`;
+    return `<div class="fstep" data-fstep data-type="choice" data-id="${x.id}">${head(`${Art.icon('check', 15)} Multiple choice`)}
+      <label class="fld">The question</label><input class="input" data-fs-q value="${esc(x.question)}" placeholder="e.g. Which sentence is fair to put on the label?">
+      <span class="fld">Answers (tick the right one)</span>${checkListEd('fo-' + x.id, x.options, 'An answer', 'Add an answer')}</div>`;
   }
+  function finaleEditor(fin) {
+    return `<form class="stack as-editor" style="gap:10px;margin-top:10px" data-as-finaleform>
+      ${inp('fe-title', 'Name of the challenge', fin.title, 'e.g. Write the label together')}
+      ${ta('fe-intro', 'What students are told at the start', fin.intro || '', 2, 'e.g. You’ve both found out something. Now put it together.')}
+      <div class="stack" style="gap:10px" data-fsteps>${(fin.steps || []).map(finStep).join('')}</div>
+      <div class="row" style="gap:6px"><span class="hint-note">Add a step:</span><button type="button" class="btn btn-secondary btn-sm" data-fs-add="choice">${Art.icon('plus', 14)} Multiple choice</button><button type="button" class="btn btn-secondary btn-sm" data-fs-add="write">${Art.icon('plus', 14)} Team answer</button></div>
+      <div class="row b-save"><button class="btn btn-primary" type="submit">Save challenge</button><button class="btn btn-ghost" type="button" data-as-edit-cancel>Cancel</button></div></form>`;
+  }
+  const readFinale = (f) => ({ title: f.querySelector('#fe-title').value, intro: f.querySelector('#fe-intro').value,
+    steps: [...f.querySelectorAll('[data-fstep]')].map((el) => { const id = el.dataset.id, q = el.querySelector('[data-fs-q]').value;
+      return el.dataset.type === 'write' ? { id, type: 'write', prompt: q, checks: readList(el, 'fc-' + id) } : { id, type: 'choice', question: q, options: readCheckList(el, 'fo-' + id) }; }) });
 
   function extrasEditor(c) {
     return `<form class="stack as-editor" style="gap:6px;margin-top:10px" data-as-extrasform>
@@ -445,7 +454,7 @@ const Assistant = (() => {
     SEED.topics.forEach((t) => { const { refPhoto, backupCode, evidenceKeys, ...f } = SEED.trackFields(Engine.state.content, t); tracks[t] = { ...f, status: Engine.state.tracks[t] }; });
     const c = Engine.state.content, fin = SEED.finaleFields(c);
     const extras = { groups: { tracks: Engine.state.quest.structure.tracks, class_size: SEED.structure.classSize, teams: SEED.homeGroups },
-      finale: { title: fin.title, question: fin.question, statements: fin.options, evidence_sentences: fin.evidence, perspective_sentences: fin.perspectives, uncertainty_sentences: fin.uncertainty, invite_sentences: fin.invite, overclaim_sentences: fin.traps, teacher_checks: fin.rubric },
+      finale: fin,
       cards: c.collectibles.map((k) => ({ id: k.id, title: k.title, earned_when: k.kind, track: k.track, activity: k.activity, fact: k.fact })), story: c.story.opening, reflection: c.reflection };
     return { extras, quest: questBrief(), tracks, sources: SRC().filter((s) => s.fact).map((s) => ({ id: s.id, title: s.title, text: s.fact, url: s.url || '' })) };
   }
@@ -466,10 +475,10 @@ const Assistant = (() => {
       return D('editCollectible', { collectibleId: id, fields: f });
     }
     if (e.tool === 'set_finale') {
-      const f = SEED.finaleFields(Engine.state.content), pick = (k, v) => { const l = list(v); if (l.length) f[k] = l; };
-      if (i.title) f.title = i.title; if (i.question) f.question = i.question;
-      const st = (i.statements || []).filter((y) => y && y.text); if (st.some((y) => y.correct) && st.some((y) => !y.correct)) f.options = st.map((y) => ({ text: y.text, correct: !!y.correct }));
-      pick('evidence', i.evidence_sentences); pick('perspectives', i.perspective_sentences); pick('uncertainty', i.uncertainty_sentences); pick('invite', i.invite_sentences); pick('traps', i.overclaim_sentences); pick('rubric', i.teacher_checks);
+      const f = { title: i.title || '', intro: i.intro || '' };
+      const steps = (i.steps || []).filter((y) => y && (y.question || '').trim()).map((y) => (y.type === 'write'
+        ? { type: 'write', prompt: y.question, checks: list(y.checks) } : { type: 'choice', question: y.question, options: (y.options || []).filter((o) => o && o.text).map((o) => ({ text: o.text, correct: !!o.correct })) }));
+      if (steps.length) f.steps = steps;
       return D('editFinale', { fields: f });
     }
     if (e.tool === 'update_quest_settings') {
@@ -556,7 +565,9 @@ const Assistant = (() => {
     SEED.syncFinaleObjects(content);
     if (fin.status === 200 && fin.data && fin.data.finale) {
       const F = fin.data.finale;
-      SEED.buildFinale(content, { title: F.title, cautious: F.cautious_statement, overclaim: F.overclaim_statement, evidence: F.evidence_sentences, perspectives: F.perspectives_sentence, uncertainty: F.uncertainty_sentence, invite: F.invite_sentence, trap: F.trap_sentence });
+      SEED.buildFinale(content, { title: F.title, intro: 'Put together what every expert found.', steps: [
+        { type: 'choice', question: 'Which sentence is fair to say?', options: [{ text: F.cautious_statement, correct: true }, { text: F.overclaim_statement, correct: false }] },
+        { type: 'write', prompt: 'Write your team’s answer together, using what each expert found.', checks: ['Uses something from every track', 'Says what we still don’t know', 'Asks a question we could explore next'] }] });
     } else failed.push('the finale');
     if (ext.status === 200 && ext.data && ext.data.extras) {
       const X = ext.data.extras;
@@ -578,6 +589,15 @@ const Assistant = (() => {
   let delegated = false;
   function delegate() {
     if (delegated) return; delegated = true;
+    document.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-fs-add],[data-fs-move],[data-fs-rm]'); if (!el) return;
+      e.preventDefault();
+      if (el.matches('[data-fs-add]')) { const box = el.closest('form').querySelector('[data-fsteps]'); box.insertAdjacentHTML('beforeend', finStep(SEED.finaleStep(el.dataset.fsAdd))); box.lastElementChild.querySelector('[data-fs-q]').focus(); return; }
+      const step = el.closest('[data-fstep]');
+      if (el.matches('[data-fs-rm]')) { if (step.parentElement.querySelectorAll('[data-fstep]').length > 1 || confirm('Remove the last step?')) step.remove(); return; }
+      const d = Number(el.dataset.fsMove), sib = d < 0 ? step.previousElementSibling : step.nextElementSibling;
+      if (sib) (d < 0 ? sib.before(step) : sib.after(step));
+    });
     document.addEventListener('change', (e) => { const k = e.target.dataset && e.target.dataset.show; if (k) document.querySelectorAll(`[data-show-box="${k}"]`).forEach((b) => { b.hidden = !e.target.checked; }); });
     document.addEventListener('click', (e) => {
       const el = e.target.closest('[data-le-add],[data-le-rm],[data-qz-add],[data-qz-rm],[data-qz-opt-add],[data-qz-opt-rm]');
@@ -640,9 +660,7 @@ const Assistant = (() => {
     });
     on('[data-as-finaleform]', 'submit', (f, e) => {
       e.preventDefault();
-      const fields = { title: f.querySelector('#fe-title').value.trim(), question: f.querySelector('#fe-q').value.trim(), options: readCheckList(f, 'fe-opts'),
-        traps: readList(f, 'fe-traps'), rubric: readList(f, 'fe-rubric'), max: Number(f.querySelector('#fe-max').value) || 6, needs: {} };
-      Object.keys(SEED.FINALE_CATS).forEach((k) => { fields[k] = readList(f, 'fe-' + k); fields.needs[k] = Number(f.querySelector(`[data-need="${k}"]`).value) || 0; });
+      const fields = readFinale(f);
       editing = null;
       window.WQ.act('editFinale', { fields });
     });

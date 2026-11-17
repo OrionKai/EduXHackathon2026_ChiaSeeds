@@ -390,28 +390,45 @@ SEED.syncFinaleObjects = (c) => {
     gallery: c.missions[t].gallery || '', answer: c.topicMeta[t].tag,
   }));
 };
-SEED.FINALE_CATS = { evidence: 'Evidence sentences', perspectives: 'Different perspectives', uncertainty: 'Naming an uncertainty', invite: 'Inviting a question' };
+/* The finale ("final team challenge") is a list of steps the teacher builds:
+   - choice: a multiple-choice question the team answers together (tick the right option(s));
+   - write:  a question the team answers in their own words, plus "what a good answer includes",
+             which the teacher ticks when approving. */
+let finSeq = 0;
+const stepId = () => 'fs' + Date.now().toString(36) + (finSeq++);
+SEED.finaleStep = (type) => (type === 'write' ? { id: stepId(), type: 'write', prompt: '', checks: [''] }
+  : { id: stepId(), type: 'choice', question: '', options: [{ id: 'o1', text: '', correct: true }, { id: 'o2', text: '', correct: false }] });
+/* Old saves and templates used fixed puzzles; turn them into steps once. */
+SEED.migrateFinale = (c) => {
+  const f = c.finale || (c.finale = {});
+  if (Array.isArray(f.steps)) return c;
+  const steps = [];
+  if (f.overclaim && f.overclaim.options) steps.push({ id: 'fs_choice', type: 'choice', question: f.overclaim.question || 'Which sentence is fair?', options: f.overclaim.options.map((o) => ({ ...o })) });
+  if (f.compose) steps.push({ id: 'fs_write', type: 'write', prompt: f.compose.prompt || 'Write your team’s answer together.', checks: (f.rubric || []).slice() });
+  f.steps = steps.length ? steps : [SEED.finaleStep('choice'), SEED.finaleStep('write')];
+  f.intro = f.intro || '';
+  delete f.overclaim; delete f.compose; delete f.rubric;
+  return c;
+};
 SEED.buildFinale = (c, f) => {
-  const list = (v) => (Array.isArray(v) ? v : v ? [v] : []).map((x) => String(x).trim()).filter(Boolean);
-  const tiles = [];
-  Object.keys(SEED.FINALE_CATS).forEach((cat) => list(f[cat]).forEach((text, i) => tiles.push({ id: cat[0] + (i + 1), cat, text })));
-  list(f.traps || f.trap).forEach((text, i) => tiles.push({ id: 'x' + (i + 1), cat: 'overclaim', text, trap: true }));
-  c.finale.title = f.title || c.finale.title || 'Restore the story';
-  const opts = Array.isArray(f.options) && f.options.length ? f.options : [{ text: f.cautious || '', correct: true }, { text: f.overclaim || '', correct: false }];
-  c.finale.overclaim = { question: String(f.question || c.finale.overclaim.question || 'Which statement stays within the evidence?').trim(),
-    options: opts.map((o, i) => ({ id: o.id || 'o' + (i + 1), text: String(o.text || '').trim(), correct: !!o.correct, ...(o.miss ? { miss: String(o.miss) } : {}) })).filter((o) => o.text) };
-  const needs = { ...c.finale.compose.needs, ...(f.needs || {}) };
-  Object.keys(needs).forEach((k) => { needs[k] = Math.max(0, Number(needs[k]) || 0); });
-  c.finale.compose = { ...c.finale.compose, tiles, needs, max: Math.max(1, Number(f.max) || c.finale.compose.max || 6) };
-  if (Array.isArray(f.rubric)) c.finale.rubric = list(f.rubric);
+  const old = (c.finale.steps || []), txt = (v) => String(v == null ? '' : v).trim();
+  c.finale.title = txt(f.title) || c.finale.title || 'Final team challenge';
+  if (typeof f.intro === 'string') c.finale.intro = txt(f.intro);
+  if (Array.isArray(f.steps)) c.finale.steps = f.steps.map((x) => {
+    const prev = old.find((o) => o.id === x.id) || {};
+    if (x.type === 'write') return { id: x.id || stepId(), type: 'write', prompt: txt(x.prompt || x.question), checks: (x.checks || []).map(txt).filter(Boolean) };
+    const opts = (x.options || []).map((o, i) => { const was = (prev.options || []).find((p2) => p2.text === txt(o.text)) || {};
+      return { id: was.id || 'o' + (i + 1), text: txt(o.text), correct: !!o.correct, ...(was.miss || o.miss ? { miss: was.miss || o.miss } : {}) }; }).filter((o) => o.text);
+    return { id: x.id || stepId(), type: 'choice', question: txt(x.question), options: opts };
+  });
 };
-SEED.finaleFields = (c) => {
-  const T = c.finale.compose.tiles, by = (cat) => T.filter((x) => x.cat === cat && !x.trap).map((x) => x.text);
-  const out = { title: c.finale.title, question: c.finale.overclaim.question, options: c.finale.overclaim.options.map((o) => ({ id: o.id, text: o.text, correct: !!o.correct, miss: o.miss || '' })),
-    traps: T.filter((x) => x.trap).map((x) => x.text), needs: { ...c.finale.compose.needs }, max: c.finale.compose.max || 6, rubric: [...(c.finale.rubric || [])] };
-  Object.keys(SEED.FINALE_CATS).forEach((cat) => { out[cat] = by(cat); });
-  return out;
-};
+SEED.finaleFields = (c) => ({ title: c.finale.title, intro: c.finale.intro || '', steps: JSON.parse(JSON.stringify(c.finale.steps || [])) });
+/* Everything the teacher ticks when approving a team's answer. */
+SEED.migrateFinale(TEMPLATES.lost_museum);
+Object.assign(TEMPLATES.lost_museum.finale, { intro: 'Your team has found out a lot. Now use it to fix the museum’s sign.' });
+TEMPLATES.lost_museum.finale.steps[1] = { id: 'fs_write', type: 'write', prompt: 'Write a better museum sign together, in 3 to 5 sentences.',
+  checks: ['Mentions at least two real objects', 'Shows that people lived different lives', 'Says what we still don’t know', 'Asks visitors a question'] };
+SEED.finaleChecks = (c) => (c.finale.steps || []).filter((x) => x.type === 'write').flatMap((x) => (x.checks || []).map((t, i) => ({ key: x.id + ':' + i, text: t, stepId: x.id })));
 
 /* A blank quest: the Jigsaw structure with every authored field empty. */
 TEMPLATES.blank = (() => {
@@ -423,8 +440,7 @@ TEMPLATES.blank = (() => {
     const b = SEED.buildTrack(t, { name: '', evidence: ['', ''], hints: [] });
     c.missions[t] = b.mission; c.topicMeta[t].name = 'Track ' + t; c.topicMeta[t].label = 'Track ' + t; c.peerTeaching.checkOptions[t] = b.check;
   });
-  c.finale = { ...base.finale, title: 'Restore the story', compose: { ...base.finale.compose, prompt: 'Build a short introduction: cite at least two pieces of evidence, acknowledge different perspectives, note one uncertainty, and invite a question.', tiles: [] },
-    overclaim: { question: 'Which statement stays within the evidence?', options: [{ id: 'cautious', text: '', correct: true }, { id: 'absolute', text: '', correct: false }] } };
+  c.finale = { title: 'Final team challenge', intro: '', objects: [], steps: [SEED.finaleStep('choice'), SEED.finaleStep('write')] };
   SEED.syncFinaleObjects(c);
   c.collectibles = []; // a blank quest starts with no cards; add them if you want them
   c.reflection = [''];
@@ -447,12 +463,18 @@ SEED.contentProblems = (c) => {
     if ((a.quiz || []).some((q) => !q.q || q.o.length < 2 || q.o.some((o) => !o))) p.push(`Track ${t}: complete every quiz question`);
     if (a.verify === 'auto' && !(a.quiz || []).length) p.push(`Track ${t}: automatic verification needs a quiz`);
   });
-  const T = c.finale.compose.tiles, n = (cat) => T.filter((x) => x.cat === cat && !x.trap).length, needs = c.finale.compose.needs || {};
-  if (Object.keys(needs).some((cat) => n(cat) < needs[cat])) p.push('Finale: enough sentences for each requirement');
-  if (Object.values(needs).reduce((x, y) => x + y, 0) > (c.finale.compose.max || 6)) p.push('Finale: the sentence limit is lower than the requirements');
-  const o = c.finale.overclaim.options;
-  if (!o.some((x) => x.correct) || !o.some((x) => !x.correct)) p.push('Finale: at least one cautious and one overclaiming statement');
-  if (!(c.finale.rubric || []).length) p.push('Finale: at least one rubric item');
+  const fs = c.finale.steps || [];
+  if (!fs.length) p.push('Finale: add at least one step');
+  fs.forEach((x, i) => {
+    const n = `Finale step ${i + 1}`;
+    if (x.type === 'choice') {
+      if (!x.question) p.push(`${n}: write the question`);
+      if ((x.options || []).length < 2 || !x.options.some((o) => o.correct) || !x.options.some((o) => !o.correct)) p.push(`${n}: at least one right and one wrong answer`);
+    } else {
+      if (!x.prompt) p.push(`${n}: write the question`);
+      if (!(x.checks || []).filter(Boolean).length) p.push(`${n}: say what a good answer includes`);
+    }
+  });
   if (c.collectibles.some((x) => !x.title || (x.kind === 'bonus' && !x.activity))) p.push('Cards: a name for each card (and an activity for bonus cards)');
   if (!c.reflection.length || c.reflection.some((q) => !q || !q.trim())) p.push('Reflection: at least one question, none empty');
   return p;
@@ -539,6 +561,7 @@ SEED.expertGroupOf = (pid) => {
 SEED.styleOf = (t) => TRACK_STYLE[t];
 /* Make a quest's content match its structure: a track per letter, a collectible per home team. */
 SEED.ensureContentShape = (c) => {
+  SEED.migrateFinale(c);
   SEED.topics.forEach((t) => {
     if (!c.missions[t]) {
       const b = SEED.buildTrack(t, { name: '', evidence: [''], hints: [] });
@@ -696,3 +719,8 @@ TEMPLATES.two_explorers = (() => {
   };
   return c;
 })();
+
+SEED.migrateFinale(TEMPLATES.two_explorers);
+Object.assign(TEMPLATES.two_explorers.finale, { intro: 'You’ve both found out something. Now put it together and write the museum label.' });
+TEMPLATES.two_explorers.finale.steps[1] = { id: 'fs_write', type: 'write', prompt: 'Write the label for the two objects, in 2 to 4 sentences.',
+  checks: ['Says something about each object', 'Says what we still don’t know', 'Asks visitors a question'] };

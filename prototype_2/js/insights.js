@@ -26,12 +26,7 @@ const Insights = (() => {
   }
   function finaleMisses(st) {
     const m = st.misses || {}, f = SEED.finale, out = [];
-    for (const o of f.overclaim.options) { const n = m['overclaim:' + o.id]; if (n && !o.correct) out.push({ n, label: o.miss, text: o.text, where: 'finale · spot the overclaim' }); }
-    for (const t of f.compose.tiles.filter((x) => x.trap)) { const n = m['trap:' + t.id]; if (n) out.push({ n, label: 'Overclaiming in the final answer', text: t.text, where: 'finale · introduction' }); }
-    for (const [k, n] of Object.entries(m).filter(([k]) => k.startsWith('match:'))) {
-      const [, oid, tag] = k.split(':'); const o = f.objects.find((x) => x.id === oid); const t = SEED.topics.find((x) => SEED.topicMeta[x].tag === tag);
-      if (o && t) out.push({ n, label: '', text: `${o.label} placed under ${SEED.topicMeta[t].name}`, where: 'finale · placing pieces' });
-    }
+    for (const x of (f.steps || []).filter((y) => y.type === 'choice')) for (const o of x.options) { const n = m[`fchoice:${x.id}:${o.id}`]; if (n && !o.correct) out.push({ n, label: o.miss, text: o.text, where: 'finale · ' + x.question }); }
     return out.sort((a, b) => b.n - a.n);
   }
   const missList = (list) => list.length

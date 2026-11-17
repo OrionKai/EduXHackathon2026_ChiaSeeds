@@ -730,3 +730,9 @@ a.brand { text-decoration: none; color: inherit; }
 /* ---------- a student's cards ---------- */
 .my-card { display: flex; gap: 12px; align-items: flex-start; padding: 8px; border-radius: 12px; background: rgba(255,255,255,.7); }
 .my-card.has { background: #fff; }
+
+/* ---------- final team challenge ---------- */
+.fstep { border: 1.5px solid var(--stroke); border-radius: 14px; padding: 12px 14px; background: var(--paper); display: flex; flex-direction: column; gap: 6px; }
+.fin-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.fin-step.done { border-color: #9FDFD0; }
+.fin-step.now { border: 2px solid var(--violet); }

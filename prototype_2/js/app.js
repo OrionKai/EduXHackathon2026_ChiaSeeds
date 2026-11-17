@@ -551,57 +551,35 @@
         </div>`;
     }
     if (f.status === 'SUBMITTED') {
-      return `<div class="card"><div class="spread"><h2>Introduction submitted</h2>${statusChip('SUBMITTED')}</div>
-        <p style="margin:0">Your educator is reviewing team ${home}’s answer against the rubric: ${SEED.finale.rubric.join(' · ')}.</p></div>`;
+      return `<div class="card"><div class="spread"><h2>Sent to your teacher</h2>${statusChip('SUBMITTED')}</div>
+        <p style="margin:0">Your teacher is checking team ${home}’s answers.</p></div>`;
     }
     if (f.status === 'APPROVED') {
       return `<div class="card wash-mint burst"><div class="spread"><h2>Main quest complete! ✦</h2>${statusChip('APPROVED')}</div>
         <p style="margin:0">Your educator approved team ${home}’s answer. Careful, evidence-based work.</p></div>`;
     }
-    const fin = SEED.finale;
-    const picked = st.ui.pickedObject;
+    const fin = SEED.finale, steps = fin.steps || [];
+    const firstOpen = steps.findIndex((x) => (x.type === 'choice' ? !(f.answers[x.id] || {}).done : !String((f.answers[x.id] || {}).text || '').trim()));
     return `
-      ${f.status === 'NEEDS_REVISION' ? `<div class="card wash-peach"><strong>${Art.icon('alert', 17)} Educator’s note:</strong> ${esc(f.note)}</div>` : ''}
+      ${f.status === 'NEEDS_REVISION' ? `<div class="card wash-peach"><strong>${Art.icon('alert', 17)} Your teacher says:</strong> ${esc(f.note)}</div>` : ''}
       <div class="mission-hero sun">
-        <div class="eyebrow sun">Escape-room finale · Team ${home}</div>
+        <div class="eyebrow sun">Final team challenge · Team ${home}</div>
         <h2>${esc(fin.title)}</h2>
-        <p style="max-width:56ch">Use every expert’s knowledge. Three puzzle panels, one shared answer.</p>
+        ${fin.intro ? `<p style="max-width:56ch">${esc(fin.intro)}</p>` : ''}
+        <p class="hint-note" style="margin:0">${steps.length} step${steps.length === 1 ? '' : 's'} · work it out together</p>
       </div>
-      <div class="card">
-        <h3>Panel 1 · Everyone places their piece</h3>
-        <p class="hint-note">Each expert places the object they investigated into their own perspective, from their own phone. Tap the object, then your perspective. Explain your choice to the team out loud.</p>
-        <div class="card wash-lavender" style="padding:12px 16px;margin:0 0 12px"><div class="eyebrow">Only on your phone</div>
-          <p style="margin:0">You studied <strong>${esc(SEED.keyObjectOf(me.topic))}</strong> in ${esc(SEED.missions[me.topic].gallery)}. Find it on the board and place it under <strong>${esc(SEED.topicMeta[me.topic].name)}</strong>. Your teammates hold the other pieces — ask them.</p></div>
-        <div class="match-board">
-          <div class="stack" style="gap:8px" role="group" aria-label="Objects">
-            ${fin.objects.filter((o) => SEED.topicsFor(home).some((t) => SEED.topicMeta[t].tag === o.answer)).map((o) => {
-              const placedTag = f.match[o.id];
-              return `<button type="button" class="match-obj ${placedTag ? 'placed' : ''}" data-a="pick-obj" data-obj="${o.id}" aria-pressed="${picked === o.id}">
-                ${Art.icon('lens', 15)} ${esc(o.label)}${placedTag ? `<span class="assigned" style="color:var(--success)">→ ${esc(tagName(placedTag))}</span>` : ''}</button>`;
-            }).join('')}
-          </div>
-          <div class="stack" style="gap:8px" role="group" aria-label="Perspectives">
-            ${SEED.topicsFor(home).map((t) => {
-              const tag = SEED.topicMeta[t].tag;
-              const obj = Object.entries(f.match).find(([, v]) => v === tag);
-              const owner = SEED.expertOf(home, t), mine = owner && owner.id === me.id, theirs = owner && !mine && onDevice(st, owner);
-              return `<button type="button" class="match-slot ${obj ? 'filled' : ''}" data-a="pick-slot" data-tag="${tag}">
-                ${topicChip(t)}<span class="assigned">${obj ? esc(fin.objects.find((o) => o.id === obj[0]).label) + ' ✦' : mine ? 'your piece goes here' : theirs ? esc(who(owner)) + ' places this' : 'place it for ' + esc(who(owner || {})) + ' (no phone)'}</span></button>`;
-            }).join('')}
-          </div>
-        </div>
-      </div>
-      <div class="card">
-        <h3>Panel 2 · Spot the overclaim</h3>
-        <p class="hint-note">${esc(fin.overclaim.question)}</p>
-        ${fin.overclaim.options.map((o) => `<button type="button" class="tile-pick" data-a="overclaim" data-opt="${o.id}" aria-pressed="${f.overclaim === o.id}">${esc(o.text)}</button>`).join('')}
-      </div>
-      <div class="card">
-        <h3>Panel 3 · Compose the new introduction</h3>
-        <p class="hint-note">${esc(fin.compose.prompt)} Pick up to ${fin.compose.max || 6} sentence tiles:</p>
-        ${fin.compose.tiles.map((t) => `<button type="button" class="tile-pick" data-a="tile" data-tile="${t.id}" aria-pressed="${f.tiles.includes(t.id)}">${esc(t.text)}</button>`).join('')}
-      </div>
-      <button class="btn btn-primary" data-a="submit-finale">${Art.icon('puzzle', 18)} Submit our restored introduction</button>`;
+      ${steps.map((x, i) => { const a = f.answers[x.id] || {}, done = x.type === 'choice' ? a.done : !!String(a.text || '').trim();
+        return `<div class="card fin-step ${done ? 'done' : ''} ${i === firstOpen ? 'now' : ''}">
+          <div class="eyebrow">Step ${i + 1}${done ? ' · ✓' : ''}</div>
+          ${x.type === 'choice' ? `<h3 style="margin:2px 0 8px">${esc(x.question)}</h3>
+            ${a.done ? `<p style="margin:0">${Art.icon('check', 16)} <strong>${esc((x.options.find((o) => o.id === a.pick) || {}).text || '')}</strong></p>`
+              : x.options.map((o) => `<button type="button" class="tile-pick" data-a="fchoice" data-step="${x.id}" data-opt="${o.id}">${esc(o.text)}</button>`).join('')}`
+          : `<h3 style="margin:2px 0 6px">${esc(x.prompt)}</h3>
+            ${(x.checks || []).length ? `<p class="hint-note" style="margin:0 0 6px">A good answer: ${x.checks.map(esc).join(' · ')}</p>` : ''}
+            <label class="sr-only" for="fw-${x.id}">Your team’s answer</label>
+            <textarea class="input" id="fw-${x.id}" data-fwrite="${x.id}" rows="4" placeholder="Write it together…">${esc(a.text || '')}</textarea>`}
+        </div>`; }).join('')}
+      <button class="btn btn-primary" data-a="submit-finale">${Art.icon('puzzle', 18)} Send our answers to the teacher</button>`;
   }
 
   function tagName(tag) {
@@ -982,20 +960,16 @@
           <div class="stack">
             <div class="card">
               <div class="spread"><h3>${Art.icon('puzzle', 18)} Finale reviews</h3><span class="pill lavender">${finQ.length} waiting</span></div>
-              ${finQ.length === 0 ? `<p class="hint-note" style="margin:0">Submitted introductions appear here for rubric approval.</p>` : ''}
-              ${finQ.map((h) => {
-                const f = st.finale[h];
-                const tiles = SEED.finale.compose.tiles.filter((t) => f.tiles.includes(t.id));
-                return `<form class="queue-row" data-form="finale-review" data-home="${h}"><div class="meta">
-                  <strong>Team ${h} · restored introduction</strong>
-                  <div class="evidence-quote">${tiles.map((t) => esc(t.text)).join(' ')}</div>
-                  <div class="rubric-row" style="margin-top:10px">
-                    ${SEED.finale.rubric.map((r) => `<label><input type="checkbox" name="rub" value="${esc(r)}">${esc(r)}</label>`).join('')}
-                  </div></div>
-                  <div class="stack" style="gap:8px">
-                    <button class="btn btn-teal btn-sm" type="submit">${Art.icon('check', 15)} Approve</button>
-                    <button class="btn btn-danger-ghost btn-sm" type="button" data-a="return-finale" data-home="${h}">Return</button>
-                  </div></form>`;
+              ${finQ.length === 0 ? `<p class="hint-note" style="margin:0">Teams’ finale answers appear here for you to check.</p>` : ''}
+              ${finQ.map((h) => { const f = st.finale[h];
+                return `<form class="queue-row" data-form="finale-review" data-home="${h}" style="display:block"><strong>Team ${h}</strong>
+                  ${(SEED.finale.steps || []).map((x, i) => { const a = f.answers[x.id] || {};
+                    return x.type === 'choice' ? `<p class="hint-note" style="margin:6px 0 0">Step ${i + 1} · ${esc(x.question)} — ${a.done ? `✓ ${a.tries > 1 ? `after ${a.tries} tries` : 'first try'}` : 'not answered'}</p>`
+                      : `<p style="margin:8px 0 2px"><strong>Step ${i + 1} · ${esc(x.prompt)}</strong></p><div class="evidence-quote">${esc(a.text || '')}</div>
+                        <div class="rubric-row" style="margin-top:6px">${(x.checks || []).map((c, k) => `<label><input type="checkbox" name="rub" value="${x.id}:${k}">${esc(c)}</label>`).join('')}</div>`; }).join('')}
+                  <div class="row" style="gap:8px;margin-top:10px"><button class="btn btn-teal btn-sm" type="submit">${Art.icon('check', 15)} Approve</button>
+                    <input class="input" id="fr-note-${h}" placeholder="Note if you send it back" style="flex:1;min-width:140px">
+                    <button class="btn btn-danger-ghost btn-sm" type="button" data-a="return-finale" data-home="${h}">Send back</button></div></form>`;
               }).join('')}
             </div>
             <div class="card">
@@ -1069,11 +1043,11 @@
     const homes = SEED.homeGroups.filter((h) => ['SUBMITTED', 'APPROVED'].includes(st.finale[h].status));
     return `<div class="card"><div class="eyebrow coral">Partner feedback</div><h3>Teams’ finale answers</h3>
       <p class="hint-note">Respond as the community partner: what rings true, what is missing, what would you add? Students see your words as a perspective, not a grade.</p>
-      ${homes.length === 0 ? '<p class="hint-note" style="margin:0">Introductions appear here once teams submit their finale.</p>' : ''}
+      ${homes.length === 0 ? '<p class="hint-note" style="margin:0">Teams’ answers appear here once they send their finale.</p>' : ''}
       <div class="stack" style="gap:12px">${homes.map((h) => { const f = st.finale[h], fb = st.partnerFeedback[h];
-        const tiles = SEED.finale.compose.tiles.filter((t) => f.tiles.includes(t.id));
+        const written = (SEED.finale.steps || []).filter((x) => x.type === 'write').map((x) => (f.answers[x.id] || {}).text).filter(Boolean);
         return `<div class="queue-row" style="display:block"><div class="spread"><strong>Team ${h}</strong>${statusChip(f.status)}</div>
-          <div class="evidence-quote" style="margin:8px 0">${tiles.map((t) => esc(t.text)).join(' ')}</div>
+          <div class="evidence-quote" style="margin:8px 0">${written.map(esc).join('<br>') || '—'}</div>
           ${fb ? `<div class="card wash-mint" style="padding:10px 14px"><strong>Your feedback:</strong> ${esc(fb.text)}</div>` :
           `<form class="row" data-form="partner-fb" data-home="${h}"><label class="sr-only" for="fb-${h}">Feedback for team ${h}</label><input class="input" id="fb-${h}" placeholder="Your response to team ${h}…" style="flex:1;min-width:180px"><button class="btn btn-teal btn-sm" type="submit">Send</button></form>`}</div>`; }).join('')}</div></div>`;
   }
@@ -1136,6 +1110,7 @@
   function bind() {
     if (typeof Insights !== 'undefined') Insights.bind(root);
     if (typeof Journey !== 'undefined') Journey.bind(root);
+    root.querySelectorAll('[data-fwrite]').forEach((t) => t.addEventListener('change', () => { const me = SEED.byId[S().ui.student]; Engine.dispatch('finaleWrite', { home: me.home, stepId: t.dataset.fwrite, text: t.value }); }));
     if (typeof Partner !== 'undefined') Partner.bind(root);
     root.querySelectorAll('[data-a]').forEach((el) => {
       const a = el.dataset.a;
@@ -1170,17 +1145,8 @@
           case 'teach-open': S().ui.teachTopic = el.dataset.topic; render(); return;
           case 'teach-ask': { const me = SEED.byId[S().ui.student]; return act('askTeachCheck', { home: me.home, topic: el.dataset.topic, by: me.id }); }
           case 'teach-close': S().ui.teachTopic = null; render(); return;
-          case 'pick-obj': S().ui.pickedObject = S().ui.pickedObject === el.dataset.obj ? null : el.dataset.obj; render(); return;
-          case 'pick-slot': {
-            const obj = S().ui.pickedObject;
-            const me = SEED.byId[S().ui.student];
-            if (!obj) { toast('Tap an object first, then its perspective.', 'error'); return; }
-            S().ui.pickedObject = null;
-            return act('setFinaleMatch', { home: me.home, objectId: obj, tag: el.dataset.tag, by: me.id }), render();
-          }
-          case 'overclaim': { const me = SEED.byId[S().ui.student]; return act('setFinaleOverclaim', { home: me.home, optionId: el.dataset.opt }), render(); }
-          case 'tile': { const me = SEED.byId[S().ui.student]; return act('toggleFinaleTile', { home: me.home, tileId: el.dataset.tile }), render(); }
-          case 'submit-finale': { const me = SEED.byId[S().ui.student]; return act('submitFinale', { home: me.home }); }
+          case 'fchoice': { const me = SEED.byId[S().ui.student]; return act('finaleChoice', { home: me.home, stepId: el.dataset.step, optionId: el.dataset.opt }); }
+          case 'submit-finale': { const me = SEED.byId[S().ui.student]; root.querySelectorAll('[data-fwrite]').forEach((t) => Engine.dispatch('finaleWrite', { home: me.home, stepId: t.dataset.fwrite, text: t.value })); return act('submitFinale', { home: me.home }); }
           case 'card-info': {
             const c = SEED.collectibles.find((x) => x.id === el.dataset.card);
             const claimed = S().claims[c.id];
@@ -1197,7 +1163,7 @@
           case 'pverify-ev': return act('reviewEvidence', { participantId: el.dataset.pid, verdict: 'VERIFIED', reviewer: 'collaborator' });
           case 'preturn-ev': return act('reviewEvidence', { participantId: el.dataset.pid, verdict: 'NEEDS_REVISION', reviewer: 'collaborator' });
           case 'return-ev': return act('reviewEvidence', { participantId: el.dataset.pid, verdict: 'NEEDS_REVISION', reviewer: 'teacher' });
-          case 'return-finale': return act('reviewFinale', { home: el.dataset.home, approve: false });
+          case 'return-finale': return act('reviewFinale', { home: el.dataset.home, approve: false, note: (document.getElementById('fr-note-' + el.dataset.home) || {}).value || '' });
           case 'approve-bonus': return act('approveBonus', { collectibleId: el.dataset.card, home: el.dataset.home });
           case 'sim-class': return act('simulateClassmates');
           case 'sim-bonus': return act('simulateBonusSubmissions');

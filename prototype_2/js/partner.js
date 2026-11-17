@@ -84,9 +84,8 @@ const Partner = (() => {
         .filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
     }
     if (item === 'story') return `<p style="margin:0">${esc(c.subtitle ? c.subtitle + ' — ' : '')}${esc(c.story.opening || 'No story written yet.')}</p>`;
-    const tiles = c.finale.compose.tiles.filter((t) => !t.trap && ['perspectives', 'invite', 'uncertainty'].includes(t.cat));
-    return `<p style="margin:0 0 6px"><strong>${esc(c.finale.title)}</strong></p><p class="hint-note" style="margin:0 0 6px">Statement marked as cautious: ${esc((c.finale.overclaim.options.find((o) => o.correct) || {}).text || '—')}</p>
-      ${tiles.length ? `<ul style="margin:0;padding-left:18px">${tiles.map((t) => `<li>${esc(t.text)}</li>`).join('')}</ul>` : ''}`;
+    return `<p style="margin:0 0 6px"><strong>${esc(c.finale.title)}</strong>${c.finale.intro ? ` — ${esc(c.finale.intro)}` : ''}</p>
+      <ol style="margin:0;padding-left:18px">${(c.finale.steps || []).map((x) => `<li>${x.type === 'choice' ? `${esc(x.question)} <span class="hint-note">(right answer: ${esc((x.options.find((o) => o.correct) || {}).text || '—')})</span>` : esc(x.prompt)}</li>`).join('')}</ol>`;
   }
 
   function review(st, qid) {
