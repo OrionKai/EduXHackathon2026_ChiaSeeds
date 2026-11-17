@@ -112,71 +112,56 @@ const Assistant = (() => {
     return `${sourcesCard()}${tracksSection(st)}${finaleSection(st)}${collectiblesSection(st)}${storySection(st)}`;
   }
 
-  const LABEL = { TEMPLATE: ['st-available', 'From template'], EMPTY: ['st-locked', 'To write'], AI: ['st-submitted', 'AI draft'], REVISED: ['st-submitted', 'AI revised'], EDITED: ['st-submitted', 'Edited by you'], APPROVED: ['st-verified', 'Approved'] };
+  const LABEL = { TEMPLATE: ['st-submitted', 'Check & approve'], EMPTY: ['st-locked', 'To write'], AI: ['st-submitted', 'AI draft · check it'], REVISED: ['st-submitted', 'Changed · check it'], EDITED: ['st-submitted', 'Check & approve'], APPROVED: ['st-verified', 'Approved'] };
 
-  /* Each track is built from blocks the educator mixes and matches. */
-  /* How a track is assessed: pick any combination; one small setting for who checks it. */
-  const ASSESS_ITEMS = [['photo', 'Photo of the object'], ['qr', 'QR clue card'], ['notes', 'Field notes'], ['evphoto', 'Photo as evidence'], ['quiz', 'Multiple choice'], ['partner', 'Talk with the community partner']];
+  /* One line that says, in plain words, how students show their work for a track. */
   const assessOn = (m) => { const a = m.assess || SEED.defaultAssess(), photo = String(a.checkin).startsWith('photo');
     return { photo, qr: a.checkin === 'qr' || (photo && !!a.qr), notes: a.evidence !== 'photo', evphoto: a.evidence !== 'notes', quiz: (a.quiz || []).length > 0, partner: !!m.needsFacilitator }; };
-  function blocksHTML(t, m, locked) {
-    const a = m.assess || SEED.defaultAssess(), on = assessOn(m), dis = locked ? 'disabled' : '';
-    const btn = (g, v, l, active, extra = '') => `<button type="button" class="blk ${active ? 'on' : ''}" data-as-block="${t}|${g}|${v}" aria-pressed="${active}" ${dis} ${extra}>${active ? '✓ ' : ''}${esc(l)}</button>`;
-    const nq = (a.quiz || []).length;
-    return `<div class="blocks">
-      <div class="blk-group"><span class="blk-label">Assessment <small>pick any</small></span><div class="blk-row">${ASSESS_ITEMS.map(([v, l]) => btn('Assessment', v, l, on[v])).join('')}</div></div>
-      ${on.photo ? `<div class="blk-group"><span class="blk-label">Photo check</span><div class="blk-row">${btn('Photo check', 'photo_teacher', 'You confirm it', a.checkin === 'photo_teacher')}${btn('Photo check', 'photo_ai', 'AI checks first, you decide if unsure', a.checkin === 'photo_ai')}</div></div>` : ''}
-      <div class="blk-group"><span class="blk-label">Checked by</span><div class="blk-row">${btn('Checked by', 'teacher', 'You', a.verify === 'teacher')}${btn('Checked by', 'partner', 'Community partner', a.verify === 'partner')}${btn('Checked by', 'auto', 'Automatic (multiple choice)', a.verify === 'auto', on.quiz ? '' : 'disabled title="Add multiple choice first"')}</div></div>
-      ${on.quiz ? `<p class="hint-note" style="margin:2px 0 0">Multiple choice: ${nq} question${nq === 1 ? '' : 's'}${(a.quiz || []).some((q) => !q.q) ? ' (to write)' : ''} · pass mark ${a.pass || 1} <button class="as-cite" type="button" data-as-quiz="${t}" ${dis}>Edit questions</button></p>` : ''}
-    </div>`;
-  }
-  function toggleBlock(t, group, v) {
-    const m = SEED.missions[t], a = m.assess || SEED.defaultAssess(), on = assessOn(m), set = (patch) => Engine.dispatch('setAssess', { topic: t, patch });
-    if (group === 'Photo check') return set({ checkin: v });
-    if (group === 'Checked by') return set({ verify: v });
-    if (v === 'photo') return on.photo ? set({ checkin: on.qr ? 'qr' : 'none', qr: false }) : set({ checkin: 'photo_teacher', qr: on.qr });
-    if (v === 'qr') return on.photo ? set({ qr: !on.qr }) : set({ checkin: on.qr ? 'none' : 'qr', qr: false });
-    if (v === 'partner') return set({ partner: !m.needsFacilitator });
-    if (v === 'notes' || v === 'evphoto') {
-      const n = v === 'notes' ? !on.notes : on.notes, p = v === 'evphoto' ? !on.evphoto : on.evphoto;
-      if (!n && !p) return { ok: false, msg: 'Keep at least one kind of evidence (field notes or a photo).' };
-      return set({ evidence: n && p ? 'notes_photo' : p ? 'photo' : 'notes' });
-    }
-    if (v === 'quiz') {
-      if (on.quiz) return set({ quiz: [], pass: 0, verify: a.verify === 'auto' ? 'teacher' : a.verify });
-      const r = set({ quiz: [{ q: '', o: ['', ''], a: 0 }], pass: 1 });
-      editing = t; refDraft = m.refPhoto || null; quizOpen = true;
-      return r;
-    }
-    return { ok: false };
+  function howShown(m) {
+    const a = m.assess || SEED.defaultAssess(), on = assessOn(m), parts = [];
+    if (on.photo) parts.push('photo of the object');
+    if (on.qr) parts.push('QR card');
+    if (on.notes) parts.push(`notes (${m.evidenceFields.filter((e) => e.label).length} question${m.evidenceFields.length === 1 ? '' : 's'})`);
+    if (on.evphoto) parts.push('a photo');
+    if (on.quiz) parts.push(`${a.quiz.length} multiple-choice`);
+    if (on.partner) parts.push('talk with the partner');
+    return parts.join(' · ') + ` — checked by ${a.verify === 'auto' ? 'the app (multiple choice)' : a.verify === 'partner' ? 'the community partner' : 'you'}`;
   }
 
   function tracksSection(st) {
     const locked = st.quest.status === 'PUBLISHED';
     const probs = SEED.contentProblems(st.content);
     const n = SEED.topics.filter((t) => st.tracks[t] === 'APPROVED').length;
+    if (editing && SEED.topics.includes(editing) && !locked) {
+      const t = editing, m = SEED.missions[t];
+      return `<section class="card" id="as-content">
+        <button class="btn btn-ghost btn-sm" type="button" data-as-edit-cancel>${Art.icon('back', 14)} All tracks</button>
+        <div class="row" style="gap:8px;margin-top:6px"><span class="topic-chip ${SEED.topicMeta[t].color}">${Art.icon(SEED.topicMeta[t].icon, 14)}${t}</span><h3 style="margin:0">${esc(m.name || 'New track')}</h3></div>
+        ${trackEditor(t)}</section>`;
+    }
     return `
       <section class="card" id="as-content">
-        <div class="spread"><h3 style="margin:0">${Art.icon('map', 18)} Expert tracks</h3><span class="row" style="gap:6px"><span class="pill lavender">${n}/${SEED.topics.length} approved</span>${probs.length ? `<span class="pill peach">${probs.length} to complete</span>` : '<span class="pill mint">complete</span>'}</span></div>
-        <p class="hint-note" style="margin:6px 0 10px">Each track is one perspective: one member of every home team investigates it, then teaches the others. Add as many as you need (up to 6); students need at least 2 to teach each other.</p>
+        <div class="spread"><h3 style="margin:0">${Art.icon('map', 18)} Tracks</h3><span class="pill lavender">${n}/${SEED.topics.length} approved</span></div>
+        <p class="hint-note" style="margin:6px 0 10px">A track is one topic of the trip. In every team, one student becomes the expert on it, investigates it on site, then teaches the others. Open a track to write or check it, then approve it.</p>
         <div class="stack" style="gap:10px">
           ${SEED.topics.map((t) => {
             const m = SEED.missions[t], [cls, txt] = LABEL[st.tracks[t]] || LABEL.EDITED, tp = probs.filter((x) => x.startsWith(`Track ${t}:`));
+            const partnerAsk = (st.contributor.requests || []).some((r) => r.item === 'track:' + t && r.status === 'open');
             return `<div class="as-track" id="as-track-${t}">
               <div class="spread"><div class="row" style="gap:8px"><span class="topic-chip ${SEED.topicMeta[t].color}">${Art.icon(SEED.topicMeta[t].icon, 14)}${t}</span><strong>${esc(m.name || 'Untitled track')}</strong></div>
-                <span class="row" style="gap:6px">${(st.contributor.requests || []).some((r) => r.item === 'track:' + t && r.status === 'open') ? '<span class="pill peach">Partner suggestion</span>' : ''}<span class="status-chip ${cls}">${txt}</span></span></div>
-              <p class="hint-note" style="margin:6px 0">${m.gallery ? esc(m.gallery) + ' · ' : ''}${esc(m.narrative || m.observe || 'Nothing written yet.')} ${srcFor(t) ? `<button class="as-cite" type="button" data-as-cite="${srcFor(t)}">${srcFor(t)}</button>` : ''}</p>
-              ${blocksHTML(t, m, locked)}
-              ${tp.length ? `<p class="hint-note" style="margin:6px 0;color:var(--danger)">Missing: ${tp.map((x) => esc(x.split(': ')[1])).join(', ')}</p>` : ''}
+                <span class="row" style="gap:6px">${partnerAsk ? '<span class="pill peach">Partner suggestion</span>' : ''}<span class="status-chip ${cls}">${txt}</span></span></div>
+              <p style="margin:6px 0 2px">${m.gallery || m.keyObject ? `${esc(m.gallery || '')}${m.keyObject ? ` · find ${esc(m.keyObject)}` : ''}` : '<span class="hint-note">Not written yet.</span>'}</p>
+              ${m.name ? `<p class="hint-note" style="margin:0">Students show it by: ${esc(howShown(m))}</p>` : ''}
+              ${tp.length ? `<p class="hint-note" style="margin:6px 0 0;color:var(--danger)">Still missing: ${tp.map((x) => esc(x.split(': ')[1])).join(', ')}</p>` : ''}
               ${st.revisions[t] ? `<p class="as-note">${Art.icon('pencil', 14)} ${esc(st.revisions[t])}</p>` : ''}
-              ${locked ? '' : `<div class="row" style="gap:6px;margin-top:6px">${st.tracks[t] === 'APPROVED' ? '' : `<button class="btn btn-teal btn-sm" type="button" data-as-approve="${t}">${Art.icon('check', 14)} Approve</button>`}
-                <button class="btn btn-ghost btn-sm" type="button" data-as-edit="${t}">${editing === t ? 'Close' : 'Edit details'}</button>
+              ${locked ? '' : `<div class="row" style="gap:6px;margin-top:8px">
+                <button class="btn btn-secondary btn-sm" type="button" data-as-edit="${t}">${Art.icon('pencil', 14)} ${m.name ? 'Open' : 'Write'}</button>
+                ${st.tracks[t] === 'APPROVED' || tp.length ? '' : `<button class="btn btn-teal btn-sm" type="button" data-as-approve="${t}">${Art.icon('check', 14)} Approve</button>`}
                 ${mode === 'live' ? `<button class="btn btn-ghost btn-sm" type="button" data-as-ask="${t}">Ask AI to change</button>` : ''}
-                ${SEED.topics.length > 1 && st.phase === 'LOBBY' ? `<button class="btn btn-danger-ghost btn-sm" type="button" data-as-rmtrack="${t}" style="margin-left:auto">Remove track</button>` : ''}</div>`}
-              ${editing === t && !locked ? trackEditor(t) : ''}
+                ${SEED.topics.length > 1 && st.phase === 'LOBBY' ? `<button class="btn btn-danger-ghost btn-sm" type="button" data-as-rmtrack="${t}" style="margin-left:auto">Remove</button>` : ''}</div>`}
             </div>`;
           }).join('')}
-          ${!locked && SEED.topics.length < 6 && st.phase === 'LOBBY' ? `<button class="btn btn-secondary btn-sm" type="button" data-as-addtrack style="align-self:flex-start">${Art.icon('plus', 14)} Add a track (perspective)</button>` : ''}
+          ${!locked && SEED.topics.length < 6 && st.phase === 'LOBBY' ? `<button class="btn btn-secondary btn-sm" type="button" data-as-addtrack style="align-self:flex-start">${Art.icon('plus', 14)} Add a track</button>` : ''}
         </div>
       </section>`;
   }
@@ -185,7 +170,7 @@ const Assistant = (() => {
     const locked = st.quest.status === 'PUBLISHED', f = SEED.finaleFields(st.content);
     return `<section class="card" id="as-finale">
       <div class="spread"><h3 style="margin:0">${Art.icon('puzzle', 18)} Finale: ${esc(st.content.finale.title || 'Untitled')}</h3>${locked ? '' : `<button class="btn btn-ghost btn-sm" type="button" data-as-edit="finale">${editing === 'finale' ? 'Close' : 'Edit'}</button>`}</div>
-      <p class="hint-note" style="margin:6px 0 0">Locked until every track in a home team is verified and taught. Teams match each key object to its perspective (${st.content.finale.objects.map((o) => esc(o.label || '—')).join(' · ')}), spot the overclaim, then build a short answer from ${f.evidence.length} evidence sentences.</p>
+      <p class="hint-note" style="margin:6px 0 0">The team puzzle at the end. It opens once every expert in a team has been checked and has taught the others. Each expert places their object (${st.content.finale.objects.map((o) => esc(o.label || '—')).join(' · ')}), the team picks the statement that doesn’t claim too much, then builds a short answer from ${f.evidence.length} evidence sentences.</p>
       ${editing === 'finale' && !locked ? finaleEditor(f) : ''}
     </section>`;
   }
@@ -193,7 +178,7 @@ const Assistant = (() => {
   function collectiblesSection(st) {
     const locked = st.quest.status === 'PUBLISHED';
     return `<section class="card" id="as-collectibles">
-      <div class="spread"><h3 style="margin:0">${Art.icon('trophy', 18)} Collectibles</h3><span class="pill plain">optional · never block the quest</span></div>
+      <div class="spread"><h3 style="margin:0">${Art.icon('trophy', 18)} Collectibles</h3><span class="pill plain">optional · just for fun</span></div>
       <p class="hint-note" style="margin:6px 0 10px">Collect every card to unlock the class award (${esc(SEED.master.title)}). Choose how each one is earned.</p>
       <div class="coll-grid">${st.content.collectibles.map((c) => editing === 'c:' + c.id && !locked ? collEditor(c) : `<div class="coll-item">
         <div class="row" style="gap:10px;flex-wrap:nowrap"><div class="collect-card claimed" style="width:64px;min-width:64px;cursor:default">${Art.collectibleArt[c.id] ? Art.collectibleArt[c.id]() : ''}</div>
@@ -260,52 +245,73 @@ const Assistant = (() => {
     return q && rows.length >= 2 ? { q, o: rows.map((x) => x.v), a: Math.max(0, rows.findIndex((x) => x.ok)) } : null;
   }).filter(Boolean);
 
-  const sec = (title, open, body) => `<details class="ed-sec" ${open ? 'open' : ''}><summary>${title}</summary><div class="stack" style="gap:6px;margin-top:8px">${body}</div></details>`;
+  const sec = (title, open, body, note = '') => `<details class="ed-sec" ${open ? 'open' : ''}><summary>${title}${note ? `<small>${note}</small>` : ''}</summary><div class="stack" style="gap:8px;margin-top:8px">${body}</div></details>`;
+  const help = (t) => `<p class="hint-note" style="margin:-2px 0 2px">${t}</p>`;
+  const cb = (id, label, on, extra = '') => `<label class="toggle"><input type="checkbox" id="${id}" ${on ? 'checked' : ''} ${extra}> ${label}</label>`;
+  const rd = (name, v, label, on) => `<label class="toggle"><input type="radio" name="${name}" value="${v}" ${on ? 'checked' : ''}> ${label}</label>`;
   function trackEditor(t) {
-    const f = SEED.trackFields(Engine.state.content, t), a = f.assess, quiz = a.quiz || [];
-    const opt = (id, v, map) => `<select class="input" id="${id}">${Object.entries(map).map(([k, l]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
-    return `<form class="stack as-editor" style="gap:8px;margin-top:10px" data-as-trackform="${t}">
-      ${sec('Basics', true, `<div class="grid-2" style="gap:8px"><div>${inp('ed-name', 'Track name', f.name, 'e.g. Evidence Detectives')}</div><div>${inp('ed-loc', 'Location', f.location, 'e.g. Gallery 19')}</div></div>
-        ${inp('ed-key', 'Key object (students photograph it; used in the finale)', f.keyObject)}${ta('ed-narr', 'The question this track asks', f.narrative, 1)}`)}
-      ${sec('At the place', false, `${ta('ed-obs', 'What students do there', f.observe, 3)}${ta('ed-disc', 'Discussion question', f.discuss, 2)}
-        <label class="toggle"><input type="checkbox" id="ed-partner" ${f.needsContributor ? 'checked' : ''}> Includes an arranged conversation with the community partner</label>
-        <span class="fld">Hints (never the answer)</span>${listEd('hints', f.hints, 'A hint that points back to the object', 'Add hint')}
-        ${inp('ed-fb', 'Accessible or backup route', f.fallback)}
-        ${inp('ed-code', 'Backup check-in code (read out if the QR card won’t scan)', f.backupCode)}`)}
-      ${sec('Evidence &amp; quick check', quizOpen, `<span class="fld">Evidence prompts</span>${listEd('ev', f.evidence, 'What students record', 'Add prompt')}
-        <span class="fld">What a good answer includes (success criteria — the misconception analysis checks answers against these)</span>${listEd('crit', f.criteria, 'e.g. Separates what the object shows from what needs other sources', 'Add criterion')}
-        <div class="grid-3" style="gap:8px"><div><label class="fld" for="as-ci">Check-in</label>${opt('as-ci', a.checkin, SEED.ASSESS_TEXT.checkin)}<label class="toggle" style="margin-top:4px"><input type="checkbox" id="as-qr" ${a.qr ? 'checked' : ''}> Also accept the QR clue card</label></div>
-          <div><label class="fld" for="as-ev">Evidence type</label>${opt('as-ev', a.evidence, SEED.ASSESS_TEXT.evidence)}</div>
-          <div><label class="fld" for="as-ver">Verified by</label>${opt('as-ver', a.verify, SEED.ASSESS_TEXT.verify)}</div></div>
-        <div class="stack" style="gap:4px"><span class="fld">Reference photo for the AI check (optional)</span>
-          ${refDraft ? `<img class="ev-photo" src="${refDraft}" alt="Reference photo">` : '<span class="hint-note">Without one, the AI matches the photo against the key object’s name.</span>'}
-          <label class="btn btn-ghost btn-sm" for="as-ref" style="align-self:flex-start">${refDraft ? 'Replace photo' : 'Add a photo'}</label><input id="as-ref" type="file" accept="image/*" hidden>
-          ${refDraft ? '<button class="btn btn-ghost btn-sm" type="button" data-as-ref-clear style="align-self:flex-start">Remove photo</button>' : ''}</div>
-        <span class="fld">Quick check (multiple choice)</span>
-        <div class="stack" style="gap:8px" data-qz>${(quiz.length ? quiz : quizOpen ? [null] : []).map(qzCard).join('')}</div>
-        <button type="button" class="btn btn-ghost btn-sm le-add" data-qz-add>${Art.icon('plus', 14)} Add question</button>
-        <div class="row"><label class="fld" for="as-pass" style="margin:0">Pass mark (questions right)</label><input class="input" id="as-pass" type="number" min="1" value="${a.pass || 1}" style="width:90px"></div>`)}
-      ${sec('Teach-back', false, `${inp('ed-teach', 'What they teach their home team (one line)', f.teachHeadline)}
-        <span class="fld">Check statements a teammate chooses from (tick the correct ones)</span>${checkListEd('chk', f.checks, 'A summary of what this expert found', 'Add statement')}`)}
-      <div class="row"><button class="btn btn-primary btn-sm" type="submit">Save track</button><button class="btn btn-ghost btn-sm" type="button" data-as-edit-cancel>Cancel</button></div></form>`;
+    const f = SEED.trackFields(Engine.state.content, t), a = f.assess, quiz = a.quiz || [], m = SEED.missions[t], on = assessOn(m);
+    return `<form class="stack as-editor" style="gap:10px;margin-top:10px" data-as-trackform="${t}">
+      ${sec('1 · Where and what', true, `
+        ${inp('ed-name', 'Name of this track', f.name, 'e.g. Evidence Detectives')}
+        <div class="grid-2" style="gap:8px"><div>${inp('ed-loc', 'Where students go', f.location, 'e.g. Gallery 19, Ancient Egypt')}</div><div>${inp('ed-key', 'The object they look for', f.keyObject, 'e.g. the painted coffin set')}</div></div>
+        ${ta('ed-narr', 'The big question they explore', f.narrative, 1, 'e.g. What can the object itself tell us?')}
+        ${ta('ed-obs', 'What they do there (students read this)', f.observe, 3, 'e.g. Find the coffin set. Look closely at the shape, materials and decoration, then find its label.')}
+        ${ta('ed-disc', 'A question to talk about with their group', f.discuss, 2, 'e.g. What can you see for yourself, and what are you guessing?')}`, 'the place, the object, the task')}
+      ${sec('2 · What students hand in', true, `
+        <span class="fld">How students show they found it</span>
+        <div class="stack" style="gap:4px">${cb('a-photo', 'A photo of the object', on.photo)}${cb('a-qr', 'Scan a QR card placed there', on.qr)}</div>
+        <span class="fld">What they record</span>
+        <div class="stack" style="gap:4px">${cb('a-notes', 'Written notes', on.notes)}${cb('a-evphoto', 'A photo as part of their notes', on.evphoto)}</div>
+        <span class="fld">Questions they answer in their notes</span>${help('Short prompts students fill in on site. Start with what they can see, then what it might mean, then what it can’t tell us.')}
+        ${listEd('ev', f.evidence, 'e.g. Something you can actually see', 'Add a question')}
+        <span class="fld">What a good answer includes</span>${help('Used to check answers and spot misunderstandings after the trip.')}
+        ${listEd('crit', f.criteria, 'e.g. Says what the object can’t tell us', 'Add a point')}
+        ${cb('a-quiz', 'Add a multiple-choice check', on.quiz, 'data-show="qz-box"')}
+        <div class="stack qz-box" data-show-box="qz-box" style="gap:8px" ${on.quiz ? '' : 'hidden'}>
+          <div class="stack" style="gap:8px" data-qz>${(quiz.length ? quiz : [null]).map(qzCard).join('')}</div>
+          <button type="button" class="btn btn-ghost btn-sm le-add" data-qz-add>${Art.icon('plus', 14)} Add a question</button>
+          <div class="row"><label class="fld" for="as-pass" style="margin:0">Questions they must get right</label><input class="input" id="as-pass" type="number" min="1" value="${a.pass || 1}" style="width:90px"></div></div>
+        <span class="fld">Who checks their work</span>
+        <div class="stack" style="gap:4px">${rd('a-verify', 'teacher', 'You (the teacher)', a.verify === 'teacher')}${rd('a-verify', 'partner', 'The community partner', a.verify === 'partner')}${rd('a-verify', 'auto', 'The app, when they pass the multiple-choice check', a.verify === 'auto')}</div>`, 'check-in, notes, multiple choice')}
+      ${sec('3 · Teaching their team', false, `
+        ${inp('ed-teach', 'What they tell their team, in one sentence', f.teachHeadline, 'e.g. Objects show us real details — but one object can’t speak for everyone.')}
+        <span class="fld">Check that the team understood</span>${help('After the expert explains, a teammate picks the statement that matches. Tick the true one(s); the others should be tempting but wrong.')}
+        ${checkListEd('chk', f.checks, 'A statement about what the expert found', 'Add a statement')}`, 'what the expert teaches, and a quick check')}
+      ${sec('More options', false, `
+        ${cb('a-partner', 'Students also talk with the community partner here', f.needsContributor)}
+        ${on.photo ? `<span class="fld">Checking the photo</span><div class="stack" style="gap:4px">${rd('a-pcheck', 'photo_teacher', 'You confirm each photo', a.checkin !== 'photo_ai')}${rd('a-pcheck', 'photo_ai', 'AI checks first; you decide when it’s unsure', a.checkin === 'photo_ai')}</div>
+          <div class="stack" style="gap:4px"><span class="fld">Reference photo for the AI check (optional)</span>
+            ${refDraft ? `<img class="ev-photo" src="${refDraft}" alt="Reference photo">` : '<span class="hint-note">Without one, the AI matches the photo against the object’s name.</span>'}
+            <label class="btn btn-ghost btn-sm" for="as-ref" style="align-self:flex-start">${refDraft ? 'Replace photo' : 'Add a photo'}</label><input id="as-ref" type="file" accept="image/*" hidden>
+            ${refDraft ? '<button class="btn btn-ghost btn-sm" type="button" data-as-ref-clear style="align-self:flex-start">Remove photo</button>' : ''}</div>` : ''}
+        <span class="fld">Hints if students get stuck</span>${help('Point them back to the object — never give the answer.')}
+        ${listEd('hints', f.hints, 'e.g. Look at the bottom edge — what material is it?', 'Add a hint')}
+        ${inp('ed-fb', 'If they can’t get there (accessible or backup plan)', f.fallback, 'e.g. Use the museum’s online photos with the same questions')}
+        ${inp('ed-code', 'Backup code you can read out if a QR card won’t scan', f.backupCode)}`, 'partner, hints, backup plans')}
+      <div class="row b-save"><button class="btn btn-primary" type="submit">Save track</button><button class="btn btn-ghost" type="button" data-as-edit-cancel>Cancel</button></div></form>`;
   }
   function readAssess(f) {
-    const v = (id) => f.querySelector('#' + id).value, quiz = readQuiz(f);
-    return { checkin: v('as-ci'), qr: !!(f.querySelector('#as-qr') || {}).checked, evidence: v('as-ev'), verify: quiz.length || v('as-ver') !== 'auto' ? v('as-ver') : 'teacher', quiz, pass: quiz.length ? Math.max(1, Math.min(Number(v('as-pass')) || 1, quiz.length)) : 0 };
+    const ck = (id) => !!(f.querySelector('#' + id) || {}).checked, val = (n) => (f.querySelector(`[name="${n}"]:checked`) || {}).value;
+    const quiz = ck('a-quiz') ? readQuiz(f) : [], photo = ck('a-photo'), qr = ck('a-qr'), notes = ck('a-notes'), evphoto = ck('a-evphoto');
+    const pv = Number((f.querySelector('#as-pass') || {}).value) || 1, v = val('a-verify') || 'teacher';
+    return { checkin: photo ? (val('a-pcheck') === 'photo_ai' ? 'photo_ai' : 'photo_teacher') : qr ? 'qr' : 'none', qr: photo && qr,
+      evidence: notes && evphoto ? 'notes_photo' : evphoto ? 'photo' : 'notes', quiz, pass: quiz.length ? Math.max(1, Math.min(pv, quiz.length)) : 0,
+      verify: v === 'auto' && !quiz.length ? 'teacher' : v };
   }
 
   function finaleEditor(f) {
     const cats = Object.entries(SEED.FINALE_CATS);
     return `<form class="stack as-editor" style="gap:8px;margin-top:10px" data-as-finaleform>
       ${sec('Basics', true, inp('fe-title', 'Finale title', f.title))}
-      ${sec('Panel 2: spot the overclaim', false, `${inp('fe-q', 'Question', f.question)}
+      ${sec('Puzzle 2: which statement claims too much?', false, `${inp('fe-q', 'Question', f.question)}
         <span class="fld">Statements (tick the cautious ones)</span>${checkListEd('fe-opts', f.options, 'A statement', 'Add statement')}`)}
-      ${sec('Panel 3: build the answer', false, `${cats.map(([k, l]) => `<div class="stack" style="gap:4px"><div class="spread"><span class="fld">${l}</span>
+      ${sec('Puzzle 3: build the team’s answer', false, `${cats.map(([k, l]) => `<div class="stack" style="gap:4px"><div class="spread"><span class="fld">${l}</span>
           <label class="row" style="gap:6px;font-size:13px">at least <input class="input" type="number" min="0" data-need="${k}" value="${f.needs[k] || 0}" style="width:70px"></label></div>
           ${listEd('fe-' + k, f[k], 'A sentence students can choose', 'Add sentence')}</div>`).join('')}
         <span class="fld">Tempting overclaims (students must leave these out)</span>${listEd('fe-traps', f.traps, 'An overclaiming sentence', 'Add overclaim')}
         <div class="row"><label class="fld" for="fe-max" style="margin:0">Most sentences a team may pick</label><input class="input" id="fe-max" type="number" min="1" value="${f.max}" style="width:90px"></div>`)}
-      ${sec('Rubric (you tick every item to approve)', false, listEd('fe-rubric', f.rubric, 'A rubric item', 'Add item'))}
+      ${sec('What you check before approving their answer', false, listEd('fe-rubric', f.rubric, 'A rubric item', 'Add item'))}
       <div class="row"><button class="btn btn-primary btn-sm" type="submit">Save finale</button><button class="btn btn-ghost btn-sm" type="button" data-as-edit-cancel>Cancel</button></div></form>`;
   }
 
@@ -539,6 +545,7 @@ const Assistant = (() => {
   let delegated = false;
   function delegate() {
     if (delegated) return; delegated = true;
+    document.addEventListener('change', (e) => { const k = e.target.dataset && e.target.dataset.show; if (k) document.querySelectorAll(`[data-show-box="${k}"]`).forEach((b) => { b.hidden = !e.target.checked; }); });
     document.addEventListener('click', (e) => {
       const el = e.target.closest('[data-le-add],[data-le-rm],[data-qz-add],[data-qz-rm],[data-qz-opt-add],[data-qz-opt-rm]');
       if (!el) return;
@@ -581,7 +588,6 @@ const Assistant = (() => {
     on('[data-as-addtrack]', 'click', () => { const s = SEED.structure, t = s.tracks + 1, n = Math.max(s.classSize, t); const r = window.WQ.act('setStructure', { tracks: t, classSize: n, expertGroup: Math.min(s.expertGroup, Math.ceil(n / t)) }); if (r.ok) setTimeout(() => document.getElementById('as-track-' + SEED.topics[SEED.topics.length - 1])?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 30); });
     on('[data-as-rmtrack]', 'click', (b) => { const t = b.dataset.asRmtrack; if (confirm(`Remove track ${t} (${SEED.missions[t].name || 'untitled'})? Its content will be deleted.`)) { if (editing === t) editing = null; window.WQ.act('removeTrack', { topic: t }); } });
     on('[data-as-quiz]', 'click', (b) => { editing = b.dataset.asQuiz; quizOpen = true; refDraft = SEED.missions[editing].refPhoto || null; window.WQ.render(); setTimeout(() => document.querySelector('[data-qz]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 30); });
-    on('[data-as-block]', 'click', (b) => { const [tk, g, v] = b.dataset.asBlock.split('|'); const r = toggleBlock(tk, g, v); if (r && !r.ok && r.msg) window.WQ.toast(r.msg, 'error'); window.WQ.render(); if (v === 'quiz' && editing === tk) setTimeout(() => document.querySelector('[data-qz]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 30); });
     on('[data-as-collform]', 'submit', (f, e) => {
       e.preventDefault();
       const v = (id) => f.querySelector('#' + id).value;
@@ -593,7 +599,7 @@ const Assistant = (() => {
       const v = (id) => f.querySelector('#' + id).value.trim(), tk = f.dataset.asTrackform, old = SEED.trackFields(Engine.state.content, tk);
       const fields = { name: v('ed-name'), location: v('ed-loc'), keyObject: v('ed-key'), narrative: v('ed-narr'), observe: v('ed-obs'), discuss: v('ed-disc'),
         evidence: readList(f, 'ev'), evidenceKeys: old.evidenceKeys, criteria: readList(f, 'crit'), hints: readList(f, 'hints'), fallback: v('ed-fb'), teachHeadline: v('ed-teach'), checks: readCheckList(f, 'chk'),
-        needsContributor: f.querySelector('#ed-partner').checked, sourceFact: old.sourceFact, sourceUrl: old.sourceUrl, assess: readAssess(f), refPhoto: refDraft, backupCode: v('ed-code') };
+        needsContributor: f.querySelector('#a-partner').checked, sourceFact: old.sourceFact, sourceUrl: old.sourceUrl, assess: readAssess(f), refPhoto: refDraft, backupCode: v('ed-code') };
       editing = null; refDraft = null; quizOpen = false;
       window.WQ.act('editTrack', { topic: tk, fields });
     });
@@ -626,5 +632,6 @@ const Assistant = (() => {
       if (r.status !== 405 && mode === 'live') { mode = 'simulated'; lastNotice = 'Live AI isn’t deployed on this server — scripted mode.'; window.WQ && window.WQ.render(); }
     }).catch(() => { if (mode === 'live') { mode = 'simulated'; window.WQ && window.WQ.render(); } });
   } catch {}
-  return { getMode: () => mode, chat, board, bind, generate, listEd, readList, setSpeed: (v) => { speed = v; }, setMode: (m) => { mode = m; } };
+  const openEditor = (k) => { syncQuest(); editing = k || null; quizOpen = false; refDraft = k && SEED.missions[k] ? SEED.missions[k].refPhoto || null : null; };
+  return { getMode: () => mode, chat, board, bind, openEditor, sources: () => (syncQuest(), sourcesCard()), tracks: () => (syncQuest(), tracksSection(Engine.state)), finale: () => (syncQuest(), finaleSection(Engine.state)), collectibles: () => (syncQuest(), collectiblesSection(Engine.state)), story: () => (syncQuest(), storySection(Engine.state)), generate, listEd, readList, setSpeed: (v) => { speed = v; }, setMode: (m) => { mode = m; } };
 })();

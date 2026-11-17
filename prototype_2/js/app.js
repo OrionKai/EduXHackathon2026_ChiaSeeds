@@ -785,63 +785,95 @@
   }
 
 
+  /* ---------------- quest builder: five guided steps, one at a time ---------------- */
+  const BSTEPS = [['trip', 'The trip'], ['sources', 'Sources'], ['tracks', 'Tracks'], ['finale', 'Finale & extras'], ['publish', 'Check & publish']];
+  function builderDone(st) {
+    const q = st.quest, probs = SEED.contentProblems(st.content);
+    return {
+      trip: !!(q.title && q.venue && q.objective),
+      sources: st.sources.some((x) => x.kind !== 'partner' && x.text),
+      tracks: !probs.some((p) => /^(Track|Add at least)/.test(p)) && SEED.topics.every((t) => st.tracks[t] === 'APPROVED'),
+      finale: !probs.some((p) => /^(Finale|Collectibles|Reflection)/.test(p)),
+      publish: q.status === 'PUBLISHED',
+    };
+  }
   function teacherBuilder(st) {
     const q = st.quest, locked = q.status === 'PUBLISHED', dis = locked ? 'disabled' : '';
-    const n = q.next || {};
+    const step = BSTEPS.some(([k]) => k === st.ui.bStep) ? st.ui.bStep : 'trip', i = BSTEPS.findIndex(([k]) => k === step), done = builderDone(st);
+    const body = step === 'trip' ? builderTrip(st, dis, locked) : step === 'sources' ? builderSources(st)
+      : step === 'tracks' ? Partner.requestsCard(st) + Assistant.tracks() : step === 'finale' ? Assistant.finale() + Assistant.story() + Assistant.collectibles() : builderPublish(st, dis, locked);
     return `
       ${pageHead(esc(q.title || 'Untitled quest'), 'Quest builder', `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="dashboard">${Art.icon('back', 15)} All quests</button>`)}
-      <div class="builder-2col">
-        <div class="stack builder-left">
-          <div class="card">
-            <h3 style="margin:0 0 6px">Quest settings</h3>
-            <div class="fld-group"><label class="fld" for="q-title">Quest title</label><input class="input" id="q-title" data-q="title" value="${esc(q.title)}" ${dis}></div>
-            <div class="fld-group"><label class="fld" for="q-obj">Learning objective</label><input class="input" id="q-obj" data-q="objective" value="${esc(q.objective)}" ${dis}></div>
-            <div class="fld-group"><label class="fld" for="q-venue">Where will they explore?</label><input class="input" id="q-venue" data-q="venue" value="${esc(q.venue)}" ${dis}></div>
-            <div class="grid-2" style="gap:10px">
-              <div class="fld-group"><label class="fld" for="q-aud">Audience</label><select class="input" id="q-aud" data-q="audience" ${dis}>${Object.entries(SEED.AUDIENCES).map(([k, l]) => `<option value="${k}" ${(q.audience || {}).kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-              <div class="fld-group"><label class="fld" for="q-ages">Ages</label><input class="input" id="q-ages" data-q="ages" value="${esc((q.audience || {}).ages || '')}" placeholder="e.g. 13–16" ${dis}></div>
-            </div>
-            <div class="fld-group"><label class="fld" for="q-dur">Session length (minutes)</label><input class="input" id="q-dur" data-q="duration" type="number" min="10" max="480" step="5" value="${q.duration || 60}" ${dis} style="max-width:140px"></div>
-          </div>
-          <form class="card" data-form="structure">
-            <h3 style="margin:0 0 6px">Groups</h3>
-            <div class="grid-3" style="gap:10px">
-              <div class="fld-group"><label class="fld" for="g-tracks">Expert tracks</label><input class="input" id="g-tracks" type="number" min="1" max="6" value="${SEED.structure.tracks}" ${dis}></div>
-              <div class="fld-group"><label class="fld" for="g-size">Class size</label><input class="input" id="g-size" type="number" min="2" max="60" value="${SEED.structure.classSize}" ${dis}></div>
-              <div class="fld-group"><label class="fld" for="g-exp">Expert group size</label><input class="input" id="g-exp" type="number" min="1" max="30" value="${SEED.structure.expertGroup}" ${dis}></div>
-            </div>
-            <p class="hint-note" style="margin:6px 0 8px" id="g-summary">${structSummary(SEED.structure.tracks, SEED.structure.classSize, SEED.structure.expertGroup)}</p>
-            ${locked ? '' : '<button class="btn btn-secondary btn-sm" type="submit">Apply groups</button>'}
-          </form>
-          ${Assistant.chat()}
-          <div class="card wash-mint">
-            <div class="eyebrow teal">Student preview</div>
-            <div class="preview-phone">
-              <div class="row" style="justify-content:space-between"><strong style="font-family:var(--font-display)">${Art.logo(26)} WorldQuest</strong><span class="pill lavender">Briefing</span></div>
-              <h3 id="pv-title" style="margin-top:12px">${esc(q.title)}</h3>
-              <p id="pv-obj" class="hint-note">${esc(q.objective)}</p>
-              <div class="gallery-note" style="margin-bottom:10px"><h4>${Art.icon('map', 16)} <span id="pv-venue">${esc(q.venue)}</span></h4></div>
-              <p class="hint-note" style="margin:0 0 8px">${esc(st.content.story.opening || 'Your story opening appears here.')}</p>
-              <div class="row" style="margin-bottom:10px">${SEED.topics.map((t) => topicChip(t)).join('')}</div>
-              <div class="card" style="padding:12px;background:var(--grad-collect);text-align:center"><strong>${Art.icon('puzzle', 16)} ${esc(SEED.finale.title)}</strong><br><small>Needs every perspective in the home team</small></div>
-            </div>
-            <p class="hint-note" style="margin:10px 0 0;text-align:center">Updates as you edit.</p>
-          </div>
+      ${locked ? `<div class="card wash-mint" style="padding:12px 16px"><strong>${Art.icon('check', 16)} Published.</strong> This quest is frozen so a live session isn’t disrupted — create a new quest to change it.</div>` : ''}
+      <nav aria-label="Builder steps"><ol class="b-steps">${BSTEPS.map(([k, l], j) => `<li><button data-a="bstep" data-step="${k}" aria-current="${k === step ? 'step' : 'false'}" class="${done[k] ? 'done' : ''}"><b>${done[k] ? '✓' : j + 1}</b><span>${l}</span></button></li>`).join('')}</ol></nav>
+      <div class="b-layout">
+        <div class="stack b-body">
+          ${body}
+          <div class="row b-nav">${i > 0 ? `<button class="btn btn-ghost" data-a="bstep" data-step="${BSTEPS[i - 1][0]}">${Art.icon('back', 15)} ${BSTEPS[i - 1][1]}</button>` : ''}
+            ${i < BSTEPS.length - 1 ? `<button class="btn btn-primary" data-a="bstep" data-step="${BSTEPS[i + 1][0]}" style="margin-left:auto">Next: ${BSTEPS[i + 1][1]} ${Art.icon('arrow', 15)}</button>` : ''}</div>
         </div>
-        <div class="stack builder-right">
-          ${Partner.requestsCard(st)}
-          ${Assistant.board()}
-          ${Journey.builderCard(st)}
-          <section class="card" id="sec-publish">
-            <div class="spread"><h3 style="margin:0">Publish</h3>${statusChip(locked ? 'APPROVED' : 'PENDING')}</div>
-            <ul style="margin:10px 0 12px;padding-left:20px">
-              <li>Quest content complete: <strong>${SEED.contentProblems(st.content).length ? SEED.contentProblems(st.content).length + ' to do' : 'yes'}</strong></li>
-              <li>Tracks approved by you: <strong>${SEED.topics.filter((t) => st.tracks[t] === 'APPROVED').length}/${SEED.topics.length}</strong></li>
-              <li>Community partner signed off: <strong>${st.contributor.status === 'APPROVED' ? 'yes' : (() => { const p = sel.partnerProgress(); return p.open ? p.open + ' suggestion(s) to answer' : `not yet (${p.reviewed}/${p.items.length} reviewed)`; })()}</strong></li>
-              <li><label><input type="checkbox" data-a="safety" ${q.safety ? 'checked' : ''} ${dis}> Safety, supervision and venue booking confirmed by me</label></li>
-            </ul>
-            <button class="btn btn-teal" data-a="publish" ${dis}>${locked ? 'Published ✓' : 'Publish to students'}</button>
-          </section>
+        <aside class="b-side">${Assistant.chat()}</aside>
+      </div>`;
+  }
+  function builderTrip(st, dis, locked) {
+    const q = st.quest;
+    return `<div class="card">
+        <h3 style="margin:0 0 6px">What’s the trip?</h3>
+        <div class="fld-group"><label class="fld" for="q-title">Name of the quest</label><input class="input" id="q-title" data-q="title" value="${esc(q.title)}" placeholder="e.g. The Lost Museum" ${dis}></div>
+        <div class="fld-group"><label class="fld" for="q-obj">What should students learn?</label><input class="input" id="q-obj" data-q="objective" value="${esc(q.objective)}" placeholder="e.g. Tell the difference between what an object shows and what we guess" ${dis}></div>
+        <div class="fld-group"><label class="fld" for="q-venue">Where are you going?</label><input class="input" id="q-venue" data-q="venue" value="${esc(q.venue)}" placeholder="e.g. The Fitzwilliam Museum, Cambridge" ${dis}></div>
+        <div class="grid-3" style="gap:10px">
+          <div class="fld-group"><label class="fld" for="q-aud">Who’s going?</label><select class="input" id="q-aud" data-q="audience" ${dis}>${Object.entries(SEED.AUDIENCES).map(([k, l]) => `<option value="${k}" ${(q.audience || {}).kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+          <div class="fld-group"><label class="fld" for="q-ages">Ages</label><input class="input" id="q-ages" data-q="ages" value="${esc((q.audience || {}).ages || '')}" placeholder="e.g. 13–16" ${dis}></div>
+          <div class="fld-group"><label class="fld" for="q-dur">Minutes on site</label><input class="input" id="q-dur" data-q="duration" type="number" min="10" max="480" step="5" value="${q.duration || 60}" ${dis}></div>
+        </div>
+      </div>
+      <div class="card wash-lavender"><h3 style="margin:0 0 8px">How a WorldQuest works</h3>
+        <ol class="b-how"><li>${Art.icon('lens', 18)}<span><strong>Explore.</strong> Each student becomes the expert on one <em>track</em> (one topic) and investigates it on site with the other experts.</span></li>
+          <li>${Art.icon('voices', 18)}<span><strong>Teach.</strong> Back in their team, each expert teaches the others what they found.</span></li>
+          <li>${Art.icon('puzzle', 18)}<span><strong>Solve.</strong> The team solves a final puzzle that needs everyone’s part.</span></li></ol></div>
+      <form class="card" data-form="structure">
+        <h3 style="margin:0 0 6px">How the class splits up</h3>
+        <div class="grid-3" style="gap:10px">
+          <div class="fld-group"><label class="fld" for="g-tracks">Tracks (topics)</label><input class="input" id="g-tracks" type="number" min="1" max="6" value="${SEED.structure.tracks}" ${dis}></div>
+          <div class="fld-group"><label class="fld" for="g-size">Students</label><input class="input" id="g-size" type="number" min="2" max="60" value="${SEED.structure.classSize}" ${dis}></div>
+          <div class="fld-group"><label class="fld" for="g-exp">Experts who explore together</label><input class="input" id="g-exp" type="number" min="1" max="30" value="${SEED.structure.expertGroup}" ${dis}></div>
+        </div>
+        <p class="hint-note" style="margin:6px 0 8px" id="g-summary">${structSummary(SEED.structure.tracks, SEED.structure.classSize, SEED.structure.expertGroup)}</p>
+        ${locked ? '' : '<button class="btn btn-secondary btn-sm" type="submit">Update teams</button>'}
+      </form>`;
+  }
+  function builderSources(st) {
+    return `${Assistant.sources()}
+      <div class="card"><h3 style="margin:0 0 6px">${Art.icon('sparkle', 18)} Want a head start?</h3>
+        <p style="margin:0">Add the pages or notes you trust, then ask the assistant to draft the whole quest from them. It uses only these sources, and nothing reaches students until you’ve checked and approved it.</p></div>`;
+  }
+  function builderPublish(st, dis, locked) {
+    const q = st.quest, probs = SEED.contentProblems(st.content), p = sel.partnerProgress();
+    const fix = (txt, step, track = '') => `<li class="b-todo"><span>${esc(txt)}</span>${locked ? '' : `<button class="btn btn-ghost btn-sm" data-a="bfix" data-step="${step}" data-track="${track}">Fix</button>`}</li>`;
+    const todo = probs.map((x) => { const t = (x.match(/^Track ([A-F]):/) || [])[1];
+      return t ? fix(`Track ${t} still needs: ${x.split(': ')[1]}`, 'tracks', t) : /^Give the quest/.test(x) ? fix(x, 'trip') : /^Add at least/.test(x) ? fix(x, 'tracks') : fix(x, 'finale'); });
+    SEED.topics.filter((t) => st.tracks[t] !== 'APPROVED' && !probs.some((x) => x.startsWith(`Track ${t}:`))).forEach((t) => todo.push(fix(`Approve Track ${t} (${SEED.missions[t].name || 'untitled'})`, 'tracks', t)));
+    return `<div class="card">
+        <h3 style="margin:0 0 6px">Ready to publish?</h3>
+        ${todo.length ? `<p class="hint-note" style="margin:0 0 6px">${todo.length} thing${todo.length > 1 ? 's' : ''} to do first:</p><ul class="b-todos">${todo.join('')}</ul>` : `<p style="margin:0 0 6px">${Art.icon('check', 16)} Every track, the finale and the extras are complete and approved.</p>`}
+        <ul class="b-todos">
+          <li class="b-todo"><span>Community partner: <strong>${p.signedOff ? 'signed off ✓' : p.open ? p.open + ' suggestion(s) waiting for you (Tracks step)' : !p.contributed ? 'hasn’t written their contribution yet' : `reviewing (${p.reviewed}/${p.items.length} parts)`}</strong></span>${p.signedOff ? '' : '<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="dashboard">Partner link</button>'}</li>
+          <li class="b-todo"><label><input type="checkbox" data-a="safety" ${q.safety ? 'checked' : ''} ${dis}> I’ve confirmed safety, supervision and the venue booking</label></li>
+        </ul>
+        <button class="btn btn-teal" data-a="publish" ${dis}>${locked ? 'Published ✓' : 'Publish to students'}</button>
+      </div>
+      ${Journey.builderCard(st)}
+      <div class="card wash-mint">
+        <div class="eyebrow teal">What students will see first</div>
+        <div class="preview-phone">
+          <div class="row" style="justify-content:space-between"><strong style="font-family:var(--font-display)">${Art.logo(26)} WorldQuest</strong><span class="pill lavender">Briefing</span></div>
+          <h3 id="pv-title" style="margin-top:12px">${esc(q.title)}</h3>
+          <p id="pv-obj" class="hint-note">${esc(q.objective)}</p>
+          <div class="gallery-note" style="margin-bottom:10px"><h4>${Art.icon('map', 16)} <span id="pv-venue">${esc(q.venue)}</span></h4></div>
+          <p class="hint-note" style="margin:0 0 8px">${esc(st.content.story.opening || 'Your story opening appears here.')}</p>
+          <div class="row" style="margin-bottom:10px">${SEED.topics.map((t) => topicChip(t)).join('')}</div>
+          <div class="card" style="padding:12px;background:var(--grad-collect);text-align:center"><strong>${Art.icon('puzzle', 16)} ${esc(SEED.finale.title)}</strong><br><small>Needs every track in the team</small></div>
         </div>
       </div>`;
   }
@@ -1166,6 +1198,8 @@
           case 'sim-class': return act('simulateClassmates');
           case 'sim-bonus': return act('simulateBonusSubmissions');
           case 'approve-contrib': return act('approveContribution', { questId: el.dataset.qid });
+          case 'bstep': S().ui.bStep = el.dataset.step; Assistant.openEditor(null); render(); window.scrollTo(0, 0); return;
+          case 'bfix': S().ui.bStep = el.dataset.step; Assistant.openEditor(el.dataset.track || null); render(); window.scrollTo(0, 0); return;
           case 'new-quest': S().ui.newQuest = true; S().ui.nqTpl = null; render(); return;
           case 'new-quest-x': S().ui.newQuest = false; S().ui.nqTpl = null; render(); return;
           case 'nq-pick': S().ui.nqTitle = (document.getElementById('nq-title') || {}).value || ''; S().ui.nqTpl = el.dataset.tpl; render(); return;
@@ -1259,7 +1293,7 @@
           const v = (id) => Number(form.querySelector('#' + id).value), tpl = S().ui.nqTpl;
           const r = act('createQuest', { template: tpl === 'ai' ? 'blank' : tpl, title: S().ui.nqTitle || '', structure: { tracks: v('g-tracks'), classSize: v('g-size'), expertGroup: v('g-exp') } });
           if (!r.ok) return;
-          S().ui.newQuest = false; S().ui.nqTpl = null; S().ui.nqTitle = ''; S().ui.screen = 'builder'; render();
+          S().ui.newQuest = false; S().ui.nqTpl = null; S().ui.nqTitle = ''; S().ui.screen = 'builder'; S().ui.bStep = tpl === 'ai' ? 'sources' : 'trip'; render();
           if (tpl === 'ai') toast(Assistant.getMode() === 'live' ? 'Add your sources and check the quest settings, then press “Generate the whole quest”.' : 'Live AI is off — switch the assistant’s “AI” button to live to generate, or write the tracks yourself.', 'success');
           return;
         }
