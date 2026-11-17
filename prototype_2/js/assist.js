@@ -386,7 +386,7 @@ const Assistant = (() => {
     const box = document.getElementById('as-msgs');
     if (!box) return;
     box.innerHTML = msgs.map(msgHTML).join('');
-    box.scrollTop = box.scrollHeight;
+    box.scrollTop = box.scrollHeight; chatPinned = true;
   }
   async function say(text, cites, parts, changes) {
     const m = { who: 'ai', text: '', thinking: true };
@@ -657,8 +657,16 @@ const Assistant = (() => {
     });
   }
 
+  /* The chat keeps its place when the page redraws (e.g. switching builder steps):
+     it stays at the newest message unless the educator had scrolled up to read. */
+  let chatPinned = true, chatTop = 0;
   function bind(root) {
     delegate();
+    const box = root.querySelector('#as-msgs');
+    if (box) {
+      box.scrollTop = chatPinned ? box.scrollHeight : chatTop;
+      box.addEventListener('scroll', () => { chatTop = box.scrollTop; chatPinned = box.scrollHeight - box.scrollTop - box.clientHeight < 40; });
+    }
     const on = (sel, ev, fn) => root.querySelectorAll(sel).forEach((el) => el.addEventListener(ev, (e) => fn(el, e)));
     on('[data-as-chip]', 'click', (b) => (b.dataset.asChip === 'draft' ? scriptedDraft() : runRev(REVS.find((r) => r.id === b.dataset.asChip))));
     on('[data-as-gen]', 'click', () => {
