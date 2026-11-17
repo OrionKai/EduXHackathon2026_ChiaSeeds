@@ -1042,7 +1042,7 @@
   function partnerWork(st) {
     const homes = SEED.homeGroups.filter((h) => ['SUBMITTED', 'APPROVED'].includes(st.finale[h].status));
     return `<div class="card"><div class="eyebrow coral">Partner feedback</div><h3>Teams’ finale answers</h3>
-      <p class="hint-note">Respond as the community partner: what rings true, what is missing, what would you add? Students see your words as a perspective, not a grade.</p>
+      <p class="hint-note">When you have time, share what students understood well and one thing to reconsider. Your feedback is a perspective, not a grade.</p>
       ${homes.length === 0 ? '<p class="hint-note" style="margin:0">Teams’ answers appear here once they send their finale.</p>' : ''}
       <div class="stack" style="gap:12px">${homes.map((h) => { const f = st.finale[h], fb = st.partnerFeedback[h];
         const written = (SEED.finale.steps || []).filter((x) => x.type === 'write').map((x) => (f.answers[x.id] || {}).text).filter(Boolean);
@@ -1054,8 +1054,13 @@
 
   function facilitateScreen(st, pendD) {
     const promptIdx = st.contributor.interactionPrompt || 0;
+    const hasConversations = SEED.topics.some((t) => SEED.missions[t].needsFacilitator);
     const toCheck = sel.pendingEvidence().filter((p) => (SEED.missions[p.topic].assess || {}).verify === 'partner');
     return `
+      <div class="card">
+        <div class="eyebrow coral">${st.phase === 'LOBBY' ? 'Before the session starts' : 'Session in progress'}</div>
+        <p style="margin:6px 0 0">${!hasConversations ? 'This quest has no arranged conversation activity. You can still review student work after it is submitted.' : st.phase === 'LOBBY' ? 'The educator has not started the session yet. Choose a discussion question while you wait.' : 'Meet students as arranged with the educator. Put your device away while you talk, then return to confirm participation.'}</p>
+      </div>
       ${toCheck.length ? `<div class="card"><div class="spread"><h3>${Art.icon('check', 18)} Evidence for you to verify</h3><span class="pill peach">${toCheck.length}</span></div>
         <div class="stack" style="gap:10px">${toCheck.map((p) => { const m = SEED.missions[p.topic], ev = st.evidence[p.id]; return `<div class="queue-row"><div class="meta"><strong>${esc(who(p))}</strong> · ${esc(m.name)}
           ${ev.photo ? `<img class="ev-photo" src="${ev.photo}" alt="Photo submitted by ${esc(who(p))}">` : ''}${ev.quiz ? `<p class="hint-note" style="margin:4px 0">Quick check: ${ev.quiz.score}/${ev.quiz.total}</p>` : ''}
@@ -1063,24 +1068,26 @@
           <div class="stack" style="gap:8px"><button class="btn btn-teal btn-sm" data-a="pverify-ev" data-pid="${p.id}">${Art.icon('check', 15)} Verify</button><button class="btn btn-danger-ghost btn-sm" data-a="preturn-ev" data-pid="${p.id}">Needs revision</button></div></div>`; }).join('')}</div></div>` : ''}
       <div class="grid-2">
         <div class="card">
-          <div class="eyebrow coral">Live facilitation</div>
-          <h3>Your conversation prompt</h3>
-          <p class="hint-note">Pick one prompt and discuss it with each student in the conversation track in an arranged, supervised conversation.</p>
-          ${(st.contributor.prompts || SEED.contributor.prompts).map((p, i) => `<button type="button" class="tile-pick" data-a="prompt" data-i="${i}" aria-pressed="${promptIdx === i}">${i >= SEED.contributor.prompts.length ? '<span class="pill mint" style="margin-right:6px">your question</span>' : ''}${esc(p)}</button>`).join('')}
-          <details style="margin-top:10px"><summary class="as-chip" style="display:inline-flex">${Art.icon('pencil', 14)} Edit your questions</summary>
+          <div class="eyebrow coral">Prepare to talk</div>
+          <h3>Choose a discussion question</h3>
+          <p class="hint-note">Students in the conversation activity will see the selected question. Use it to start your in-person conversation.</p>
+          ${(st.contributor.prompts || SEED.contributor.prompts).map((p, i) => `<button type="button" class="tile-pick" data-a="prompt" data-i="${i}" aria-pressed="${promptIdx === i}">${promptIdx === i ? '<span class="pill mint">Selected question</span> ' : ''}${esc(p)}</button>`).join('')}
+          <p class="hint-note">Read the question, then put your device away and talk. Confirm afterwards.</p>
+          <details style="margin-top:10px"><summary>${Art.icon('pencil', 14)} Edit questions</summary>
             <form class="stack" data-form="partner-prompts" style="gap:8px;margin-top:10px">${Assistant.listEd('pp', st.contributor.prompts || SEED.contributor.prompts, 'A question for students', 'Add a question')}
             <button class="btn btn-secondary btn-sm" type="submit" style="align-self:flex-start">Save questions</button></form></details>
-          <p class="hint-note" style="margin-top:10px">Your reply is recorded by students as a <em>perspective</em>, never as established fact.</p>
+          <details style="margin-top:10px"><summary>How students use your contribution</summary><p class="hint-note">Students record your perspective in their own words and share it with their team. You can check their understanding later in "Student work".</p></details>
         </div>
         <div class="card">
-          <h3>${Art.icon('handshake', 19)} Verify arranged interactions</h3>
-          ${st.phase === 'LOBBY' ? '<p class="hint-note" style="margin:0">Interactions open once the educator starts the session.</p>' : ''}
-          ${pendD.length === 0 && st.phase !== 'LOBBY' ? '<p class="hint-note" style="margin:0">All arranged conversations are verified. ✓</p>' : ''}
+          <h3>${Art.icon('handshake', 19)} Confirm completed conversations</h3>
+          <p class="hint-note">After speaking with students, confirm who took part below.</p>
+          ${hasConversations && st.phase === 'LOBBY' ? '<p class="hint-note" style="margin:0">Waiting for the educator to start. Students will appear here when the session begins.</p>' : ''}
+          ${!hasConversations ? '<p class="hint-note" style="margin:0">No conversations are planned for this quest.</p>' : pendD.length === 0 && st.phase !== 'LOBBY' ? '<p class="hint-note" style="margin:0">All arranged conversations have been confirmed.</p>' : ''}
           <div class="stack" style="gap:10px">
             ${pendD.map((p) => `<div class="queue-row"><div class="meta"><strong>${esc(who(p))}</strong><br><small>Home ${p.home} · Expert ${p.topic} · ${esc(SEED.missions[p.topic].gallery)}</small></div>
-              <button class="btn btn-teal btn-sm" data-a="verify-int" data-pid="${p.id}">${Art.icon('check', 15)} Confirm interaction</button></div>`).join('')}
+              <button class="btn btn-teal btn-sm" data-a="verify-int" data-pid="${p.id}">${Art.icon('check', 15)} Confirm conversation</button></div>`).join('')}
           </div>
-          <p class="hint-note" style="margin-top:12px">Verification is an adult-controlled action — students cannot confirm it themselves.</p>
+          <p class="hint-note" style="margin-top:12px">Only confirm students you have spoken with.</p>
         </div>
       </div>`;
   }
