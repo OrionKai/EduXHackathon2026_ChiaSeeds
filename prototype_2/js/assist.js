@@ -93,10 +93,12 @@ const Assistant = (() => {
   };
 
   /* ---------------- rendering ---------------- */
+  const jumpChip = (p) => `<button class="as-jump" data-as-jump="${p.step}|${p.sel}" type="button" title="Go to what changed">${Art.icon(PART_ICON[p.kind] || 'arrow', 13)} ${esc(p.label)}</button>`;
   function msgHTML(m) {
     return `<div class="as-msg ${m.who}">${m.thinking ? '<span class="as-dots"><i></i><i></i><i></i></span>' : esc(m.text)}
       ${m.cites && m.cites.length ? `<div class="row" style="gap:4px;margin-top:6px">${m.cites.map((c) => `<button class="as-cite" data-as-cite="${c}" type="button">${c}</button>`).join('')}</div>` : ''}
-      ${m.parts && m.parts.length ? `<div class="row" style="gap:4px;margin-top:6px">${m.parts.map((p) => `<button class="as-jump" data-as-jump="${p.step}|${p.sel}" type="button" title="Go to what changed">${Art.icon(PART_ICON[p.kind] || 'arrow', 13)} ${esc(p.label)}</button>`).join('')}</div>` : ''}</div>`;
+      ${m.changes && m.changes.length ? `<ul class="as-changes">${m.changes.map((c) => `<li><span>${esc(c.text)}</span>${c.part ? jumpChip(c.part) : ''}</li>`).join('')}</ul>`
+        : m.parts && m.parts.length ? `<div class="row" style="gap:4px;margin-top:6px">${m.parts.map(jumpChip).join('')}</div>` : ''}</div>`;
   }
 
   function chat() {
@@ -386,7 +388,7 @@ const Assistant = (() => {
     box.innerHTML = msgs.map(msgHTML).join('');
     box.scrollTop = box.scrollHeight;
   }
-  async function say(text, cites, parts) {
+  async function say(text, cites, parts, changes) {
     const m = { who: 'ai', text: '', thinking: true };
     msgs.push(m); paintMsgs();
     await sleep(700 + Math.random() * 400);
@@ -394,6 +396,7 @@ const Assistant = (() => {
     for (const w of text.split(' ')) { m.text += (m.text ? ' ' : '') + w; paintMsgs(); await sleep(24); }
     m.cites = cites || [];
     m.parts = (parts || []).slice();
+    m.changes = (changes || []).slice();
     paintMsgs();
   }
   async function typeInto(text) {
@@ -552,13 +555,13 @@ const Assistant = (() => {
     msgs.pop();
     if (!data || data.error || status !== 200) { failNotice(status); busy = false; msgs.pop(); return status === 401 ? window.WQ.render() : freeText(text); }
     const cites = [...new Set((data.edits || []).flatMap((e) => e.input.source_ids || []))];
-    const seenSel = new Set();
-    const parts = (data.edits || []).map(partTarget).filter(Boolean).filter((p) => !seenSel.has(p.sel) && seenSel.add(p.sel));
-    await say(data.reply, cites, parts);
-    history.push({ role: 'user', content: text }, { role: 'assistant', content: data.reply });
+    const changes = (data.edits || []).map((e) => ({ text: String((e.input || {}).summary || '').trim() || 'Changed ' + ((partTarget(e) || {}).label || 'the quest') + '.', part: partTarget(e) }));
+    await say(data.reply, cites, [], changes);
+    // remember what was actually changed, not only what was said — so it doesn't redo or duplicate it next time
+    history.push({ role: 'user', content: text }, { role: 'assistant', content: data.reply + (changes.length ? '\n[Changes I made: ' + changes.map((c) => c.text).join(' ') + ']' : '') });
     for (const e of data.edits || []) applyEdit(e);
     busy = false;
-    lastNotice = data.edits && data.edits.length ? `Claude made ${data.edits.length} change${data.edits.length > 1 ? 's' : ''} — check them in the builder (changed tracks need your approval again).` : '';
+    lastNotice = data.edits && data.edits.some((e) => ['revise_track', 'set_track_list', 'set_assessment', 'set_teachback_check', 'add_hint'].includes(e.tool)) ? 'Changed tracks need your approval again before students see them.' : '';
     window.WQ.render();
   }
 

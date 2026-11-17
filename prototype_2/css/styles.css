@@ -744,3 +744,7 @@ a.brand { text-decoration: none; color: inherit; }
 /* the hidden attribute always wins (layout classes like .stack set display) */
 [hidden] { display: none !important; }
 .as-off { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: 12px; background: var(--paper); font-size: 14px; }
+
+.as-changes { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.as-changes li { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; font-size: 14px; padding-top: 6px; border-top: 1px dashed var(--stroke); }
+.as-changes li .as-jump { flex: none; }

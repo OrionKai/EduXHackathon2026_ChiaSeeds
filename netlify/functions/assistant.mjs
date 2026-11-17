@@ -30,11 +30,19 @@ Rules you must follow:
 - Hints must guide students back to observing the real object; never the answer, never another track's evidence.
 - Write for the audience and ages given in QUEST SETTINGS: short sentences, plain words.
 - Never claim something is confirmed with the venue or partner.
+- Before anything else, look at what already exists (CURRENT TRACKS and REST OF THE QUEST). Don't add a card, question, step or hint that repeats or closely resembles an existing one — change the existing one instead, or make the new one clearly different (a different name, rule and idea).
+- Multiple-choice questions must make students think:
+  * answerable only by looking closely at the object or reading an approved source — never by common sense or by guessing from the wording;
+  * 3 or 4 options of similar length and style;
+  * every wrong option must be believable: a typical misunderstanding (e.g. a near-miss date, a nearby object, a guess from appearance, an overclaim) — never joke or obviously silly options like "some guy" or "nobody";
+  * the right answer must not stand out (not always the longest, not always first).
+- Always talk to the educator like a helpful colleague. Every reply starts with 1–3 short, plain sentences in your own words: what you understood they want, what you changed (or why you didn't), and anything they should check. Never reply with only tool calls.
+- For every change you make, the summary is one plain sentence saying what changed and why, e.g. "Added 3 questions about the carvings so students have to look closely."
 - To change the draft, call the tools. To answer a question, just reply.
-- Reply in at most 3 short sentences, and cite the sources you used like [S2].`;
+- Cite the sources you used like [S2].`;
 
 const cite = { source_ids: { type: "array", items: { type: "string" }, description: "Ids of the approved sources this change relies on, e.g. S2." },
-  summary: { type: "string", description: "One sentence for the educator describing what changed and why." } };
+  summary: { type: "string", description: "One plain sentence for the educator: what changed and why (shown to them as a bullet point)." } };
 // strict: false — 13 tools with several nested schemas compiled a BNF grammar large
 // enough to trip the API's "compiled grammar is too large" limit (400 -> 502).
 // Off, the models still receive the schemas as prompts; applyEdit() parses inputs defensively.
@@ -50,7 +58,7 @@ const TOOLS = [
     topic: { type: "string", enum: TOPICS },
     field: { type: "string", enum: ["evidence_prompts", "hints", "success_criteria"] },
     items: { type: "array", items: { type: "string" } } }),
-  tool("set_assessment", "Set how one track is assessed. Send the complete assessment; copy any unchanged values from CURRENT TRACKS.", {
+  tool("set_assessment", "Set how one track is assessed. Send the complete assessment; copy any unchanged values from CURRENT TRACKS. Multiple-choice options must all be believable — see the rules.", {
     topic: { type: "string", enum: TOPICS },
     checkin: { type: "string", enum: ["photo_ai", "photo_teacher", "qr", "none"] },
     evidence: { type: "string", enum: ["notes", "photo", "notes_photo"] },
@@ -72,7 +80,7 @@ const TOOLS = [
       question: { type: "string" },
       options: { type: "array", items: { type: "object", additionalProperties: false, required: ["text", "correct"], properties: { text: { type: "string" }, correct: { type: "boolean" } } }, description: "For choice steps; empty for write steps" },
       checks: { type: "array", items: { type: "string" }, description: "For write steps: what a good answer includes; empty for choice steps" } } } } }),
-  tool("set_card", "Add a reward card (card_id \"new\") or edit one (its id from CURRENT CARDS).", {
+  tool("set_card", "Add a reward card (card_id \"new\") or edit one (its id from REST OF THE QUEST → cards). Check the existing cards first: a new card needs its own name, its own rule and its own idea — otherwise edit the existing card.", {
     card_id: { type: "string" }, title: { type: "string" }, team: { type: "string", description: "Home team id like H1, or empty" },
     earned_when: { type: "string", enum: ["track", "experts", "finale", "bonus", "egg", "teacher"] }, track: { type: "string", description: "Track letter for earned_when=track, or empty" },
     activity: { type: "string" }, fact: { type: "string" } }),
@@ -105,7 +113,7 @@ const GEN_TOOLS = {
 };
 const GEN_ASK = {
   plan: "Plan the quest: a title, a 2-3 sentence fictional story opening (clearly a story, no false claims), and exactly the number of complementary perspectives given in QUEST SETTINGS (tracks), lettered from A, each tied to a real location and key object named in the sources.",
-  track: (letter) => `Write track ${letter} in full, following the plan. evidence_prompts: 2-4 prompts (observations first, then one interpretation and one limit of the evidence). success_criteria: 2-3 short statements of what a good answer to those prompts includes, grounded in the sources, for the teacher to check answers against. hints: 2. check_correct: a one-sentence fair summary of what this expert teaches; check_incorrect: a tempting summary that overclaims. quiz: 2 multiple-choice questions (4 options each) answerable only by looking at the real object or from the sources, never trick questions.`,
+  track: (letter) => `Write track ${letter} in full, following the plan. evidence_prompts: 2-4 prompts (observations first, then one interpretation and one limit of the evidence). success_criteria: 2-3 short statements of what a good answer to those prompts includes, grounded in the sources, for the teacher to check answers against. hints: 2. check_correct: a one-sentence fair summary of what this expert teaches; check_incorrect: a tempting summary that overclaims. quiz: 2 multiple-choice questions (4 options each; every wrong option a believable misunderstanding, never a joke; the right one not the longest) answerable only by looking at the real object or from the sources, never trick questions.`,
   finale: "Write the finale: a title; a cautious statement and an overclaiming one; one evidence sentence per track (citing what students observed); one sentence each about perspectives, uncertainty and inviting a visitor question; and one tempting overclaim students must leave out.",
   extras: "Write one optional collectible per home team (the number of teams is given in QUEST SETTINGS as teams) (a short evocative name, a 1-sentence bonus activity done on site, and a 1-sentence fact shown when earned), and 2 reflection questions about learning from others.",
 };
@@ -382,7 +390,7 @@ EDUCATOR'S REQUEST: ${message.trim()}`;
       .filter((e) => !["revise_track", "set_track_list", "set_assessment", "set_teachback_check", "add_hint", "remove_track"].includes(e.tool) || TOPICS.includes(e.input?.topic))
       .map((e) => ({ ...e, input: { ...e.input, source_ids: (e.input.source_ids || []).filter((id) => knownIds.has(id)) } }));
     return json({
-      reply: reply || (edits.length ? "I've proposed the changes below — please review them." : "Done."),
+      reply: reply || (edits.length ? "Here’s what I changed:" : "I couldn’t find anything to change — could you say a bit more?"),
       edits,
       model: response.model,
     });
