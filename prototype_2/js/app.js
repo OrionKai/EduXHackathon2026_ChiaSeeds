@@ -83,6 +83,11 @@
     collaborator: [['review', 'pencil', 'Review contribution'], ['facilitate', 'voices', 'Facilitate'], ['work', 'book', 'Student work']],
   };
   const currentRole = () => ROUTES[location.hash.slice(1)] || null;
+  /* Presenter controls stay off student phones unless the link asks for them (?demo=1 or a ?fast= demo link). */
+  const demoOn = () => {
+    try { if (/[?&](demo|fast)=/.test(location.search)) sessionStorage.setItem('wq-demo', '1'); return sessionStorage.getItem('wq-demo') === '1'; }
+    catch { return /[?&](demo|fast)=/.test(location.search); }
+  };
 
   function render() {
     const y = window.scrollY;
@@ -95,7 +100,7 @@
       const screen = role === 'student' && !joinedHere(st) ? 'adventure' : st.ui.screen || DEFAULT_SCREEN[role];
       const badge = (id) => (id === 'facilitate' && sel.pendingInteractions().length ? ` <span class="pill peach">${sel.pendingInteractions().length}</span>` : id === 'live' && st.help.some((h) => h.open) ? ` <span class="pill peach">help</span>` : '');
       root.innerHTML = `
-      <div class="shell">
+      <div class="shell role-${role}${demoOn() ? ' demo-on' : ''}">
         <aside class="sidebar">
           <a class="brand" href="#" aria-label="WorldQuest home">${Art.logo(42)}<h1>WorldQuest</h1></a>
           <div class="side-label">${ROLE_LABEL[role]}</div>
@@ -108,7 +113,7 @@
         <main class="main" id="main">
           <a class="skip-link" href="#main-content">Skip to content</a>
           <div class="topbar">
-            <span class="crumb">${esc(st.quest.title)} · ${ROLE_LABEL[role]}</span>
+            <a class="brand-mini" href="#" aria-label="WorldQuest home">${Art.logo(30)}</a><span class="crumb">${esc(st.quest.title)} · ${ROLE_LABEL[role]}</span>
             <span class="row" style="gap:8px">${syncPill()}<button class="demo-fab" data-a="demo-toggle" aria-expanded="${!!st.ui.demoOpen}">${Art.icon('sparkle', 15)} Demo</button></span>
           </div>
           <div id="main-content">
@@ -192,12 +197,12 @@
     return `
       <div class="stack">
         <div class="spread">
-          <div class="row">
-            <span class="identity-chip">${Art.icon('eye', 17)} ${esc(who(me))} · Home team ${me.home}</span>
+          <div class="row me-row">
+            <span class="identity-chip">${Art.icon('eye', 17)} <span class="nick">${esc(who(me))}</span> · <span class="hide-sm">Home team </span>${me.home}</span>
             ${topicChip(me.topic)}
             ${st.help.some((h) => h.pid === me.id && h.open)
               ? `<span class="pill peach">${Art.icon('clock', 14)} Teacher is on the way</span>`
-              : `<button class="btn btn-sm help-btn" data-a="help">${Art.icon('alert', 15)} Call teacher</button>`}
+              : `<button class="btn btn-sm help-btn" data-a="help">${Art.icon('alert', 15)} <span class="hide-sm">Call teacher</span><span class="show-sm">Help</span></button>`}
           </div>
         </div>
         ${nextStep(st, me)}

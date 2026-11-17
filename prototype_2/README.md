@@ -66,6 +66,7 @@ For quick demos and screenshots, boot straight into a scripted state (every step
 runs through the guarded engine actions):
 
 - Add `&offline=1` to keep it on this device: each link resets the demo, and without it that resets the shared class session too.
+- Student phones hide the Demo button and sync pill; add `?demo=1` (or use any `?fast=` link) to show them for the rest of that browser tab.
 - `?fast=expert&role=student` — expert mission open
 - `?fast=teach&role=student` — peer-teaching board (own teach-back left to play)
 - `?fast=finale&role=student` — unlocked finale board
