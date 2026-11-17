@@ -370,8 +370,8 @@
         <div class="card wash-mint burst">
           <div class="eyebrow teal">Evidence verified</div>
           <h2>You’re the ${esc(m.name)} expert! ✦</h2>
-          <p>Your evidence from ${esc(m.gallery)} is confirmed. Get ready to teach your home team ${me.home} what you found:</p>
-          <p><strong>${esc(m.teachHeadline)}</strong></p>
+          <p>Your notes from ${esc(m.gallery)} are confirmed. Back in team ${me.home}, teach them in your own words: what you saw, what you think it means, and what it can’t tell us.</p>
+          <dl class="evidence-quote" style="margin:0 0 10px">${m.evidenceFields.map((x) => `<dt>${esc(x.label)}</dt><dd>${esc((ev.answers || {})[x.key] || '')}</dd>`).join('')}</dl>
           <p class="hint-note" style="margin:0">Your educator will open the peer-teaching phase. This badge is your expert role — collectible cards are a separate, optional side quest.</p>
         </div>`;
     }
@@ -486,6 +486,7 @@
             <h4>${t} · ${esc(meta.name)}</h4>
             <span class="who">${esc(who(expert))}${expert.id === me.id ? ' (you)' : ''}${cell.simulated ? ' · simulated' : ''}</span>
             <div style="margin-top:8px">${cell.shared ? statusChip('VERIFIED').replace('Verified', 'Shared') : evs !== 'VERIFIED' ? statusChip('LOCKED').replace('Locked', 'Evidence not verified') : cell.asking ? '<span class="pill peach">check sent</span>' : statusChip('AVAILABLE').replace('Available', 'Ready to teach')}</div>
+            ${cell.shared && SEED.missions[t].teachHeadline ? `<p class="hint-note" style="margin:8px 0 0"><strong>Key idea:</strong> ${esc(SEED.missions[t].teachHeadline)}</p>` : ''}
             ${cell.shared || evs !== 'VERIFIED' ? '' : teachAction(st, me, t, expert, cell)}
           </div>`;
         }).join('')}
@@ -734,14 +735,14 @@
             <button class="card choice-card" data-a="nq-pick" data-tpl="ai">${Art.icon('sparkle', 20)}<strong>Generate with AI</strong><small>Add your sources, then the assistant drafts every track, the finale and collectibles for you to review.</small></button>
             <button class="card choice-card" data-a="nq-pick" data-tpl="two_explorers">${Art.icon('book', 20)}<strong>Example: Egypt Detectives</strong><small>Two students, two objects at the Fitzwilliam. A short, complete quest to adapt.</small></button>
             <button class="card choice-card" data-a="nq-pick" data-tpl="lost_museum">${Art.icon('map', 20)}<strong>Example: The Lost Museum</strong><small>A whole class (20 students, four galleries) at the Fitzwilliam.</small></button>
-          </div>` : (() => { const tq = TEMPLATES[st.ui.nqTpl], d = (tq && tq.questDefaults && tq.questDefaults.structure) || SEED.defaultStructure(); return `<form class="stack" data-form="new-quest" style="gap:8px;margin-top:10px">
+          </div>` : (() => { const tq = TEMPLATES[st.ui.nqTpl], d = (tq && tq.questDefaults && tq.questDefaults.structure) || { tracks: 2, classSize: 2, expertGroup: 1 }; return `<form class="stack" data-form="new-quest" style="gap:8px;margin-top:10px">
             <p class="hint-note" style="margin:0">Step 2 of 2 · How will the class be split? You can change this later in Quest settings.</p>
             <div class="grid-3" style="gap:10px">
-              <div class="fld-group"><label class="fld" for="g-tracks">Tracks to start with</label><input class="input" id="g-tracks" type="number" min="1" max="6" value="${st.ui.nqTpl === 'blank' ? 1 : d.tracks}"></div>
+              <div class="fld-group"><label class="fld" for="g-tracks">Tracks to start with</label><input class="input" id="g-tracks" type="number" min="1" max="6" value="${d.tracks}"></div>
               <div class="fld-group"><label class="fld" for="g-size">Students in the class</label><input class="input" id="g-size" type="number" min="2" max="60" value="${d.classSize}"></div>
-              <div class="fld-group"><label class="fld" for="g-exp">Students per expert group</label><input class="input" id="g-exp" type="number" min="1" max="30" value="${d.expertGroup}"></div>
+              <div class="fld-group"><label class="fld" for="g-exp">Visit group size</label><input class="input" id="g-exp" type="number" min="1" max="30" value="${d.expertGroup}"></div>
             </div>
-            <p class="hint-note" style="margin:0" id="g-summary">${structSummary(st.ui.nqTpl === 'blank' ? 1 : d.tracks, d.classSize, d.expertGroup)}</p>
+            <p class="hint-note" style="margin:0" id="g-summary">${structSummary(d.tracks, d.classSize, d.expertGroup)}</p><p class="hint-note" style="margin:4px 0 0">With several teams, the experts on the same track (one from each team) visit their spot together. This is how many go at once — e.g. 2 means they explore in pairs. With one team it’s always 1.</p>
             <p class="hint-note" style="margin:0">You can add or remove tracks any time in the builder.</p>
             ${tq && tq.questDefaults ? `<p class="hint-note" style="margin:0">This example has ${d.tracks} written tracks; if you add more, the extra ones start empty.</p>` : ''}
             <div class="row"><button class="btn btn-primary" type="submit">Create quest</button><button class="btn btn-ghost" type="button" data-a="nq-back">Back</button></div>
@@ -804,9 +805,9 @@
         <div class="fld-group"><label class="fld" for="q-obj">What should students learn?</label><input class="input" id="q-obj" data-q="objective" value="${esc(q.objective)}" placeholder="e.g. Tell the difference between what an object shows and what we guess" ${dis}></div>
         <div class="fld-group"><label class="fld" for="q-venue">Where are you going?</label><input class="input" id="q-venue" data-q="venue" value="${esc(q.venue)}" placeholder="e.g. The Fitzwilliam Museum, Cambridge" ${dis}></div>
         <div class="grid-3" style="gap:10px">
-          <div class="fld-group"><label class="fld" for="q-aud">Who’s going?</label><select class="input" id="q-aud" data-q="audience" ${dis}>${Object.entries(SEED.AUDIENCES).map(([k, l]) => `<option value="${k}" ${(q.audience || {}).kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-          <div class="fld-group"><label class="fld" for="q-ages">Ages</label><input class="input" id="q-ages" data-q="ages" value="${esc((q.audience || {}).ages || '')}" placeholder="e.g. 13–16" ${dis}></div>
-          <div class="fld-group"><label class="fld" for="q-dur">Minutes on site</label><input class="input" id="q-dur" data-q="duration" type="number" min="10" max="480" step="5" value="${q.duration || 60}" ${dis}></div>
+          <div class="fld-group"><label class="fld" for="q-aud">Who’s going?</label><select class="input" id="q-aud" data-q="audience" ${dis}><option value="" ${(q.audience || {}).kind ? '' : 'selected'} disabled>Choose…</option>${Object.entries(SEED.AUDIENCES).map(([k, l]) => `<option value="${k}" ${(q.audience || {}).kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+          <div class="fld-group"><span class="fld" id="q-ages-l">Ages</span>${(() => { const [lo, hi] = String((q.audience || {}).ages || '').split(/[–-]/).map((x) => x.trim()); return `<div class="row age-range" role="group" aria-labelledby="q-ages-l" style="gap:6px;flex-wrap:nowrap"><label class="sr-only" for="q-age-lo">From age</label><input class="input" id="q-age-lo" data-age type="number" min="3" max="99" inputmode="numeric" placeholder="from" value="${esc(lo || '')}" ${dis}><span aria-hidden="true">to</span><label class="sr-only" for="q-age-hi">To age</label><input class="input" id="q-age-hi" data-age type="number" min="3" max="99" inputmode="numeric" placeholder="to" value="${esc(hi || '')}" ${dis}></div>`; })()}</div>
+          <div class="fld-group"><label class="fld" for="q-dur">Minutes on site</label><input class="input" id="q-dur" data-q="duration" type="number" min="10" max="480" step="5" value="${q.duration || ''}" placeholder="e.g. 60" ${dis}></div>
         </div>
       </div>
       <div class="card wash-lavender"><h3 style="margin:0 0 8px">How a WorldQuest works</h3>
@@ -818,9 +819,9 @@
         <div class="grid-3" style="gap:10px">
           <div class="fld-group"><label class="fld" for="g-tracks">Tracks (topics)</label><input class="input" id="g-tracks" type="number" min="1" max="6" value="${st.quest.structure.tracks === 0 ? 0 : SEED.structure.tracks}" ${dis}></div>
           <div class="fld-group"><label class="fld" for="g-size">Students</label><input class="input" id="g-size" type="number" min="2" max="60" value="${SEED.structure.classSize}" ${dis}></div>
-          <div class="fld-group"><label class="fld" for="g-exp">Experts who explore together</label><input class="input" id="g-exp" type="number" min="1" max="30" value="${SEED.structure.expertGroup}" ${dis}></div>
+          <div class="fld-group"><label class="fld" for="g-exp">Visit group size</label><input class="input" id="g-exp" type="number" min="1" max="30" value="${SEED.structure.expertGroup}" ${dis}></div>
         </div>
-        <p class="hint-note" style="margin:6px 0 8px" id="g-summary">${structSummary(SEED.structure.tracks, SEED.structure.classSize, SEED.structure.expertGroup)}</p>
+        <p class="hint-note" style="margin:6px 0 8px" id="g-summary">${structSummary(SEED.structure.tracks, SEED.structure.classSize, SEED.structure.expertGroup)}</p><p class="hint-note" style="margin:0 0 8px">With several teams, the experts on the same track (one from each team) visit their spot together. This is how many go at once — e.g. 2 means they explore in pairs. With one team it’s always 1.</p>
         ${locked ? '' : '<button class="btn btn-secondary btn-sm" type="submit">Update teams</button>'}
       </form>`;
   }
@@ -866,7 +867,7 @@
     if (t < 2) return `${t} track so far — add at least one more before publishing, so students can teach each other.`;
     const teams = Math.ceil(n / t), last = n - (teams - 1) * t, gg = Math.max(1, Math.min(g, teams)), pl = (k, w) => `${k} ${w}${k === 1 ? '' : 's'}`;
     if (t >= 2 && teams > 1 && last === 1) return `The last home team would have just one student — try ${n - 1} or ${n + 1} students.`;
-    return `${pl(teams, 'home team')} of ${t}${last < t ? ` (the last has ${last})` : ''} · each track has ${pl(teams, 'expert')}${teams > 1 ? `, visiting in groups of ${gg} (${pl(Math.ceil(teams / gg), 'group')} per station)` : ''}${gg < g ? ` · group size set to ${gg}` : ''}`;
+    return `${pl(teams, 'home team')} of ${t}${last < t ? ` (the last has ${last})` : ''} · each track has ${pl(teams, 'expert')}${teams > 1 ? `, visiting their spot in groups of ${gg} (${pl(Math.ceil(teams / gg), 'visit group')} per track)` : ''}${gg < g ? ` · group size set to ${gg}` : ''}`;
   }
 
 
@@ -1243,6 +1244,11 @@
     if (typeof Assistant !== 'undefined') Assistant.bind(root);
 
     // live preview typing in the quest builder (silent updates, targeted DOM refresh)
+    root.querySelectorAll('[data-age]').forEach((el) => el.addEventListener('change', () => {
+      let lo = Number(document.getElementById('q-age-lo').value) || 0, hi = Number(document.getElementById('q-age-hi').value) || 0;
+      if (lo && hi && lo > hi) { [lo, hi] = [hi, lo]; document.getElementById('q-age-lo').value = lo; document.getElementById('q-age-hi').value = hi; }
+      Engine.dispatch('updateQuest', { field: 'ages', value: lo && hi ? (lo === hi ? String(lo) : `${lo}–${hi}`) : String(lo || hi || '') });
+    }));
     root.querySelectorAll('[data-q]').forEach((el) => {
       el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
         Engine.dispatch('updateQuest', { field: el.dataset.q, value: el.value });

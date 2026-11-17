@@ -748,3 +748,19 @@ a.brand { text-decoration: none; color: inherit; }
 .as-changes { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .as-changes li { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; font-size: 14px; padding-top: 6px; border-top: 1px dashed var(--stroke); }
 .as-changes li .as-jump { flex: none; }
+
+/* ---------- option tiles (track editor) ---------- */
+.opt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.opt { position: relative; display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1.5px solid var(--stroke); border-radius: 12px; background: var(--white); cursor: pointer; transition: border-color .15s, background .15s; }
+.opt input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.opt-box { flex: none; width: 18px; height: 18px; margin-top: 2px; border: 2px solid var(--stroke); border-radius: 5px; background: var(--white); display: grid; place-items: center; }
+.opt-box.round { border-radius: 50%; }
+.opt-text { display: flex; flex-direction: column; gap: 2px; font-weight: 600; }
+.opt-text small { font-weight: 400; color: var(--muted); font-size: 13px; }
+.opt:has(input:checked) { border-color: var(--violet); background: var(--lavender); }
+.opt:has(input:checked) .opt-box { border-color: var(--violet); background: var(--violet); }
+.opt:has(input:checked) .opt-box::after { content: ''; width: 8px; height: 8px; border-radius: 2px; background: #fff; }
+.opt:has(input:checked) .opt-box.round::after { border-radius: 50%; }
+.opt:has(input:focus-visible) { outline: 3px solid var(--violet); outline-offset: 2px; }
+.opt-sub { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 6px 14px; padding: 10px 12px; border-left: 3px solid var(--lavender); }
+.age-range .input { width: 100%; }

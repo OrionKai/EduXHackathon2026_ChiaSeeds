@@ -111,7 +111,7 @@ const Engine = (() => {
     const t = String(title || '').trim() || (tpl === 'blank' ? 'Untitled quest' : content.title);
     content.title = t;
     s.quest = { id, title: t, objective: qd.objective || '', venue: qd.venue || '',
-      duration: qd.duration || 60, classSize: 20, status: 'DRAFT', draftGenerated: true, safety: false, templateId: tpl, partner: { ...SEED.partnerDefaults }, next: { ...SEED.defaultNext(), ...(qd.next || {}) }, structure: st, audience: SEED.defaultAudience() };
+      duration: qd.duration || '', classSize: 20, status: 'DRAFT', draftGenerated: true, safety: false, templateId: tpl, partner: { ...SEED.partnerDefaults }, next: { ...SEED.defaultNext(), ...(qd.next || {}) }, structure: st, audience: qd.audience ? { ...qd.audience } : { kind: '', ages: '' } };
     SEED.ensureContentShape(content);
     Object.keys(content.missions).forEach((k) => { if (!SEED.topics.includes(k)) delete content.missions[k]; });
     Object.values(content.missions).forEach((m) => { m.backupCode = SEED.newBackupCode(); });

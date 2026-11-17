@@ -42,7 +42,7 @@ const Assistant = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const lines = (v) => String(v || '').split('\n').map((x) => x.trim()).filter(Boolean);
 
-  const SRC = () => Engine.state.sources.map((s) => (s.kind === 'partner' ? { ...s, fact: [Engine.state.contributor.text, Engine.state.contributor.avoid ? 'Handle with care: ' + Engine.state.contributor.avoid : ''].filter(Boolean).join(' '), partner: true } : { ...s, fact: s.text }));
+  const SRC = () => Engine.state.sources.map((s) => (s.kind === 'partner' ? { ...s, fact: [Engine.state.contributor.text, Engine.state.contributor.avoid ? 'Handle with care: ' + Engine.state.contributor.avoid : '', (Engine.state.contributor.prompts || []).length ? 'Questions the partner will ask students: ' + Engine.state.contributor.prompts.join(' / ') : ''].filter(Boolean).join(' '), partner: true } : { ...s, fact: s.text }));
   const srcFor = (t) => (Engine.state.sources.find((s) => s.url && s.url === SEED.missions[t].sourceUrl) || { id: '' }).id;
   const partnerSrc = () => (Engine.state.sources.find((s) => s.kind === 'partner') || { id: '' }).id;
   const isTemplate = () => (Engine.state.content.meta || {}).id === 'lost_museum';
@@ -115,7 +115,7 @@ const Assistant = (() => {
         <div class="as-msgs" id="as-msgs">${msgs.map(msgHTML).join('')}</div>
         ${!locked && mode === 'live' ? (confirmGen
           ? `<div class="row"><span class="small">Replace the current content with a new AI draft?</span><button class="btn btn-primary btn-sm" type="button" data-as-gen-go>Yes, generate</button><button class="btn btn-ghost btn-sm" type="button" data-as-gen-no>Cancel</button></div>`
-          : `<button class="as-chip" type="button" data-as-gen ${busy ? 'disabled' : ''}>${Art.icon('sparkle', 14)} Generate the whole quest from my sources</button>`) : ''}
+          : busy ? '<p class="hint-note" style="margin:0">Working on it — this takes about 20 seconds…</p>' : `<button class="as-chip" type="button" data-as-gen>${Art.icon('sparkle', 14)} Generate the whole quest from my sources</button>`) : ''}
         ${cs.length ? `<div class="stack" style="gap:6px"><span class="hint-note" style="margin:0">Suggestions <span class="pill plain">scripted · same reply every time</span></span><div class="row" style="gap:6px">${cs.map((c) => `<button class="as-chip" type="button" data-as-chip="${c.id}" ${busy ? 'disabled' : ''}>${Art.icon(c.id === 'draft' ? 'sparkle' : 'pencil', 14)} ${esc(c.chip)}</button>`).join('')}</div></div>` : ''}
         <form class="as-compose" data-as-form><label class="sr-only" for="as-in">Message the assistant</label>
           <input class="input" id="as-in" placeholder="${mode === 'live' ? 'Ask for a change, e.g. “make Track B shorter”' : 'Live AI is off — edit by hand below'}" autocomplete="off" ${busy ? 'disabled' : ''}>
@@ -276,8 +276,8 @@ const Assistant = (() => {
 
   const sec = (title, open, body, note = '') => `<details class="ed-sec" ${open ? 'open' : ''}><summary>${title}${note ? `<small>${note}</small>` : ''}</summary><div class="stack" style="gap:8px;margin-top:8px">${body}</div></details>`;
   const help = (t) => `<p class="hint-note" style="margin:-2px 0 2px">${t}</p>`;
-  const cb = (id, label, on, extra = '') => `<label class="toggle"><input type="checkbox" id="${id}" ${on ? 'checked' : ''} ${extra}> ${label}</label>`;
-  const rd = (name, v, label, on) => `<label class="toggle"><input type="radio" name="${name}" value="${v}" ${on ? 'checked' : ''}> ${label}</label>`;
+  const cb = (id, label, on, extra = '', note = '') => `<label class="opt"><input type="checkbox" id="${id}" ${on ? 'checked' : ''} ${extra}><span class="opt-box" aria-hidden="true"></span><span class="opt-text">${label}${note ? `<small>${note}</small>` : ''}</span></label>`;
+  const rd = (name, v, label, on, note = '') => `<label class="opt"><input type="radio" name="${name}" value="${v}" ${on ? 'checked' : ''}><span class="opt-box round" aria-hidden="true"></span><span class="opt-text">${label}${note ? `<small>${note}</small>` : ''}</span></label>`;
   function trackEditor(t) {
     const f = SEED.trackFields(Engine.state.content, t), a = f.assess, quiz = a.quiz || [], m = SEED.missions[t], on = assessOn(m);
     return `<form class="stack as-editor" style="gap:10px;margin-top:10px" data-as-trackform="${t}">
@@ -286,39 +286,40 @@ const Assistant = (() => {
         <div class="grid-2" style="gap:8px"><div>${inp('ed-loc', 'Where students go', f.location, 'e.g. Gallery 19, Ancient Egypt')}</div><div>${inp('ed-key', 'The object they look for', f.keyObject, 'e.g. the painted coffin set')}</div></div>
         ${ta('ed-narr', 'The big question they explore', f.narrative, 1, 'e.g. What can the object itself tell us?')}
         ${ta('ed-obs', 'What they do there (students read this)', f.observe, 3, 'e.g. Find the coffin set. Look closely at the shape, materials and decoration, then find its label.')}
-        ${ta('ed-disc', 'A question to talk about with their group', f.discuss, 2, 'e.g. What can you see for yourself, and what are you guessing?')}`, 'the place, the object, the task')}
+        ${ta('ed-disc', 'A question to talk about with their group', f.discuss, 2, 'e.g. What can you see for yourself, and what are you guessing?')}
+        ${cb('a-partner', 'Students also talk with the community partner here', f.needsContributor, '', 'A short, supervised chat at this spot. Students see the partner’s question; the partner confirms the chat on their phone, and students can’t send their notes until they do.')}`, 'the place, the object, the task')}
       ${sec('2 · What students hand in', true, `
         <span class="fld">How students show they found it</span>
-        <div class="stack" style="gap:4px">${cb('a-photo', 'A photo of the object', on.photo)}${cb('a-qr', 'Scan a QR card placed there', on.qr)}</div>
+        <div class="opt-grid">${cb('a-photo', 'A photo of the object', on.photo, 'data-show="photo-box"', 'They photograph it on their phone.')}${cb('a-qr', 'Scan a QR card placed there', on.qr, '', 'You print the card from Live session.')}</div>
+        <div class="opt-sub" data-show-box="photo-box" ${on.photo ? '' : 'hidden'}>
+          <span class="fld">Who checks the photo</span>
+          <div class="opt-grid">${rd('a-pcheck', 'photo_teacher', 'You confirm each photo', a.checkin !== 'photo_ai')}${rd('a-pcheck', 'photo_ai', 'AI checks first', a.checkin === 'photo_ai', 'You decide when it’s unsure. The photo is sent to the AI, then discarded.')}</div>
+          <span class="fld">Reference photo for the AI (optional)</span>
+          ${refDraft ? `<img class="ev-photo" src="${refDraft}" alt="Reference photo">` : '<span class="hint-note">Without one, the AI matches the photo against the object’s name.</span>'}
+          <div class="row" style="gap:6px"><label class="btn btn-ghost btn-sm" for="as-ref">${refDraft ? 'Replace photo' : 'Add a photo'}</label><input id="as-ref" type="file" accept="image/*" hidden>
+          ${refDraft ? '<button class="btn btn-ghost btn-sm" type="button" data-as-ref-clear>Remove photo</button>' : ''}</div></div>
         <span class="fld">What they record</span>
-        <div class="stack" style="gap:4px">${cb('a-notes', 'Written notes', on.notes)}${cb('a-evphoto', 'A photo as part of their notes', on.evphoto)}</div>
+        <div class="opt-grid">${cb('a-notes', 'Written notes', on.notes)}${cb('a-evphoto', 'A photo as part of their notes', on.evphoto)}</div>
         <span class="fld">Questions they answer in their notes</span>${help('Short prompts students fill in on site. Start with what they can see, then what it might mean, then what it can’t tell us.')}
         ${listEd('ev', f.evidence, 'e.g. Something you can actually see', 'Add a question')}
         <span class="fld">What a good answer includes</span>${help('Used to check answers and spot misunderstandings after the trip.')}
         ${listEd('crit', f.criteria, 'e.g. Says what the object can’t tell us', 'Add a point')}
-        ${cb('a-quiz', 'Add a multiple-choice check', on.quiz, 'data-show="qz-box"')}
-        <p class="hint-note" style="margin:-2px 0 2px">Students must pass it before they can send their notes. It doesn’t replace your check.</p>
+        ${cb('a-quiz', 'Add a multiple-choice check', on.quiz, 'data-show="qz-box"', 'Students must pass it before they can send their notes. It doesn’t replace your check.')}
         <div class="stack qz-box" data-show-box="qz-box" style="gap:8px" ${on.quiz ? '' : 'hidden'}>
           <div class="stack" style="gap:8px" data-qz>${(quiz.length ? quiz : [null]).map(qzCard).join('')}</div>
           <button type="button" class="btn btn-ghost btn-sm le-add" data-qz-add>${Art.icon('plus', 14)} Add a question</button>
           <div class="row"><label class="fld" for="as-pass" style="margin:0">Questions they must get right</label><input class="input" id="as-pass" type="number" min="1" value="${a.pass || 1}" style="width:90px"></div></div>
         <span class="fld">Who checks their work</span>
-        <div class="stack" style="gap:4px">${rd('a-verify', 'teacher', 'You (the teacher)', a.verify !== 'partner')}${rd('a-verify', 'partner', 'The community partner', a.verify === 'partner')}</div>`, 'check-in, notes, multiple choice')}
+        <div class="opt-grid">${rd('a-verify', 'teacher', 'You (the teacher)', a.verify !== 'partner', 'In Live session.')}${rd('a-verify', 'partner', 'The community partner', a.verify === 'partner', 'On their phone, under “On the day”.')}</div>`, 'check-in, notes, multiple choice')}
       ${sec('3 · Teaching their team', false, `
-        ${inp('ed-teach', 'What they tell their team, in one sentence', f.teachHeadline, 'e.g. Objects show us real details — but one object can’t speak for everyone.')}
+        ${inp('ed-teach', 'The key idea of this track, in one sentence', f.teachHeadline, 'e.g. Objects show us real details — but one object can’t speak for everyone.')}${help('Experts teach from their own notes. The team sees this key idea after the teammate’s check, as a recap — so the check isn’t given away.')}
         <span class="fld">Check that the team understood</span>${help('After the expert explains, a teammate picks the statement that matches. Tick the true one(s); the others should be tempting but wrong.')}
         ${checkListEd('chk', f.checks, 'A statement about what the expert found', 'Add a statement')}`, 'what the expert teaches, and a quick check')}
       ${sec('More options', false, `
-        ${cb('a-partner', 'Students also talk with the community partner here', f.needsContributor)}
-        ${on.photo ? `<span class="fld">Checking the photo</span><div class="stack" style="gap:4px">${rd('a-pcheck', 'photo_teacher', 'You confirm each photo', a.checkin !== 'photo_ai')}${rd('a-pcheck', 'photo_ai', 'AI checks first; you decide when it’s unsure', a.checkin === 'photo_ai')}</div>
-          <div class="stack" style="gap:4px"><span class="fld">Reference photo for the AI check (optional)</span>
-            ${refDraft ? `<img class="ev-photo" src="${refDraft}" alt="Reference photo">` : '<span class="hint-note">Without one, the AI matches the photo against the object’s name.</span>'}
-            <label class="btn btn-ghost btn-sm" for="as-ref" style="align-self:flex-start">${refDraft ? 'Replace photo' : 'Add a photo'}</label><input id="as-ref" type="file" accept="image/*" hidden>
-            ${refDraft ? '<button class="btn btn-ghost btn-sm" type="button" data-as-ref-clear style="align-self:flex-start">Remove photo</button>' : ''}</div>` : ''}
         <span class="fld">Hints if students get stuck</span>${help('Point them back to the object — never give the answer.')}
         ${listEd('hints', f.hints, 'e.g. Look at the bottom edge — what material is it?', 'Add a hint')}
         ${inp('ed-fb', 'If they can’t get there (accessible or backup plan)', f.fallback, 'e.g. Use the museum’s online photos with the same questions')}
-        ${inp('ed-code', 'Backup code you can read out if a QR card won’t scan', f.backupCode)}`, 'partner, hints, backup plans')}
+        ${inp('ed-code', 'Backup code you can read out if a QR card won’t scan', f.backupCode)}`, 'hints and backup plans')}
       <div class="row b-save"><button class="btn btn-primary" type="submit">Save track</button><button class="btn btn-ghost" type="button" data-as-edit-cancel>Cancel</button></div></form>`;
   }
   function readAssess(f) {
@@ -371,7 +372,10 @@ const Assistant = (() => {
         ${SRC().filter((s) => s.partner).map((s) => { const c = st.contributor; return `<div class="as-src as-partner-src" id="as-src-${s.id}"><span class="as-cite">${s.id}</span>
           <div style="min-width:0"><div class="spread"><strong>From your community partner</strong><span class="pill ${c.status === 'APPROVED' ? 'mint' : 'plain'}">${c.status === 'APPROVED' ? 'signed off' : c.text ? 'written · not signed off yet' : 'not written yet'}</span></div>
           <p class="hint-note" style="margin:2px 0 0">Your partner writes this themselves, in their own view. The assistant can use it like any other source.</p>
-          ${c.text ? `<p style="margin:4px 0 0">“${esc(c.text)}”</p>` : ''}</div></div>`; }).join('')}</div>
+          ${c.text ? `<p style="margin:4px 0 0">“${esc(c.text)}”</p>` : ''}
+          ${c.avoid ? `<p style="margin:4px 0 0"><strong>Handle with care:</strong> ${esc(c.avoid)}</p>` : ''}
+          ${(c.prompts || []).length ? `<p style="margin:4px 0 0"><strong>Questions they’ll ask students:</strong> ${c.prompts.map(esc).join(' · ')}</p>` : ''}
+          ${c.availability ? `<p class="hint-note" style="margin:4px 0 0">Available on the day: ${esc(c.availability)}</p>` : ''}</div></div>`; }).join('')}</div>
       ${locked ? '' : `<details style="margin-top:10px" ${st.sources.length < 2 ? 'open' : ''}><summary class="as-chip" style="display:inline-flex">${Art.icon('plus', 14)} Add a source</summary>
         <form class="stack" style="gap:6px;margin-top:10px" data-as-src>
           <label class="fld" for="src-title">Title</label><input class="input" id="src-title" placeholder="e.g. Venue learning team notes">
@@ -574,7 +578,7 @@ const Assistant = (() => {
     // students need at least 2 tracks to teach each other; a quest with fewer gets 2
     const st0 = Engine.state.quest.structure;
     if (!st0.tracks || st0.tracks < 2) { const n = Math.max(2, SEED.structure.classSize); Engine.dispatch('setStructure', { tracks: 2, classSize: n, expertGroup: Math.min(SEED.structure.expertGroup, Math.ceil(n / 2)) }); ctx.quest = questBrief(); }
-    busy = true; confirmGen = false;
+    busy = true; confirmGen = false; window.WQ.render();
     const prompt = `Plan a ${ctx.quest.minutes}-minute Jigsaw quest for ${ctx.quest.students} students${ctx.quest.venue ? ' at ' + ctx.quest.venue : ''}. Goal: ${ctx.quest.objective || 'decide from the sources'}.`;
     msgs.push({ who: 'you', text: prompt }); paintMsgs();
     const step = { who: 'ai', text: `Planning ${SEED.topics.length} complementary perspectives from your sources…`, thinking: false }; msgs.push(step); paintMsgs();

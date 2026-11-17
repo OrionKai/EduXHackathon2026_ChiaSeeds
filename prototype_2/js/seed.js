@@ -316,7 +316,7 @@ const TEMPLATES = {
   lost_museum: JSON.parse(JSON.stringify(Object.fromEntries(CONTENT_KEYS.map((k) => [k, SEED[k]])))),
 };
 TEMPLATES.lost_museum.meta = { id: 'lost_museum', name: 'The Lost Museum', blurb: 'Fitzwilliam Museum, Cambridge · four galleries · 20 students' };
-TEMPLATES.lost_museum.questDefaults = { objective: 'Tell the difference between what objects show and what we guess', venue: 'The Fitzwilliam Museum, Cambridge', duration: 60,
+TEMPLATES.lost_museum.questDefaults = { objective: 'Tell the difference between what objects show and what we guess', venue: 'The Fitzwilliam Museum, Cambridge', duration: 60, audience: { kind: 'secondary', ages: '13–16' },
   structure: { tracks: 4, classSize: 20, expertGroup: 5 },
   next: { enabled: true, activity: 'Drawing class: draw an object from the trip', provider: 'Riverside Art Studio', org: 'Example art studio (simulated)', when: 'Thu 3 Dec, 2–3:30pm', bring: 'Your notes and your team’s museum sign', fallback: 'A drawing lesson in class with the art teacher', staff: '2', unlock: 'all', status: 'none', request: '', counterWhen: '' } };
 /* How each track is assessed: check-in at the place, what evidence students submit, an optional
@@ -711,7 +711,7 @@ TEMPLATES.two_explorers = (() => {
     master: { id: 'egypt_detectives', title: 'Egypt Detectives Award', text: 'Earn every card as a class to unlock it.', fact: 'You looked closely, taught each other and wrote an honest label.' },
     reflection: ['What did your partner teach you?', 'What would you still like to find out?'],
     meta: { id: 'two_explorers', name: 'Egypt Detectives', blurb: 'Fitzwilliam Museum · two objects · two students' },
-    questDefaults: { objective: 'Notice what objects can and can’t tell us about the past', venue: 'The Fitzwilliam Museum, Cambridge', duration: 45,
+    questDefaults: { objective: 'Notice what objects can and can’t tell us about the past', venue: 'The Fitzwilliam Museum, Cambridge', duration: 45, audience: { kind: 'secondary', ages: '13–16' },
       structure: { tracks: 2, classSize: 2, expertGroup: 1 }, next: { ...TEMPLATES.lost_museum.questDefaults.next } },
     sources: [
       { id: 'S1', kind: 'official', title: A.gallery + ' · official page', url: A.sourceUrl, text: A.sourceFact },
