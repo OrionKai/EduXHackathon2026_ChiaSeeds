@@ -26,7 +26,18 @@ const Assistant = (() => {
   let busy = false, speed = 1, confirmGen = false;
   let mode = (() => { try { return localStorage.getItem('wq-ai-mode') || 'live'; } catch { return 'live'; } })();
   let offWhy = mode === 'live' ? '' : 'you switched it off on this device';
-  let needPass = false, lastNotice = '';
+  let needPass = false, passBad = false, lastNotice = '';
+  /* Is a demo passcode needed, and does the saved one work? The function checks the passcode before anything else,
+     so an empty request answers 401 (needed / wrong) or 400 (fine) without ever calling the AI. */
+  async function checkPass(after) {
+    let pass = ''; try { pass = localStorage.getItem('wq-ai-pass') || ''; } catch {}
+    try {
+      const r = await fetch('/api/assistant', { method: 'POST', headers: { 'content-type': 'application/json', 'x-demo-passcode': pass }, body: '{}' });
+      needPass = r.status === 401; passBad = needPass && !!pass;
+      if (after) window.WQ.toast(needPass ? 'That passcode didn’t work.' : 'Passcode saved — live AI is ready.', needPass ? 'error' : 'success');
+    } catch {}
+    if (window.WQ) window.WQ.render();
+  }
   const sleep = (ms) => (speed ? new Promise((r) => setTimeout(r, ms * speed)) : Promise.resolve());
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const lines = (v) => String(v || '').split('\n').map((x) => x.trim()).filter(Boolean);
@@ -96,7 +107,8 @@ const Assistant = (() => {
           <button type="button" class="pill ${mode === 'live' ? 'mint' : ''}" data-as-mode title="Switch between the real AI and the scripted demo">AI: ${mode === 'live' ? 'live (Claude)' : 'off · scripted'}</button></div>
         ${mode !== 'live' ? `<div class="as-off"><span>Live AI is off — ${esc(offWhy || 'switched off')}. Suggestions below still work.</span><button type="button" class="btn btn-secondary btn-sm" data-as-mode>Turn live AI on</button></div>` : ''}
         ${lastNotice ? `<p class="hint-note" style="margin:0">${esc(lastNotice)}</p>` : ''}
-        ${needPass ? `<form class="row" data-as-pass><label class="sr-only" for="as-pass">Demo passcode</label><input class="input" id="as-pass" type="password" placeholder="Demo passcode for live AI" style="flex:1"><button class="btn btn-secondary btn-sm">Save</button></form>` : ''}
+        ${needPass && mode === 'live' ? `<form class="as-off" data-as-pass><span>${passBad ? 'That passcode didn’t work — check it and try again.' : 'Live AI on this site is protected by a demo passcode (the <span class="mono">DEMO_PASSCODE</span> set in Netlify). Enter it once on this device:'}</span>
+          <span class="row" style="gap:6px;flex:1;min-width:200px"><label class="sr-only" for="as-passcode">Demo passcode</label><input class="input" id="as-passcode" type="password" placeholder="Demo passcode" autocomplete="off" style="flex:1"><button class="btn btn-primary btn-sm">Save</button></span></form>` : ''}
         <div class="as-msgs" id="as-msgs">${msgs.map(msgHTML).join('')}</div>
         ${!locked && mode === 'live' ? (confirmGen
           ? `<div class="row"><span class="small">Replace the current content with a new AI draft?</span><button class="btn btn-primary btn-sm" type="button" data-as-gen-go>Yes, generate</button><button class="btn btn-ghost btn-sm" type="button" data-as-gen-no>Cancel</button></div>`
@@ -447,7 +459,7 @@ const Assistant = (() => {
     } catch { return { status: 0, data: null }; }
   }
   function failNotice(status) {
-    if (status === 401) { needPass = true; lastNotice = 'Live AI needs the demo passcode.'; }
+    if (status === 401) { needPass = true; lastNotice = ''; }
     else { mode = 'simulated'; offWhy = status === 503 ? 'the AI isn’t set up on this site yet' : 'it didn’t answer just now'; lastNotice = ''; }
   }
   function questBrief() {
@@ -631,7 +643,15 @@ const Assistant = (() => {
     on('[data-as-gen-no]', 'click', () => { confirmGen = false; window.WQ.render(); });
     on('[data-as-approve]', 'click', (b) => window.WQ.act('approveTrack', { topic: b.dataset.asApprove }));
     on('[data-as-ask]', 'click', (b) => { const i = document.getElementById('as-in'); if (i) { i.value = `Track ${b.dataset.asAsk}: `; i.focus(); i.scrollIntoView({ behavior: 'smooth', block: 'center' }); } });
-    on('[data-as-cite]', 'click', (b) => { const row = document.getElementById('as-src-' + b.dataset.asCite); if (row) { row.classList.add('flash'); row.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => row.classList.remove('flash'), 1400); } });
+    on('[data-as-cite]', 'click', (b) => {
+      const id = b.dataset.asCite;
+      const go = (r) => { if (!r) return; r.classList.add('flash'); r.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => r.classList.remove('flash'), 1400); };
+      const row = document.getElementById('as-src-' + id);
+      if (row) return go(row);
+       // The source list lives on the "Sources" builder step; switch to it first so the row is in the DOM, then jump to it.
+      Engine.state.ui.bStep = 'sources'; openEditor(null); window.WQ.render();
+      setTimeout(() => go(document.getElementById('as-src-' + id)), 30);
+    });
     on('[data-as-mode]', 'click', () => { mode = mode === 'live' ? 'simulated' : 'live'; offWhy = mode === 'live' ? '' : 'you switched it off on this device'; lastNotice = ''; try { localStorage.setItem('wq-ai-mode', mode); } catch {} window.WQ.render(); });
     on('[data-as-edit]', 'click', (b) => { editing = editing === b.dataset.asEdit ? null : b.dataset.asEdit; refDraft = editing && SEED.missions[editing] ? SEED.missions[editing].refPhoto || null : null; window.WQ.render(); });
     on('[data-as-ref-clear]', 'click', () => { refDraft = null; window.WQ.render(); });
@@ -677,7 +697,7 @@ const Assistant = (() => {
     });
     on('[data-as-rmsrc]', 'click', (b) => window.WQ.act('removeSource', { id: b.dataset.asRmsrc }));
     on('[data-as-src]', 'submit', (sf, e) => { e.preventDefault(); window.WQ.act('addSource', { title: sf.querySelector('#src-title').value, url: sf.querySelector('#src-url').value, text: sf.querySelector('#src-text').value }); });
-    on('[data-as-pass]', 'submit', (pf, e) => { e.preventDefault(); try { localStorage.setItem('wq-ai-pass', document.getElementById('as-pass').value); } catch {} needPass = false; window.WQ.render(); });
+    on('[data-as-pass]', 'submit', (pf, e) => { e.preventDefault(); try { localStorage.setItem('wq-ai-pass', pf.querySelector('#as-passcode').value.trim()); } catch {} checkPass(true); });
     on('[data-as-form]', 'submit', (f, e) => {
       e.preventDefault();
       const v = document.getElementById('as-in').value.trim();
@@ -688,9 +708,10 @@ const Assistant = (() => {
   /* Is the live AI endpoint deployed here? A GET costs nothing (the function answers 405); a plain static server answers 404. */
   try {
     fetch('/api/assistant', { method: 'GET' }).then((r) => {
+      if (r.status === 405) checkPass();
       if (r.status !== 405 && mode === 'live') { mode = 'simulated'; offWhy = 'this copy of the app has no AI connection (e.g. running on your own computer)'; window.WQ && window.WQ.render(); }
     }).catch(() => { if (mode === 'live') { mode = 'simulated'; offWhy = 'there’s no internet connection'; window.WQ && window.WQ.render(); } });
   } catch {}
   const openEditor = (k) => { syncQuest(); editing = k || null; quizOpen = false; refDraft = k && SEED.missions[k] ? SEED.missions[k].refPhoto || null : null; };
-  return { getMode: () => mode, chat, board, bind, openEditor, sources: () => (syncQuest(), sourcesCard()), tracks: () => (syncQuest(), tracksSection(Engine.state)), finale: () => (syncQuest(), finaleSection(Engine.state)), collectibles: () => (syncQuest(), collectiblesSection(Engine.state)), story: () => (syncQuest(), storySection(Engine.state)), generate, listEd, readList, setSpeed: (v) => { speed = v; }, setMode: (m) => { mode = m; } };
+  return { getMode: () => mode, checkPass, chat, board, bind, openEditor, sources: () => (syncQuest(), sourcesCard()), tracks: () => (syncQuest(), tracksSection(Engine.state)), finale: () => (syncQuest(), finaleSection(Engine.state)), collectibles: () => (syncQuest(), collectiblesSection(Engine.state)), story: () => (syncQuest(), storySection(Engine.state)), generate, listEd, readList, setSpeed: (v) => { speed = v; }, setMode: (m) => { mode = m; } };
 })();
