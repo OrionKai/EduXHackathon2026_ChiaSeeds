@@ -585,3 +585,30 @@ SEED.SAMPLE_INSIGHTS = {
         fact: { title: 'Treating one perspective as the answer', explain: 'Records the contributor’s view as settled fact instead of one perspective to weigh with the evidence.', ask: 'How is a perspective different from a fact — and why do we need both?' } } },
   },
 };
+
+/* Example quest only: scripted replies to the follow-up suggestions under each analysis, keyed by theme. */
+SEED.SAMPLE_FOLLOWUPS = {
+  lost_museum: {
+    beliefs: { why: 'Coffin decoration looks like a direct message from the past, and labels often describe beliefs confidently, so it’s easy to read them as proof.',
+      activity: 'Pairs sort statements about the coffin into “the coffin shows this” and “we’d need another source for this”, then share one of each.',
+      exit: 'Name one thing the coffin shows directly, and one thing about beliefs we’d need another source to know.' },
+    general: { why: 'Museums display the most complete, impressive objects, so one well-preserved burial feels typical.',
+      activity: '“Who’s missing?” — give groups a card for a farmer, a child and a priest; each group asks what evidence of that person’s burial would survive.',
+      exit: 'Why might the coffins we see in museums not be typical?' },
+    popular: { why: 'Monuments are designed to impress; students take the message the ruler wanted at face value.',
+      activity: 'Compare the lid with a modern statue or poster of a leader: who made it, for whom, and what does it leave out?',
+      exit: 'Give one reason a ruler might build a huge monument even if they weren’t popular.' },
+    size: { why: 'Size is the most visible feature and the easiest to compare, so it stands in for power.',
+      activity: 'Groups rank three clues to a ruler’s power (monument size, written records, trade objects) and justify the order.',
+      exit: 'What else, besides size, could tell us how powerful a ruler was?' },
+    rich: { why: 'Decorated objects look valuable, so students assume only wealthy people owned them.',
+      activity: 'Look at where similar pots were found (homes, graves, shops) and decide what that suggests about who used them.',
+      exit: 'What evidence would tell us who actually used this pottery?' },
+    more: { why: 'Students equate a lot of evidence with complete evidence.',
+      activity: 'Give groups only one evidence type (e.g. coins) and five questions about daily life; they mark which ones it can’t answer.',
+      exit: 'Name one question about ancient life that pottery can’t answer, however many pots we have.' },
+    fact: { why: 'A real person from the community feels more authoritative than a label, so their view gets recorded as fact.',
+      activity: 'Sort statements from the gallery and the contributor into “fact”, “perspective” and “interpretation”, then discuss why we need all three.',
+      exit: 'In one sentence: how is a perspective different from a fact?' },
+  },
+};

@@ -665,3 +665,7 @@ a.brand { text-decoration: none; color: inherit; }
 .miss-list li { display: flex; gap: 10px; align-items: baseline; }
 .miss-n { font-weight: 700; color: #A44A3C; min-width: 2.2em; }
 .ins-theme { background: var(--paper); border-radius: 12px; padding: 10px 14px; }
+.ins-chat { border: 1px solid var(--stroke); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: var(--white); }
+.ins-msg { border-radius: 12px; padding: 8px 12px; max-width: 92%; }
+.ins-msg.you { align-self: flex-end; background: var(--lavender); }
+.ins-msg.scripted, .ins-msg.ai { align-self: flex-start; background: var(--paper); }
