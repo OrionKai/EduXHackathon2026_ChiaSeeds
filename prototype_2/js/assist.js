@@ -120,7 +120,7 @@ const Assistant = (() => {
         <form class="as-compose" data-as-form><label class="sr-only" for="as-in">Message the assistant</label>
           <input class="input" id="as-in" placeholder="${mode === 'live' ? 'Ask for a change, e.g. “make Track B shorter”' : 'Live AI is off — edit by hand below'}" autocomplete="off" ${busy ? 'disabled' : ''}>
           <button class="btn btn-primary btn-sm" type="submit" ${busy ? 'disabled' : ''}>Send</button></form>
-        <p class="hint-note" style="margin:0">AI drafts at design time. During and after play it is used only where you choose it: the optional “Photo · AI checks” check-in (photo discarded after the check) and the Report’s answer analysis (names removed). Everything else works without AI.</p>
+        <p class="hint-note" style="margin:0">The AI helps you write the quest. During the trip it’s only used for the optional AI photo check and the Report’s answer analysis.</p>
       </div>`;
   }
   function board() {
@@ -165,7 +165,7 @@ const Assistant = (() => {
     return `
       <section class="card" id="as-content">
         <div class="spread"><h3 style="margin:0">${Art.icon('map', 18)} Tracks</h3><span class="pill lavender">${n}/${SEED.topics.length} approved</span></div>
-        <p class="hint-note" style="margin:6px 0 10px">A track is one topic of the trip. In every team, one student becomes the expert on it, investigates it on site, then teaches the others. Open a track to write or check it, then approve it.</p>
+        <p class="hint-note" style="margin:6px 0 10px">A track is one topic. In each team, one student becomes its expert, explores it on site, then teaches the others.</p>
         <div class="stack" style="gap:10px">
           ${SEED.topics.map((t) => {
             const m = SEED.missions[t], [cls, txt] = LABEL[st.tracks[t]] || LABEL.EDITED, tp = probs.filter((x) => x.startsWith(`Track ${t}:`));
@@ -194,7 +194,7 @@ const Assistant = (() => {
     const kinds = (t) => steps.filter((x) => x.type === t).length;
     return `<section class="card" id="as-finale">
       <div class="spread"><h3 style="margin:0">${Art.icon('puzzle', 18)} Final team challenge: ${esc(fin.title || 'Untitled')}</h3>${locked ? '' : `<button class="btn btn-secondary btn-sm" type="button" data-as-edit="finale">${editing === 'finale' ? 'Close' : 'Edit'}</button>`}</div>
-      <p class="hint-note" style="margin:6px 0 8px">What each team does together at the end, once all its experts have been checked and have taught the team. Build it from steps: <strong>multiple choice</strong> (the team picks the right answer) and <strong>team answer</strong> (they write it together and you check it).</p>
+      <p class="hint-note" style="margin:6px 0 8px">What each team does together at the end, after every expert has taught the team: <strong>multiple-choice</strong> and <strong>team-answer</strong> steps.</p>
       ${editing === 'finale' && !locked ? finaleEditor(fin) : `<ol class="fin-list">${steps.map((x) => `<li><span class="pill plain">${x.type === 'choice' ? 'Multiple choice' : 'Team answer'}</span> ${esc((x.type === 'choice' ? x.question : x.prompt) || 'Not written yet')}</li>`).join('') || '<li class="hint-note">No steps yet.</li>'}</ol>
         <p class="hint-note" style="margin:6px 0 0">${kinds('choice')} multiple choice · ${kinds('write')} team answer${kinds('write') === 1 ? '' : 's'}</p>`}
     </section>`;
@@ -364,7 +364,7 @@ const Assistant = (() => {
     const st = Engine.state, locked = st.quest.status === 'PUBLISHED';
     return `<div class="card as-sources" id="as-sources">
       <div class="spread"><h3 style="margin:0">${Art.icon('book', 18)} Approved sources</h3><span class="pill lavender">${st.sources.length} in library</span></div>
-      <p class="hint-note" style="margin:6px 0 10px">The pages and notes the assistant is allowed to use — nothing else. Add your own notes, object records or links; remove anything you don’t trust.</p>
+      <p class="hint-note" style="margin:6px 0 10px">The only pages and notes the assistant may use. Add what you trust; remove what you don’t.</p>
       <div class="stack" style="gap:8px">${SRC().filter((s) => !s.partner).map((s) => `<div class="as-src" id="as-src-${s.id}"><span class="as-cite">${s.id}</span>
         <div style="min-width:0"><div class="spread"><strong>${esc(s.title)}</strong>
           <span class="row" style="gap:6px"><span class="pill plain">${s.kind === 'educator' ? 'added by you' : 'web page'}</span>${locked ? '' : `<button class="btn btn-ghost btn-sm" type="button" data-as-rmsrc="${s.id}" aria-label="Remove ${s.id}">Remove</button>`}</span></div>

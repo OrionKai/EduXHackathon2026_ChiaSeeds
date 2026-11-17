@@ -72,7 +72,7 @@ const Partner = (() => {
           <p style="margin:6px 0">Your contribution becomes an approved source the quest assistant may draw on, together with your “handle with care” notes. You edit only your own words — never the educator’s curriculum.</p>
           <p style="margin:0">Students will see you as: <strong>${esc(label(q, c))}</strong>.</p></div>
         <div class="card wash-peach"><div class="eyebrow coral">A shared responsibility</div>
-          <p class="hint-note" style="margin:0">Your sign-off is separate from the educator’s: the quest can’t be published without it. In this demo the partner is simulated; it does not represent venue staff or a confirmed partnership.</p></div>
+          <p class="hint-note" style="margin:0">The quest can’t be published without your sign-off. (Demo: the partner is simulated.)</p></div>
       </div></div>`;
   }
 
@@ -103,7 +103,7 @@ const Partner = (() => {
       </div>`;
     }).join('');
     const ready = p.contributed && p.reviewed === p.items.length && !p.open;
-    return `<p class="hint-note" style="margin:-4px 0 0">Check how your community and your words are represented. Mark each part “Looks right”, or suggest a change — the educator answers, then you look again.</p>
+    return `<p class="hint-note" style="margin:-4px 0 0">Mark each part “Looks right” or suggest a change. The educator replies, then you check again.</p>
       ${cards}
       <div class="card ${p.signedOff ? 'wash-mint' : ''}"><div class="spread"><h3 style="margin:0">Sign off</h3>${pipe(st, qid)}</div>
         <ul style="margin:10px 0;padding-left:20px"><li>Contribution written: <strong>${p.contributed ? 'yes' : 'not yet'}</strong></li><li>Parts reviewed: <strong>${p.reviewed}/${p.items.length}</strong></li><li>Suggestions waiting for the educator: <strong>${p.open}</strong></li></ul>
@@ -118,7 +118,7 @@ const Partner = (() => {
     if (!tracks.length) return '';
     const ps = SEED.participants.filter((p) => tracks.includes(p.topic) && st.evidence[p.id].answers && ['SUBMITTED', 'VERIFIED', 'NEEDS_REVISION'].includes(st.evidence[p.id].status));
     return `<div class="card"><div class="eyebrow coral">Your words, as students recorded them</div><h3 style="margin:2px 0 6px">Check how students quoted you</h3>
-      <p class="hint-note">Students record what you said as a perspective. If something isn’t what you meant, flag it — the educator can ask the student to fix it.</p>
+      <p class="hint-note">Students wrote down what you said. Flag anything that isn’t what you meant.</p>
       ${ps.length ? `<div class="stack" style="gap:10px">${ps.map((p) => { const ev = st.evidence[p.id], f = st.partnerFlags[p.id], m = SEED.missions[p.topic];
         return `<div class="queue-row" style="display:block"><div class="spread"><strong>${esc(nameOf(st, p))}${ev.simulated ? ' <span class="pill plain">simulated</span>' : ''}</strong>${f ? `<span class="pill ${f.open ? 'peach' : 'plain'}">${f.open ? 'flagged' : 'handled'}</span>` : ''}</div>
           <dl class="evidence-quote" style="margin:6px 0">${m.evidenceFields.map((x) => `<dt>${esc(x.label)}</dt><dd>${esc(ev.answers[x.key])}</dd>`).join('')}</dl>

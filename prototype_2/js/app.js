@@ -68,7 +68,7 @@
     `<div class="spread page-head"><div><div class="eyebrow ${tone}">${eyebrow}</div><h2 style="margin:2px 0 0">${title}</h2></div>${actions ? `<div class="row" style="gap:8px">${actions}</div>` : ''}</div>`;
   const topicColor = (t) => SEED.topicMeta[t].color;
   const topicChip = (t) =>
-    `<span class="topic-chip ${topicColor(t)}">${Art.icon(SEED.topicMeta[t].icon, 15)}${t} · ${SEED.topicMeta[t].label}</span>`;
+    `<span class="topic-chip ${topicColor(t)}">${Art.icon(SEED.topicMeta[t].icon, 15)}${t} · ${esc(SEED.trackLabel(t))}</span>`;
 
   /* ================= shell ================= */
 
@@ -121,7 +121,7 @@
           <div id="main-content">
             ${role === 'student' ? studentView(st) : role === 'teacher' ? teacherView(st) : collaboratorView(st)}
           </div>
-          <p class="fiction-note">${esc(SEED.genericDisclaimer)} ${st.quest.templateId === 'lost_museum' ? 'This example’s gallery details come from official Fitzwilliam Museum pages (<a href="https://fitzmuseum.cam.ac.uk/plan-your-visit/galleries" target="_blank" rel="noopener">galleries</a>) and must be re-checked before a visit; no partnership with the museum is claimed.' : 'Facts come only from the sources the educator approved.'}</p>
+          <p class="fiction-note">${esc(SEED.genericDisclaimer)} ${/fitzwilliam/i.test(st.quest.venue || '') ? 'Gallery details come from the Fitzwilliam’s own <a href="https://fitzmuseum.cam.ac.uk/plan-your-visit/galleries" target="_blank" rel="noopener">web pages</a> — check them before a visit. No partnership is claimed.' : ''}</p>
         </main>
       </div>
       ${overlays(st)}
@@ -318,7 +318,7 @@
             <input id="join-nick" class="input" style="width:170px" placeholder="Nickname" maxlength="16" autocomplete="off">
             <button class="btn btn-primary" type="submit">Join the quest ✦</button>
           </form>`}
-          ${joinedHere(st) ? `<button class="btn btn-ghost btn-sm" data-a="leave-class">Join a different class</button>` : `<p class="hint-note" style="margin-top:10px">Your teacher shows the class code and a join QR on their screen — scanning the QR fills the code in for you. Use a nickname, not your real name; you’ll be placed in a home team and an expert track automatically.</p>
+          ${joinedHere(st) ? `<button class="btn btn-ghost btn-sm" data-a="leave-class">Join a different class</button>` : `<p class="hint-note" style="margin-top:10px">Your teacher shows the class code (or a QR to scan). Use a nickname, not your real name.</p>
           ${joinedList().length ? `<div class="stack" style="gap:6px;margin-top:12px"><span class="eyebrow">Your quests on this device</span>${joinedList().map((j) => `<a class="btn btn-secondary btn-sm" style="justify-content:flex-start" href="?session=${encodeURIComponent(j.code)}#student">${esc(j.title)} · <span class="mono">${esc(j.code)}</span>${j.nick ? ' · ' + esc(j.nick) : ''}</a>`).join('')}</div>` : ''}`}
         </div>
         <div class="hero-art">${Art.arch()}${Art.sticker('A clue awaits!', '🔍')}</div>
@@ -372,7 +372,7 @@
           <h2>You’re the ${esc(m.name)} expert! ✦</h2>
           <p>Your notes from ${esc(m.gallery)} are confirmed. Back in team ${me.home}, teach them in your own words: what you saw, what you think it means, and what it can’t tell us.</p>
           <dl class="evidence-quote" style="margin:0 0 10px">${m.evidenceFields.map((x) => `<dt>${esc(x.label)}</dt><dd>${esc((ev.answers || {})[x.key] || '')}</dd>`).join('')}</dl>
-          <p class="hint-note" style="margin:0">Your educator will open the peer-teaching phase. This badge is your expert role — collectible cards are a separate, optional side quest.</p>
+          <p class="hint-note" style="margin:0">Your teacher starts the teaching part next.</p>
         </div>`;
     }
     const tabs = [
@@ -626,7 +626,7 @@
           <div class="eyebrow">Two-minute reflection</div>
           <h3>Before you go…</h3>
           ${SEED.reflection.map((q, i) => `<div class="fld-group"><label class="fld" for="refl-${i}">${esc(q)}</label><textarea id="refl-${i}" class="input" name="r${i}" rows="2">${esc(st.ui.drafts?.[me.id]?.['r' + i] || '')}</textarea></div>`).join('')}
-          <p class="hint-note" style="margin:0 0 10px">Your teacher reads this. (In this prototype, class data sits in one shared demo database; a real deployment keeps reflections teacher-only.)</p>
+          <p class="hint-note" style="margin:0 0 10px">Your teacher reads this. (Demo: kept in a shared test database.)</p>
           <button class="btn btn-primary" type="submit">${Art.icon('check', 17)} Save my reflection</button>
         </form>`}`;
   }
@@ -742,7 +742,7 @@
               <div class="fld-group"><label class="fld" for="g-size">Students in the class</label><input class="input" id="g-size" type="number" min="2" max="60" value="${d.classSize}"></div>
               <div class="fld-group"><label class="fld" for="g-exp">Visit group size</label><input class="input" id="g-exp" type="number" min="1" max="30" value="${d.expertGroup}"></div>
             </div>
-            <p class="hint-note" style="margin:0" id="g-summary">${structSummary(d.tracks, d.classSize, d.expertGroup)}</p><p class="hint-note" style="margin:4px 0 0">With several teams, the experts on the same track (one from each team) visit their spot together. This is how many go at once — e.g. 2 means they explore in pairs. With one team it’s always 1.</p>
+            <p class="hint-note" style="margin:0" id="g-summary">${structSummary(d.tracks, d.classSize, d.expertGroup)}</p><p class="hint-note" style="margin:4px 0 0">With several teams, experts on the same track visit their spot together, this many at a time.</p>
             <p class="hint-note" style="margin:0">You can add or remove tracks any time in the builder.</p>
             ${tq && tq.questDefaults ? `<p class="hint-note" style="margin:0">This example has ${d.tracks} written tracks; if you add more, the extra ones start empty.</p>` : ''}
             <div class="row"><button class="btn btn-primary" type="submit">Create quest</button><button class="btn btn-ghost" type="button" data-a="nq-back">Back</button></div>
@@ -821,7 +821,7 @@
           <div class="fld-group"><label class="fld" for="g-size">Students</label><input class="input" id="g-size" type="number" min="2" max="60" value="${SEED.structure.classSize}" ${dis}></div>
           <div class="fld-group"><label class="fld" for="g-exp">Visit group size</label><input class="input" id="g-exp" type="number" min="1" max="30" value="${SEED.structure.expertGroup}" ${dis}></div>
         </div>
-        <p class="hint-note" style="margin:6px 0 8px" id="g-summary">${structSummary(SEED.structure.tracks, SEED.structure.classSize, SEED.structure.expertGroup)}</p><p class="hint-note" style="margin:0 0 8px">With several teams, the experts on the same track (one from each team) visit their spot together. This is how many go at once — e.g. 2 means they explore in pairs. With one team it’s always 1.</p>
+        <p class="hint-note" style="margin:6px 0 8px" id="g-summary">${structSummary(SEED.structure.tracks, SEED.structure.classSize, SEED.structure.expertGroup)}</p><p class="hint-note" style="margin:0 0 8px">With several teams, experts on the same track visit their spot together, this many at a time.</p>
         ${locked ? '' : '<button class="btn btn-secondary btn-sm" type="submit">Update teams</button>'}
       </form>`;
   }
@@ -877,35 +877,32 @@
     return `
       <div class="stack">
         ${pageHead(esc(st.quest.title), 'Teams', `<div class="stage-tabs">
-            <button data-a="teamview" data-view="home" aria-pressed="${!viewExpert}">${Art.icon('team', 15)}Home teams</button>
-            <button data-a="teamview" data-view="expert" aria-pressed="${viewExpert}">${Art.icon('lens', 15)}Expert groups</button>
+            <button data-a="teamview" data-view="home" aria-pressed="${!viewExpert}">${Art.icon('team', 15)}By team</button>
+            <button data-a="teamview" data-view="expert" aria-pressed="${viewExpert}">${Art.icon('lens', 15)}By track</button>
           </div>`)}
-        <div class="card matrix" role="region" aria-label="${viewExpert ? 'Expert groups by track' : 'Home teams with their experts'}" tabindex="0">
-          ${viewExpert ? expertMatrix(st) : homeMatrix(st)}
-        </div>
-        <p class="hint-note">${SEED.participants.length} explorers · ${SEED.homeGroups.length} home teams of up to ${SEED.topics.length} · same-track experts visit their station in groups of ${SEED.structure.expertGroup}. Tile colour = expertise; the small line is live evidence status.</p>
+        <div class="team-grid">${viewExpert ? expertCards(st) : homeCards(st)}</div>
       </div>`;
   }
 
-  function evShort(st, p) {
-    const s = st.evidence[p.id].status;
-    const map = { AVAILABLE: ['—', 'var(--muted)'], SUBMITTED: ['submitted', '#7A5A17'], VERIFIED: ['verified ✓', 'var(--success)'], NEEDS_REVISION: ['revise', 'var(--danger)'] };
-    const [t, c] = map[s];
-    return `<span class="mini-status" style="color:${c}">${t}</span>`;
+  /* Where a student is, in a teacher's words. */
+  function statusPill(st, p) {
+    const s = st.evidence[p.id].status, here = !!st.checkins[p.id];
+    const [cls, text] = s === 'VERIFIED' ? ['mint', 'Done ✓'] : s === 'SUBMITTED' ? ['lavender', 'Notes sent'] : s === 'NEEDS_REVISION' ? ['peach', 'Needs changes'] : here ? ['plain', 'At the spot'] : ['plain', 'Not started'];
+    return `<span class="pill ${cls}">${text}</span>`;
   }
-
-  function homeMatrix(st) {
-    const cls = Object.fromEntries(SEED.topics.map((t) => [t, { violet: 'v', teal: 't', sun: 's', coral: 'c', sky: 'k', lime: 'l' }[SEED.topicMeta[t].color] || 'v']));
-    return `<table><thead><tr><th scope="col">Track</th>${SEED.homeGroups.map((h) => `<th scope="col">${h}</th>`).join('')}</tr></thead>
-      <tbody>${SEED.topics.map((t) => `<tr><th scope="row">${t} · ${esc(SEED.topicMeta[t].label)}</th>
-        ${SEED.homeGroups.map((h) => { const p = SEED.expertOf(h, t); if (!p) return '<td>—</td>'; return `<td class="${cls[t]}">${esc(who(p).replace('Explorer ', 'Ex '))}${evShort(st, p)}</td>`; }).join('')}</tr>`).join('')}</tbody></table>`;
+  const personRow = (st, p, sub) => `<div class="team-row"><span class="team-dot ${SEED.topicMeta[p.topic].color}" aria-hidden="true"></span>
+    <span class="who"><strong>${esc(who(p))}</strong><small>${sub}</small></span>${statusPill(st, p)}</div>`;
+  function homeCards(st) {
+    return SEED.homeGroups.map((h) => `<div class="card team-card"><h3>Team ${h}</h3>
+      ${SEED.homeMembers(h).map((p) => personRow(st, p, esc(SEED.missions[p.topic].name || 'Track ' + p.topic))).join('')}</div>`).join('');
   }
-
-  function expertMatrix(st) {
-    const cls = Object.fromEntries(SEED.topics.map((t) => [t, { violet: 'v', teal: 't', sun: 's', coral: 'c', sky: 'k', lime: 'l' }[SEED.topicMeta[t].color] || 'v']));
-    return `<table><thead><tr>${SEED.topics.map((t) => `<th scope="col">${t} · ${esc(SEED.topicMeta[t].name)}</th>`).join('')}</tr></thead>
-      <tbody><tr>${SEED.topics.map((t) => { const ps = SEED.participants.filter((p) => p.topic === t), g = SEED.structure.expertGroup; const groups = []; for (let k = 0; k < ps.length; k += g) groups.push(ps.slice(k, k + g));
-      return `<td class="${cls[t]}" style="vertical-align:top">${groups.map((grp, gi) => `<div class="exp-sub"><small class="hint-note">Group ${gi + 1}</small>${grp.map((p) => `<div>${esc(who(p).replace('Explorer ', 'Ex '))} <small>(${p.home})</small>${evShort(st, p)}</div>`).join('')}</div>`).join('')}</td>`; }).join('')}</tr></tbody></table>`;
+  function expertCards(st) {
+    const g = SEED.structure.expertGroup;
+    return SEED.topics.map((t) => { const ps = SEED.participants.filter((p) => p.topic === t), groups = [];
+      for (let k = 0; k < ps.length; k += g) groups.push(ps.slice(k, k + g));
+      return `<div class="card team-card"><h3><span class="team-dot ${SEED.topicMeta[t].color}" style="display:inline-block;margin-right:6px" aria-hidden="true"></span>${esc(SEED.missions[t].name || 'Track ' + t)}</h3>
+        ${SEED.missions[t].gallery ? `<p class="hint-note" style="margin:-4px 0 6px">${esc(SEED.missions[t].gallery)}</p>` : ''}
+        ${groups.map((grp, gi) => `${groups.length > 1 ? `<div class="visit-label">Visit group ${gi + 1}</div>` : ''}${grp.map((p) => personRow(st, p, 'Team ' + p.home)).join('')}`).join('')}</div>`; }).join('');
   }
 
   function teacherLive(st) {
@@ -1017,7 +1014,7 @@
           <h3>Student reflections (${refl.length})</h3>
           ${refl.length === 0 ? '<p class="hint-note" style="margin:0">Individual reflections appear here after the reflection phase.</p>'
             : refl.map(([pid, a]) => `<div class="evidence-quote" style="margin-bottom:8px"><strong>${esc(who(SEED.byId[pid]))}</strong><br>${(a || []).filter(Boolean).map((x) => `“${esc(x)}”`).join(' · ')}</div>`).join('')}
-          <p class="hint-note" style="margin-top:12px">This report shows demonstration workflow data only — no learning-impact claims. A production build adds pre/post observation-vs-inference checks and per-group participation counts.</p>
+          <p class="hint-note" style="margin-top:12px">Demo data — not evidence of learning impact.</p>
         </div>
       </div>`;
   }
@@ -1043,7 +1040,7 @@
   function partnerWork(st) {
     const homes = SEED.homeGroups.filter((h) => ['SUBMITTED', 'APPROVED'].includes(st.finale[h].status));
     return `<div class="card"><div class="eyebrow coral">Partner feedback</div><h3>Teams’ finale answers</h3>
-      <p class="hint-note">Respond as the community partner: what rings true, what is missing, what would you add? Students see your words as a perspective, not a grade.</p>
+      <p class="hint-note">What rings true? What’s missing? Students see your reply as your view, not a grade.</p>
       ${homes.length === 0 ? '<p class="hint-note" style="margin:0">Teams’ answers appear here once they send their finale.</p>' : ''}
       <div class="stack" style="gap:12px">${homes.map((h) => { const f = st.finale[h], fb = st.partnerFeedback[h];
         const written = (SEED.finale.steps || []).filter((x) => x.type === 'write').map((x) => (f.answers[x.id] || {}).text).filter(Boolean);

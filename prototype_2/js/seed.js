@@ -347,6 +347,16 @@ SEED.ASSESS_TEXT = {
   verify: { teacher: 'Educator verifies', partner: 'Community partner verifies', auto: 'Automatic when the quiz is passed' },
 };
 
+/* A short chip label from a track name: skip a leading "The/A/An", keep whole words, about 22 characters. */
+SEED.shortLabel = (name) => {
+  const words = String(name || '').replace(/[“”"]/g, '').trim().split(/\s+/).filter(Boolean);
+  while (words.length > 1 && /^(the|a|an)$/i.test(words[0])) words.shift();
+  let out = '';
+  for (const w of words) { const next = out ? out + ' ' + w : w; if (next.length > 22 && out) break; out = next; }
+  return out.replace(/[,:;–-]+$/, '');
+};
+/* The label to show on a track chip: the track's own short label, unless it's empty, just "The", or out of date. */
+SEED.trackLabel = (t) => { const m = SEED.topicMeta[t] || {}, l = m.label || ''; return !l || /^(the|a|an|track [a-f])$/i.test(l) ? SEED.shortLabel((SEED.missions[t] || {}).name) || 'Track ' + t : l; };
 /* Build a track (mission + its topic label + its peer-teaching check) from flat, teacher-friendly fields. */
 SEED.buildTrack = (t, f) => {
   const prompts = (f.evidence || []).map((x) => String(x).trim()).filter(Boolean);
@@ -365,7 +375,7 @@ SEED.buildTrack = (t, f) => {
       assess: { ...SEED.defaultAssess(), ...(f.assess || {}) },
       refPhoto: typeof f.refPhoto === 'string' && f.refPhoto.startsWith('data:image/') && f.refPhoto.length < 120000 ? f.refPhoto : null,
     },
-    label: (f.name || 'Track ' + t).split(/\s+/)[0].replace(/[^\w’'-]/g, '').slice(0, 14) || 'Track ' + t,
+    label: SEED.shortLabel(f.name) || 'Track ' + t,
     check: (Array.isArray(f.checks) && f.checks.length ? f.checks : [{ text: f.checkCorrect || '', correct: true }, { text: f.checkIncorrect || '', correct: false }])
       .map((x, i) => ({ id: x.id || t.toLowerCase() + '_' + (i + 1), text: String(x.text || '').trim(), correct: !!x.correct, ...(x.miss ? { miss: String(x.miss) } : {}) })),
   };
@@ -489,7 +499,7 @@ CONTENT_KEYS.forEach((k) => Object.defineProperty(SEED, k, {
   configurable: true, enumerable: true,
 }));
 
-SEED.genericDisclaimer = 'Story elements, characters and awards are fiction created for learning. No partnership with any venue is claimed unless one has been agreed. Real school visits must be booked with the venue.';
+SEED.genericDisclaimer = 'Story and awards are fiction, made for learning. Book real visits with the venue.';
 SEED.partnerDefaults = { name: 'WorldQuest Demo Collaborator', org: 'Simulated community partner' };
 
 /* The object students photograph to check in: the track's key object, or its finale object. */

@@ -155,7 +155,7 @@ const Insights = (() => {
     const fin = finaleMisses(st);
     return `<div class="card">
       <div class="spread"><h3 style="margin:0">${Art.icon('lens', 18)} Misconceptions to address</h3>${sim ? '<span class="pill">includes simulated classmates</span>' : ''}</div>
-      <p class="hint-note">Wrong picks are counted automatically. Written answers are analysed only when you ask: they are sent to the AI with names replaced by “Student 1, 2…”. Results stay on this device only (not in the shared class data), are never shown to students, and are never a grade.</p>
+      <p class="hint-note">Wrong answers are counted automatically. Written answers go to the AI only when you ask, with names removed. Results stay on this device and are never shown to students.</p>
       <div class="stack" style="gap:14px">
         ${SEED.topics.map((t) => `<div class="ins-track">
           <div class="row" style="gap:8px;margin-bottom:6px"><span class="topic-chip ${SEED.topicMeta[t].color}">${t} · ${esc(SEED.topicMeta[t].name)}</span></div>
