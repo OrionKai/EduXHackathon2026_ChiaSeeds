@@ -1,6 +1,7 @@
 /* Isolated concept dashboard. All people and participation data are illustrative. */
 const CommunitySpotlight = (() => {
   const EVENT_KEY = 'worldquest-partner-spotlight-event-v1';
+  const platforms = ['Instagram', 'TikTok', 'Facebook'];
   const esc = (v) => String(v || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const defaultEvent = { title: 'Community Stories Open Day', date: '', time: '', location: '', content: 'Bring a question. Share a local story.' };
   const cleanEvent = (value) => Object.fromEntries(Object.keys(defaultEvent).map((key) => [key, typeof value?.[key] === 'string' ? value[key].slice(0, key === 'content' ? 600 : 160) : '']));
@@ -35,6 +36,13 @@ const CommunitySpotlight = (() => {
     <p class="hint-note" data-spotlight-status role="status" style="margin:0"></p>`;
   }
   function bind(root) {
+    root.querySelectorAll('[data-spotlight-social]').forEach((button) => button.addEventListener('click', () => {
+      const platform = button.dataset.spotlightSocial;
+      if (!platforms.includes(platform)) return;
+      const status = root.querySelector('[data-spotlight-social-status]');
+      status.textContent = `Demo complete: your card would be shared to ${platform}. Nothing was posted and no account was connected.`;
+      status.hidden = false;
+    }));
     const form = root.querySelector('[data-spotlight-event]');
     if (!form) return;
     const read = () => cleanEvent(Object.fromEntries(Object.keys(defaultEvent).map((key) => [key, form.elements.namedItem(key).value.trim()])));
@@ -77,6 +85,33 @@ const CommunitySpotlight = (() => {
   ];
   const colours = ['var(--violet)', 'var(--success)', 'var(--violet-deep)'];
   const total = (key) => visits.reduce((n, v) => n + v[key], 0);
+  function sharePreview() {
+    const event = published || defaultEvent;
+    return `<article class="spotlight-poster" aria-label="Community Spotlight social card preview">
+      <div class="spread"><div class="eyebrow">WorldQuest · Community Spotlight</div><span class="pill plain">Demo preview</span></div>
+      <div class="spotlight-poster-hero">
+        <div class="stack"><div class="eyebrow coral">People. Places. Possibilities.</div><h2>Local knowledge.<br>Shared discoveries.</h2><strong>Neighbourhood Stories Collective</strong><p style="margin:0">Bringing local stories into real-world learning.</p></div>
+        <svg viewBox="0 0 240 210" class="spotlight-poster-art" aria-hidden="true" focusable="false">
+          <circle cx="120" cy="106" r="92" fill="var(--lavender)"/>
+          <path d="M48 177V102a72 72 0 0 1 144 0v75" fill="var(--white)" stroke="var(--violet)" stroke-width="5"/>
+          <path d="M85 126h70v51H85z" fill="var(--mint)"/>
+          <circle cx="92" cy="105" r="13" fill="var(--violet)"/><path d="M69 156v-17a23 23 0 0 1 46 0v17" fill="var(--violet)"/>
+          <circle cx="149" cy="111" r="13" fill="var(--success)"/><path d="M126 162v-17a23 23 0 0 1 46 0v17" fill="var(--success)"/>
+          <path d="M103 49h57a9 9 0 0 1 9 9v15a9 9 0 0 1-9 9h-21l-13 12V82h-23a9 9 0 0 1-9-9V58a9 9 0 0 1 9-9" fill="var(--peach)" stroke="var(--ink)" stroke-width="2"/>
+          <circle cx="112" cy="66" r="3" fill="var(--ink)"/><circle cx="131" cy="66" r="3" fill="var(--ink)"/><circle cx="150" cy="66" r="3" fill="var(--ink)"/>
+          <path d="m33 64 4-10 4 10 10 4-10 4-4 10-4-10-10-4z" fill="var(--sun)"/><circle cx="209" cy="144" r="8" fill="var(--coral)"/>
+        </svg>
+      </div>
+      <div class="spotlight-poster-stats" aria-label="Example participation counts">
+        <div><h2>${visits.length}</h2><span>learning visits</span></div><div><h2>${total('students')}</h2><span>student participants</span></div><div><h2>${total('conversations')}</h2><span>group conversations</span></div>
+      </div>
+      <div class="spotlight-poster-invite"><div class="eyebrow teal">Let's meet beyond the screen.</div><h3>${esc(event.title)}</h3>
+        <div class="row">${event.date ? `<span class="pill mint">${esc(event.date)}${event.time ? ' · ' + esc(event.time) : ''}</span>` : '<span class="pill plain">Example invitation</span>'}${event.location ? `<span class="pill plain">${esc(event.location)}</span>` : ''}</div>
+        <p style="margin:0;white-space:pre-wrap">${esc(event.content)}</p>
+      </div>
+      <p class="hint-note" style="margin:0">Fictional organisation · Illustrative participation data · ${published ? 'Locally created event' : 'No event scheduled'}</p>
+    </article>`;
+  }
   function visitChart() {
     return `<svg viewBox="0 0 480 240" role="img" aria-labelledby="spotlight-chart-title spotlight-chart-desc">
       <title id="spotlight-chart-title">Students at each example visit</title>
@@ -120,7 +155,7 @@ const CommunitySpotlight = (() => {
         <p style="margin:0">Local voices. Real objects. New perspectives.</p>
         <div class="grid-3">${people.map((p) => `<div class="card ${p.colour} stack"><div class="spotlight-avatar" aria-hidden="true">${p.initials}</div><strong>${p.name}</strong><span class="hint-note">${p.role}</span></div>`).join('')}</div>
       </section>
-      <div class="grid-2">
+      <div class="stack">
         <section class="card wash-mint stack">
           <div class="eyebrow teal">Beyond this quest</div><h3>Meet again, offline.</h3>
           <span class="pill ${published ? 'mint' : 'plain'}">${published ? 'Published · Local demo' : 'Example invitation'}</span>
@@ -129,20 +164,18 @@ const CommunitySpotlight = (() => {
           <p class="hint-note" style="margin:0">${published ? 'Visible on this browser only. No booking or external publishing.' : 'Example invitation · No event scheduled'}</p>
           ${eventEditor()}
         </section>
-        <section class="card stack">
-          <div class="eyebrow">Share your contribution</div><h3>A story worth passing on.</h3>
-          <details class="partner-disclosure"><summary>Preview share card</summary>
-            <div class="card wash-lavender stack">
-              <div class="eyebrow">WorldQuest · Community Spotlight</div><h2>Local knowledge.<br>Shared discoveries.</h2>
-              <strong>Neighbourhood Stories Collective</strong>
-              <div class="grid-3"><div><h3>${visits.length}</h3>visits</div><div><h3>${total('students')}</h3>students</div><div><h3>${total('conversations')}</h3>conversations</div></div>
-              <div class="card"><strong>Let's meet beyond the screen.</strong>${eventCard(published || defaultEvent)}</div>
-              <span class="hint-note">Fictional partner · Sample data &amp; invitation</span>
-            </div>
-          </details>
-          <p class="hint-note" style="margin:0">Preview only · Nothing is published</p>
-        </section>
       </div>
+      <section class="card stack">
+        <div class="spread"><div><div class="eyebrow">Share your contribution</div><h3>A story worth passing on.</h3></div><span class="pill peach">Social sharing demo</span></div>
+        <details class="partner-disclosure"><summary>Preview share card &amp; social publishing</summary>
+          ${sharePreview()}
+          <div class="stack" style="margin-top:16px"><strong>One click. A new community connection.</strong>
+            <div class="spotlight-social-actions">${platforms.map((platform) => `<button type="button" class="btn btn-secondary" data-spotlight-social="${platform}">Demo publish to ${platform}</button>`).join('')}</div>
+            <p class="hint-note" style="margin:0">Simulation only. No accounts connected and no real posts, images or videos are uploaded.</p>
+            <p class="card wash-mint" role="status" data-spotlight-social-status hidden></p>
+          </div>
+        </details>
+      </section>
     </div>`;
   }
   return { render, bind };
