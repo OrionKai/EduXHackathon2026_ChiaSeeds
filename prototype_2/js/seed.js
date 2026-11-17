@@ -502,8 +502,8 @@ SEED.keyObjectOf = (t) => {
    finale = the team's finale is approved · experts = all four of the team's experts are verified
    track = the team's expert for one track is verified · egg = hidden: a phone tilted up at the location
    teacher = the educator awards it by hand */
-SEED.EARN_TEXT = { track: 'A student finishes their track (their own badge)', experts: 'A team’s experts all finish their tracks', finale: 'A team solves the finale',
-  bonus: 'A team does a bonus activity (you approve it)', egg: 'A student finds it by tilting their phone up at the place', teacher: 'You award it to a team' };
+SEED.EARN_TEXT = { track: 'Students finish their track’s tasks (each gets their own)', experts: 'A team’s experts all finish their tracks', finale: 'A team solves the final challenge',
+  bonus: 'A team does a bonus activity you approve', egg: 'A student finds it by tilting their phone up', teacher: 'You award it to a team' };
 SEED.defaultEarn = () => ({ kind: 'bonus', track: 'A', hidden: false, evolves: true });
 TEMPLATES.lost_museum.collectibles.forEach((c) => { Object.assign(c, SEED.defaultEarn()); delete c.home; });
 TEMPLATES.lost_museum.collectibles.unshift(...['A', 'B', 'C', 'D'].map((t, i) => ({ id: 'badge_' + t.toLowerCase(), title: TEMPLATES.lost_museum.topicMeta[t].name + ' badge', color: ['violet', 'teal', 'sun', 'coral'][i], category: 'Badge',

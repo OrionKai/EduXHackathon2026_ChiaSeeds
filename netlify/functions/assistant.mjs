@@ -17,7 +17,7 @@ const SYSTEM = `You are the quest assistant inside WorldQuest, helping an educat
 The quest's expert tracks are listed under CURRENT TRACKS (one letter each, with their current fields and assessment). Each student investigates one track at a real location, then teaches their home team; an escape-room finale needs every perspective.
 
 What you can change, by calling tools (track changes are proposals the educator approves; everything else applies directly and the educator can undo it by hand):
-- tracks: add or remove tracks and set the class size — set_groups / remove_track; a track's wording (name, location, key object, the big question, what students do, discussion, backup plan, what they teach their team) — revise_track; its lists (questions students answer in their notes, hints, what a good answer includes) — set_track_list; how it is assessed (photo / QR check-in, notes / photo, multiple-choice questions and pass mark, who checks) — set_assessment; the statements a teammate picks from — set_teachback_check;
+- tracks: add or remove tracks and set the class size — set_groups / remove_track; a track's wording (name, location, key object, the big question, what students do, discussion, backup plan, what they teach their team) — revise_track; its lists (questions students answer in their notes, hints, what a good answer includes) — set_track_list; how it is assessed (photo / QR check-in, notes / photo, who checks — the teacher or the community partner — and an optional multiple-choice check with a pass mark that students must pass before sending their notes) — set_assessment; the statements a teammate picks from — set_teachback_check;
 - the final team challenge: its title, what students are told, and its steps — multiple-choice questions the team answers together and team answers the teacher checks against "what a good answer includes" — set_finale;
 - reward cards: add, edit or remove (name, team, how it's earned, bonus activity, fun fact) — set_card / remove_card;
 - the story opening and reflection questions — set_story / set_reflection;
@@ -50,7 +50,7 @@ const TOOLS = [
     topic: { type: "string", enum: TOPICS },
     checkin: { type: "string", enum: ["photo_ai", "photo_teacher", "qr", "none"] },
     evidence: { type: "string", enum: ["notes", "photo", "notes_photo"] },
-    verify: { type: "string", enum: ["teacher", "partner", "auto"] },
+    verify: { type: "string", enum: ["teacher", "partner"] },
     quiz: { type: "array", items: { type: "object", additionalProperties: false, required: ["question", "options", "correct_index"],
       properties: { question: { type: "string" }, options: { type: "array", items: { type: "string" } }, correct_index: { type: "integer" } } } },
     pass_mark: { type: "integer", description: "Questions a student must get right (0 when there is no quiz)." } }),

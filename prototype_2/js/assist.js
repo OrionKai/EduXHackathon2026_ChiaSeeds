@@ -25,6 +25,7 @@ const Assistant = (() => {
   let quizOpen = false;
   let busy = false, speed = 1, confirmGen = false;
   let mode = (() => { try { return localStorage.getItem('wq-ai-mode') || 'live'; } catch { return 'live'; } })();
+  let offWhy = mode === 'live' ? '' : 'you switched it off on this device';
   let needPass = false, lastNotice = '';
   const sleep = (ms) => (speed ? new Promise((r) => setTimeout(r, ms * speed)) : Promise.resolve());
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -38,26 +39,26 @@ const Assistant = (() => {
 
   /* Scripted revisions exist only for the Lost Museum template (they are written for its content). */
   const REVS = [
-    { id: 'rq', topic: 'B', chip: 'Track B: switch to multiple choice', prompt: 'Change Track B to be assessed with a multiple-choice check, verified automatically.',
-      note: '3-question multiple-choice check from the Gallery 20 page (pass 2/3), verified automatically.',
+    { id: 'rq', topic: 'B', chip: 'Track B: switch to multiple choice', prompt: 'Add a multiple-choice check to Track B.',
+      note: '3-question multiple-choice check from the Gallery 20 page (pass 2/3).',
       patch: { assess: { quiz: [
         { q: 'Whose sarcophagus lid is in Gallery 20?', o: ['Ramesses III', 'Nespawershefyt', 'Tutankhamun', 'Cleopatra'], a: 0 },
         { q: 'According to the gallery page, who gave the lid to the museum?', o: ['G. B. Belzoni', 'A local farmer', 'The British Army', 'It isn’t recorded'], a: 0 },
-        { q: 'Which question can the lid alone NOT answer?', o: ['How ordinary workers were remembered', 'What it is made of', 'How big it is', 'What is carved on it'], a: 0 }], pass: 2, verify: 'auto' } },
-      reply: 'Track B now uses a 3-question multiple-choice check built only from the Gallery 20 page [S2]. Students who get 2 of 3 right are verified automatically; the last question checks they know what the lid can’t tell us.' },
+        { q: 'Which question can the lid alone NOT answer?', o: ['How ordinary workers were remembered', 'What it is made of', 'How big it is', 'What is carved on it'], a: 0 }], pass: 2, verify: 'teacher' } },
+      reply: 'Track B now uses a 3-question multiple-choice check built only from the Gallery 20 page [S2]. Students need 2 of 3 right before they can send their notes; the last question checks they know what the lid can’t tell us.' },
     { id: 'rh', topic: 'A', chip: 'Track A: add a harder question', prompt: 'Add a harder multiple-choice question to Track A about the limits of the evidence.',
       note: 'Quick check now has 3 questions, including one about the limits of the evidence (pass 2/3).',
       patch: { assess: { quiz: [
         { q: 'Which of these is an observation, not an interpretation?', o: ['The lid has painted decoration', 'Everyone in ancient Egypt had a coffin like this', 'The owner must have been very rich', 'One artist made the whole set'], a: 0 },
         { q: 'According to the gallery page, when was the coffin set given to the museum?', o: ['1822', '1923', '1700', '2001'], a: 0 },
-        { q: 'Why can’t this coffin set tell us how most Egyptians were buried?', o: ['It is one high-status burial, so it may not be typical', 'Its paint has faded', 'It is in a museum now', 'It has no writing on it'], a: 0 }], pass: 2, verify: 'auto' } },
-      reply: 'Added a harder question to Track A’s quick check: it asks why one coffin can’t stand for everyone [S1]. Students need 2 of 3 to be verified automatically.' },
-    { id: 'ra', topic: 'A', chip: 'Track A: add a quick check', prompt: 'Add a short multiple-choice check to Track A and verify it automatically if students pass.',
-      note: 'Added a 2-question check (pass 2/2), verified automatically.',
+        { q: 'Why can’t this coffin set tell us how most Egyptians were buried?', o: ['It is one high-status burial, so it may not be typical', 'Its paint has faded', 'It is in a museum now', 'It has no writing on it'], a: 0 }], pass: 2, verify: 'teacher' } },
+      reply: 'Added a harder question to Track A’s quick check: it asks why one coffin can’t stand for everyone [S1]. Students need 2 of 3 right before they can send their notes.' },
+    { id: 'ra', topic: 'A', chip: 'Track A: add a quick check', prompt: 'Add a short multiple-choice check to Track A that students must pass.',
+      note: 'Added a 2-question check students must pass (2/2).',
       patch: { assess: { quiz: [
         { q: 'Which of these is an observation, not an interpretation?', o: ['The lid has painted decoration', 'Everyone in ancient Egypt had a coffin like this', 'The owner must have been very rich', 'One artist made the whole set'], a: 0 },
-        { q: 'According to the gallery page, when was the coffin set given to the museum?', o: ['1822', '1923', '1700', '2001'], a: 0 }], pass: 2, verify: 'auto' } },
-      reply: 'Added a 2-question check to Track A: one separates observation from interpretation, one comes straight from the gallery page. Students who get both right are verified automatically; anyone else looks again at the object.' },
+        { q: 'According to the gallery page, when was the coffin set given to the museum?', o: ['1822', '1923', '1700', '2001'], a: 0 }], pass: 2, verify: 'teacher' } },
+      reply: 'Added a 2-question check to Track A: one separates observation from interpretation, one comes straight from the gallery page. Students must get both right before they can send their notes; anyone else looks again at the object.' },
     { id: 'rc', topic: 'C', chip: 'Track C: simpler wording', prompt: 'Make Track C easier to read for students who struggle with long instructions.',
       note: 'Instructions shortened to about a 12-year-old reading level.',
       patch: { observe: 'Find two different kinds of object, like a painted pot and a coin. Write down what you see on each one.' },
@@ -93,6 +94,7 @@ const Assistant = (() => {
       <div class="card as-card">
         <div class="spread"><h3 style="margin:0">${Art.icon('sparkle', 18)} Quest assistant</h3>
           <button type="button" class="pill ${mode === 'live' ? 'mint' : ''}" data-as-mode title="Switch between the real AI and the scripted demo">AI: ${mode === 'live' ? 'live (Claude)' : 'off · scripted'}</button></div>
+        ${mode !== 'live' ? `<div class="as-off"><span>Live AI is off — ${esc(offWhy || 'switched off')}. Suggestions below still work.</span><button type="button" class="btn btn-secondary btn-sm" data-as-mode>Turn live AI on</button></div>` : ''}
         ${lastNotice ? `<p class="hint-note" style="margin:0">${esc(lastNotice)}</p>` : ''}
         ${needPass ? `<form class="row" data-as-pass><label class="sr-only" for="as-pass">Demo passcode</label><input class="input" id="as-pass" type="password" placeholder="Demo passcode for live AI" style="flex:1"><button class="btn btn-secondary btn-sm">Save</button></form>` : ''}
         <div class="as-msgs" id="as-msgs">${msgs.map(msgHTML).join('')}</div>
@@ -123,9 +125,9 @@ const Assistant = (() => {
     if (on.qr) parts.push('QR card');
     if (on.notes) parts.push(`notes (${m.evidenceFields.filter((e) => e.label).length} question${m.evidenceFields.length === 1 ? '' : 's'})`);
     if (on.evphoto) parts.push('a photo');
-    if (on.quiz) parts.push(`${a.quiz.length} multiple-choice`);
+    if (on.quiz) parts.push(`must pass ${a.pass || 1} of ${a.quiz.length} multiple-choice`);
     if (on.partner) parts.push('talk with the partner');
-    return parts.join(' · ') + ` — checked by ${a.verify === 'auto' ? 'the app (multiple choice)' : a.verify === 'partner' ? 'the community partner' : 'you'}`;
+    return parts.join(' · ') + ` — checked by ${a.verify === 'partner' ? 'the community partner' : 'you'}`;
   }
 
   function tracksSection(st) {
@@ -185,14 +187,17 @@ const Assistant = (() => {
 
   function collectiblesSection(st) {
     const locked = st.quest.status === 'PUBLISHED', cards = st.content.collectibles;
-    const rule = (c) => (c.kind === 'track' ? `each student who finishes ${!c.track || c.track === 'any' ? 'any track' : esc(SEED.missions[c.track] && SEED.missions[c.track].name ? SEED.missions[c.track].name : 'Track ' + c.track)} gets their own` : esc((SEED.EARN_TEXT[c.kind] || '').replace(/^A /, 'a ').replace(/^You /, 'you ')));
+    const rule = (c) => (c.kind === 'track'
+      ? (!c.track || c.track === 'any' ? 'Earned by every student when they finish their track’s tasks.' : `Earned by students on “${esc(SEED.missions[c.track] && SEED.missions[c.track].name ? SEED.missions[c.track].name : 'Track ' + c.track)}” when they finish their track’s tasks.`)
+      : { experts: 'Earned by a team when all its experts have finished their tracks.', finale: 'Earned by a team when it solves the final challenge.', bonus: 'Earned by a team when you approve its bonus activity.',
+          egg: 'Earned by a student who finds it by tilting their phone up at the place.', teacher: 'Earned by a team when you award it.' }[c.kind] || '');
     return `<section class="card" id="as-collectibles">
       <div class="spread"><h3 style="margin:0">${Art.icon('trophy', 18)} Reward cards</h3><span class="pill plain">optional · just for fun</span></div>
       <p class="hint-note" style="margin:6px 0 10px">Fun extras for the class album. A <strong>badge</strong> is personal — e.g. every student who finishes their track gets one. A <strong>team card</strong> can be earned by every team — e.g. for solving the finale. They never block the quest.${cards.length ? ` When the class has every card, it unlocks “${esc(SEED.master.title)}”.` : ''}</p>
       ${cards.length ? `<div class="coll-grid">${cards.map((c) => editing === 'c:' + c.id && !locked ? collEditor(c) : `<div class="coll-item">
         <div class="row" style="gap:10px;flex-wrap:nowrap"><div class="collect-card claimed" style="width:64px;min-width:64px;cursor:default">${Art.collectibleArt[c.id] ? Art.collectibleArt[c.id]() : Art.lockedArt()}</div>
           <div style="min-width:0"><strong>${esc(c.title || 'Untitled card')}</strong><br><small class="hint-note">${c.kind === 'track' || c.kind === 'egg' ? 'Badge · one per student' : 'Team card · one per team'}</small></div></div>
-        <p class="hint-note" style="margin:6px 0 4px">Earned when ${rule(c)}.</p>
+        <p class="hint-note" style="margin:6px 0 4px">${rule(c)}</p>
         ${c.kind === 'bonus' && c.activity ? `<p class="hint-note" style="margin:0 0 4px">Activity: ${esc(c.activity)}</p>` : ''}
         ${locked ? '' : `<div class="row" style="gap:6px;margin-top:6px"><button class="btn btn-ghost btn-sm" type="button" data-as-edit="c:${c.id}">Edit</button><button class="btn btn-danger-ghost btn-sm" type="button" data-as-rmcard="${c.id}">Remove</button></div>`}
       </div>`).join('')}</div>` : '<p style="margin:0 0 8px">No cards yet.</p>'}
@@ -277,12 +282,13 @@ const Assistant = (() => {
         <span class="fld">What a good answer includes</span>${help('Used to check answers and spot misunderstandings after the trip.')}
         ${listEd('crit', f.criteria, 'e.g. Says what the object can’t tell us', 'Add a point')}
         ${cb('a-quiz', 'Add a multiple-choice check', on.quiz, 'data-show="qz-box"')}
+        <p class="hint-note" style="margin:-2px 0 2px">Students must pass it before they can send their notes. It doesn’t replace your check.</p>
         <div class="stack qz-box" data-show-box="qz-box" style="gap:8px" ${on.quiz ? '' : 'hidden'}>
           <div class="stack" style="gap:8px" data-qz>${(quiz.length ? quiz : [null]).map(qzCard).join('')}</div>
           <button type="button" class="btn btn-ghost btn-sm le-add" data-qz-add>${Art.icon('plus', 14)} Add a question</button>
           <div class="row"><label class="fld" for="as-pass" style="margin:0">Questions they must get right</label><input class="input" id="as-pass" type="number" min="1" value="${a.pass || 1}" style="width:90px"></div></div>
         <span class="fld">Who checks their work</span>
-        <div class="stack" style="gap:4px">${rd('a-verify', 'teacher', 'You (the teacher)', a.verify === 'teacher')}${rd('a-verify', 'partner', 'The community partner', a.verify === 'partner')}${rd('a-verify', 'auto', 'The app, when they pass the multiple-choice check', a.verify === 'auto')}</div>`, 'check-in, notes, multiple choice')}
+        <div class="stack" style="gap:4px">${rd('a-verify', 'teacher', 'You (the teacher)', a.verify !== 'partner')}${rd('a-verify', 'partner', 'The community partner', a.verify === 'partner')}</div>`, 'check-in, notes, multiple choice')}
       ${sec('3 · Teaching their team', false, `
         ${inp('ed-teach', 'What they tell their team, in one sentence', f.teachHeadline, 'e.g. Objects show us real details — but one object can’t speak for everyone.')}
         <span class="fld">Check that the team understood</span>${help('After the expert explains, a teammate picks the statement that matches. Tick the true one(s); the others should be tempting but wrong.')}
@@ -306,7 +312,7 @@ const Assistant = (() => {
     const pv = Number((f.querySelector('#as-pass') || {}).value) || 1, v = val('a-verify') || 'teacher';
     return { checkin: photo ? (val('a-pcheck') === 'photo_ai' ? 'photo_ai' : 'photo_teacher') : qr ? 'qr' : 'none', qr: photo && qr,
       evidence: notes && evphoto ? 'notes_photo' : evphoto ? 'photo' : 'notes', quiz, pass: quiz.length ? Math.max(1, Math.min(pv, quiz.length)) : 0,
-      verify: v === 'auto' && !quiz.length ? 'teacher' : v };
+      verify: v === 'partner' ? 'partner' : 'teacher' };
   }
 
   function finStep(x) {
@@ -442,7 +448,7 @@ const Assistant = (() => {
   }
   function failNotice(status) {
     if (status === 401) { needPass = true; lastNotice = 'Live AI needs the demo passcode.'; }
-    else { mode = 'simulated'; lastNotice = 'Live AI is unavailable here — switched to editing by hand.'; }
+    else { mode = 'simulated'; offWhy = status === 503 ? 'the AI isn’t set up on this site yet' : 'it didn’t answer just now'; lastNotice = ''; }
   }
   function questBrief() {
     const q = Engine.state.quest;
@@ -495,7 +501,7 @@ const Assistant = (() => {
       const quiz = (i.quiz || []).filter((q) => q && q.question && Array.isArray(q.options) && q.options.length >= 2)
         .map((q) => ({ q: String(q.question), o: q.options.slice(0, 6).map(String), a: Math.max(0, Math.min(Number(q.correct_index) || 0, Math.min(q.options.length, 6) - 1)) }));
       f.assess = { ...f.assess, checkin: i.checkin || f.assess.checkin, evidence: i.evidence || f.assess.evidence,
-        verify: quiz.length || i.verify !== 'auto' ? i.verify || f.assess.verify : 'teacher', quiz, pass: quiz.length ? Math.max(1, Math.min(Number(i.pass_mark) || quiz.length, quiz.length)) : 0 };
+        verify: i.verify === 'partner' ? 'partner' : 'teacher', quiz, pass: quiz.length ? Math.max(1, Math.min(Number(i.pass_mark) || quiz.length, quiz.length)) : 0 };
     } else if (e.tool === 'set_teachback_check') {
       const st = (i.statements || []).filter((x) => x && String(x.text || '').trim());
       if (!st.some((x) => x.correct) || !st.some((x) => !x.correct)) return;
@@ -626,7 +632,7 @@ const Assistant = (() => {
     on('[data-as-approve]', 'click', (b) => window.WQ.act('approveTrack', { topic: b.dataset.asApprove }));
     on('[data-as-ask]', 'click', (b) => { const i = document.getElementById('as-in'); if (i) { i.value = `Track ${b.dataset.asAsk}: `; i.focus(); i.scrollIntoView({ behavior: 'smooth', block: 'center' }); } });
     on('[data-as-cite]', 'click', (b) => { const row = document.getElementById('as-src-' + b.dataset.asCite); if (row) { row.classList.add('flash'); row.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => row.classList.remove('flash'), 1400); } });
-    on('[data-as-mode]', 'click', () => { mode = mode === 'live' ? 'simulated' : 'live'; lastNotice = ''; try { localStorage.setItem('wq-ai-mode', mode); } catch {} window.WQ.render(); });
+    on('[data-as-mode]', 'click', () => { mode = mode === 'live' ? 'simulated' : 'live'; offWhy = mode === 'live' ? '' : 'you switched it off on this device'; lastNotice = ''; try { localStorage.setItem('wq-ai-mode', mode); } catch {} window.WQ.render(); });
     on('[data-as-edit]', 'click', (b) => { editing = editing === b.dataset.asEdit ? null : b.dataset.asEdit; refDraft = editing && SEED.missions[editing] ? SEED.missions[editing].refPhoto || null : null; window.WQ.render(); });
     on('[data-as-ref-clear]', 'click', () => { refDraft = null; window.WQ.render(); });
     on('#as-ref', 'change', (input) => {
@@ -682,8 +688,8 @@ const Assistant = (() => {
   /* Is the live AI endpoint deployed here? A GET costs nothing (the function answers 405); a plain static server answers 404. */
   try {
     fetch('/api/assistant', { method: 'GET' }).then((r) => {
-      if (r.status !== 405 && mode === 'live') { mode = 'simulated'; lastNotice = 'Live AI isn’t deployed on this server — scripted mode.'; window.WQ && window.WQ.render(); }
-    }).catch(() => { if (mode === 'live') { mode = 'simulated'; window.WQ && window.WQ.render(); } });
+      if (r.status !== 405 && mode === 'live') { mode = 'simulated'; offWhy = 'this copy of the app has no AI connection (e.g. running on your own computer)'; window.WQ && window.WQ.render(); }
+    }).catch(() => { if (mode === 'live') { mode = 'simulated'; offWhy = 'there’s no internet connection'; window.WQ && window.WQ.render(); } });
   } catch {}
   const openEditor = (k) => { syncQuest(); editing = k || null; quizOpen = false; refDraft = k && SEED.missions[k] ? SEED.missions[k].refPhoto || null : null; };
   return { getMode: () => mode, chat, board, bind, openEditor, sources: () => (syncQuest(), sourcesCard()), tracks: () => (syncQuest(), tracksSection(Engine.state)), finale: () => (syncQuest(), finaleSection(Engine.state)), collectibles: () => (syncQuest(), collectiblesSection(Engine.state)), story: () => (syncQuest(), storySection(Engine.state)), generate, listEd, readList, setSpeed: (v) => { speed = v; }, setMode: (m) => { mode = m; } };

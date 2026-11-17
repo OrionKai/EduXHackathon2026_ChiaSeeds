@@ -736,3 +736,7 @@ a.brand { text-decoration: none; color: inherit; }
 .fin-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
 .fin-step.done { border-color: #9FDFD0; }
 .fin-step.now { border: 2px solid var(--violet); }
+
+/* the hidden attribute always wins (layout classes like .stack set display) */
+[hidden] { display: none !important; }
+.as-off { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: 12px; background: var(--paper); font-size: 14px; }
