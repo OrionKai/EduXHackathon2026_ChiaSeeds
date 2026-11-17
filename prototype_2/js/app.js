@@ -757,7 +757,7 @@
             <p class="hint-note" style="margin:0">Step 2 of 2 · How will the class be split? You can change this later in Quest settings.</p>
             <div class="grid-3" style="gap:10px">
               <div class="fld-group"><label class="fld" for="g-tracks">Tracks to start with</label><input class="input" id="g-tracks" type="number" min="1" max="6" value="${st.ui.nqTpl === 'blank' ? 1 : d.tracks}"></div>
-              <div class="fld-group"><label class="fld" for="g-size">Students in the class</label><input class="input" id="g-size" type="number" min="3" max="60" value="${d.classSize}"></div>
+              <div class="fld-group"><label class="fld" for="g-size">Students in the class</label><input class="input" id="g-size" type="number" min="2" max="60" value="${d.classSize}"></div>
               <div class="fld-group"><label class="fld" for="g-exp">Students per expert group</label><input class="input" id="g-exp" type="number" min="1" max="30" value="${d.expertGroup}"></div>
             </div>
             <p class="hint-note" style="margin:0" id="g-summary">${structSummary(st.ui.nqTpl === 'blank' ? 1 : d.tracks, d.classSize, d.expertGroup)}</p>
@@ -807,7 +807,7 @@
             <h3 style="margin:0 0 6px">Groups</h3>
             <div class="grid-3" style="gap:10px">
               <div class="fld-group"><label class="fld" for="g-tracks">Expert tracks</label><input class="input" id="g-tracks" type="number" min="1" max="6" value="${SEED.structure.tracks}" ${dis}></div>
-              <div class="fld-group"><label class="fld" for="g-size">Class size</label><input class="input" id="g-size" type="number" min="3" max="60" value="${SEED.structure.classSize}" ${dis}></div>
+              <div class="fld-group"><label class="fld" for="g-size">Class size</label><input class="input" id="g-size" type="number" min="2" max="60" value="${SEED.structure.classSize}" ${dis}></div>
               <div class="fld-group"><label class="fld" for="g-exp">Expert group size</label><input class="input" id="g-exp" type="number" min="1" max="30" value="${SEED.structure.expertGroup}" ${dis}></div>
             </div>
             <p class="hint-note" style="margin:6px 0 8px" id="g-summary">${structSummary(SEED.structure.tracks, SEED.structure.classSize, SEED.structure.expertGroup)}</p>
@@ -850,8 +850,9 @@
   function structSummary(t, n, g) {
     t = Number(t); n = Number(n); g = Number(g);
     if (t < 2) return `${t} track so far — add at least one more before publishing, so students can teach each other.`;
-    const teams = Math.ceil(n / t), last = n - (teams - 1) * t;
-    return `${teams} home teams of ${t}${last < t ? ` (the last has ${last})` : ''} · each track has ${teams} experts, visiting in groups of ${g} (${Math.ceil(teams / g)} group${Math.ceil(teams / g) > 1 ? 's' : ''} per station)`;
+    const teams = Math.ceil(n / t), last = n - (teams - 1) * t, gg = Math.max(1, Math.min(g, teams)), pl = (k, w) => `${k} ${w}${k === 1 ? '' : 's'}`;
+    if (t >= 2 && teams > 1 && last === 1) return `The last home team would have just one student — try ${n - 1} or ${n + 1} students.`;
+    return `${pl(teams, 'home team')} of ${t}${last < t ? ` (the last has ${last})` : ''} · each track has ${pl(teams, 'expert')}${teams > 1 ? `, visiting in groups of ${gg} (${pl(Math.ceil(teams / gg), 'group')} per station)` : ''}${gg < g ? ` · group size set to ${gg}` : ''}`;
   }
 
 
@@ -1234,7 +1235,7 @@
     }));
     root.querySelectorAll('[data-qrtext]').forEach((q) => { if (window.QRCode && !q.firstChild) new QRCode(q, { text: q.dataset.qrtext, width: 150, height: 150, colorDark: '#20264B', colorLight: '#FFFFFF' }); });
     const gs = root.querySelector('form[data-form="structure"], form[data-form="new-quest"]');
-    if (gs) gs.addEventListener('input', () => { const v = (id) => gs.querySelector('#' + id).value; const out = document.getElementById('g-summary'); if (out && Number(v('g-tracks')) >= 3 && Number(v('g-size')) >= 1 && Number(v('g-exp')) >= 1) out.textContent = structSummary(v('g-tracks'), v('g-size'), v('g-exp')); });
+    if (gs) gs.addEventListener('input', () => { const v = (id) => gs.querySelector('#' + id).value; const out = document.getElementById('g-summary'); if (out && Number(v('g-tracks')) >= 1 && Number(v('g-size')) >= 1 && Number(v('g-exp')) >= 1) out.textContent = structSummary(v('g-tracks'), v('g-size'), v('g-exp')); });
     if (typeof Assistant !== 'undefined') Assistant.bind(root);
 
     // live preview typing in the quest builder (silent updates, targeted DOM refresh)

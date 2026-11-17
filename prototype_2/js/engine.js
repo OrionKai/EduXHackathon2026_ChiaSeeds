@@ -27,7 +27,7 @@ const Engine = (() => {
     if (!(n >= Math.max(t, 2) && n <= 60)) return `Class size must be between ${Math.max(t, 2)} and 60.`;
     const teams = Math.ceil(n / t), last = n - (teams - 1) * t;
     if (t >= 2 && last === 1) return `With ${n} students the last home team would have just one student, who couldn’t be taught. Try ${n - 1} or ${n + 1}.`;
-    if (!(g >= 1 && g <= teams)) return `Expert groups can be 1 to ${teams} students.`;
+    if (!(g >= 1)) return 'Expert groups need at least 1 student.';
     return '';
   }
   /* ---------- the class journey: an ordered programme of quests, real experiences and classroom sessions ---------- */
@@ -855,6 +855,7 @@ const Engine = (() => {
       snapInto(s);
       const st = { ...SEED.defaultStructure(), ...(structure || {}) };
       st.tracks = Number(st.tracks); st.classSize = Number(st.classSize); st.expertGroup = Number(st.expertGroup);
+      st.expertGroup = Math.max(1, Math.min(st.expertGroup, Math.ceil(st.classSize / st.tracks))); // can't be bigger than the experts per track
       const bad = structureProblem(st.tracks, st.classSize, st.expertGroup);
       if (bad) return { ok: false, msg: bad };
       const id = 'q' + Date.now().toString(36);
@@ -873,7 +874,7 @@ const Engine = (() => {
       s.tracks = Object.fromEntries(SEED.topics.map((x) => [x, tpl === 'blank' || !content.missions[x].name ? 'EMPTY' : 'TEMPLATE']));
       s.revisions = {};
       s.sources = tpl === 'lost_museum' ? seedSources() : seedSources().filter((x) => x.kind === 'partner').map((x) => ({ ...x, id: 'S1' }));
-      s.contributor = normContributor({ text: '', status: 'INVITED', interactionPrompt: 0, extraPrompts: [], prompts: [...SEED.contributor.prompts] });
+      s.contributor = normContributor({ text: tpl === 'lost_museum' ? SEED.contributor.defaultContribution : '', status: tpl === 'lost_museum' ? 'CONTRIBUTED' : 'INVITED', interactionPrompt: 0, extraPrompts: [], prompts: [...SEED.contributor.prompts] });
       s.activeQuest = id;
       SEED.useStructure(s.quest.structure); SEED.useContent(s.content);
       resetPlay(s);
@@ -934,7 +935,7 @@ const Engine = (() => {
     setStructure(s, { tracks, classSize, expertGroup }) {
       if (s.quest.status === 'PUBLISHED') return { ok: false, msg: 'Published quests are frozen — create a new quest to change the groups.' };
       if (s.phase !== 'LOBBY') return { ok: false, msg: 'End the live session first.' };
-      const t = Number(tracks), n = Number(classSize), g = Number(expertGroup);
+      const t = Number(tracks), n = Number(classSize), g = Math.max(1, Math.min(Number(expertGroup), Math.ceil(Number(classSize) / Math.max(1, Number(tracks)))));
       const bad = structureProblem(t, n, g);
       if (bad) return { ok: false, msg: bad };
       const teams = Math.ceil(n / t), last = n - (teams - 1) * t;
