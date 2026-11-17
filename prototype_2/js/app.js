@@ -80,7 +80,7 @@
   const NAV = {
     student: [['adventure', 'sparkle', 'My adventure'], ['map', 'map', 'Quest map'], ['album', 'trophy', 'Class album']],
     teacher: [['dashboard', 'map', 'My quests'], ['builder', 'pencil', 'Quest builder'], ['next', 'arrow', 'Journey'], ['teams', 'team', 'Teams'], ['live', 'eye', 'Live session'], ['album', 'trophy', 'Class album'], ['report', 'book', 'Report']],
-    collaborator: [['overview', 'map', 'Overview'], ['contribution', 'pencil', 'My contribution'], ['review', 'eye', 'Review the quest'], ['facilitate', 'voices', 'On the day'], ['work', 'book', 'Student work']],
+    collaborator: [['overview', 'map', 'Overview'], ['contribution', 'pencil', 'My contribution'], ['review', 'eye', 'Review the quest'], ['facilitate', 'voices', 'On the day'], ['work', 'book', 'Student work'], ['spotlight', 'sparkle', 'Community Spotlight']],
   };
   const currentRole = () => ROUTES[location.hash.slice(1)] || null;
   /* Presenter controls stay off student phones unless the link asks for them (?demo=1 or a ?fast= demo link). */
@@ -1024,8 +1024,9 @@
   /* ================= collaborator ================= */
 
   function collaboratorView(st) {
-    const TITLES = { overview: 'Overview', contribution: 'My contribution', review: 'Review the quest', facilitate: 'On the day', work: 'Student work' };
+    const TITLES = { overview: 'Overview', contribution: 'My contribution', review: 'Review the quest', facilitate: 'On the day', work: 'Student work', spotlight: 'Community Spotlight' };
     const screen = TITLES[st.ui.screen] ? st.ui.screen : 'overview';
+    if (screen === 'spotlight') return `<div class="stack">${pageHead('Community partner · Concept preview', TITLES[screen], '', 'coral')}${CommunitySpotlight.render()}</div>`;
     const questLevel = ['overview', 'contribution', 'review'].includes(screen);
     const pqId = questLevel && st.ui.pq && st.library[st.ui.pq] ? st.ui.pq : st.activeQuest;
     const pq = pqId === st.activeQuest ? st.quest : st.library[pqId].quest;
