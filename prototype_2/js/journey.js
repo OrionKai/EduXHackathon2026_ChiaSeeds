@@ -19,7 +19,7 @@ const Journey = (() => {
     const code = typeof Sync !== 'undefined' ? Sync.state.session : '';
     const list = steps();
     return `${window.WQ.pageHead(`Class code <span class="mono">${esc(code)}</span>`, 'Journey')}
-      <p class="hint-note" style="margin:-4px 0 6px">Plan the class’s programme in order. Each step opens when you choose; students always see what’s next.</p>
+      <p class="hint-note" style="margin:0 0 6px">Plan the class’s programme in order. Each step opens when you choose; students always see what’s next.</p>
       <ol class="journey">${list.map((x, i) => addSlot(i) + stepCard(st, x, i)).join('')}${addSlot(list.length)}</ol>`;
   }
 

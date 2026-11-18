@@ -12,7 +12,10 @@
 'use strict';
 
 const Engine = (() => {
-  const STORAGE_KEY = 'worldquest-prototype2-v1';
+  /* Each class code is its own class: its own saved state on this device (and its own row when live). */
+  const SESSION = (new URLSearchParams(location.search).get('session') || 'FITZ-DEMO').toUpperCase();
+  const STORAGE_KEY = 'worldquest-prototype2-v1' + (SESSION === 'FITZ-DEMO' ? '' : ':' + SESSION);
+  const NEW_CLASS_KEY = (code) => 'wq-newclass:' + code;
   const QUEST_KEYS = ['quest', 'content', 'tracks', 'revisions', 'sources', 'contributor'];
   const PLAY_KEYS = ['phase', 'evidence', 'peerTeach', 'finale', 'bonus', 'claims', 'master', 'reflections', 'seats', 'checkins', 'checkinPhotos', 'help', 'partnerFeedback', 'interactions', 'experience', 'evolved', 'misses', 'analysis', 'partnerFlags', 'earned'];
   const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -136,6 +139,7 @@ const Engine = (() => {
     makeQuest(f, { template: 'two_explorers', id: 'q_eg', quiet: true });
     snapInto(f);
     f.journey = defaultJourney(f);
+    f.className = 'Demo class';
     return f;
   }
   /* Wrong picks are kept (counts only) so the educator can see common misconceptions. */
@@ -229,6 +233,8 @@ const Engine = (() => {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.v === 1) return upgrade(parsed);
       }
+      const made = localStorage.getItem(NEW_CLASS_KEY(SESSION)); // a class just created on this device
+      if (made) { localStorage.setItem(STORAGE_KEY, made); localStorage.removeItem(NEW_CLASS_KEY(SESSION)); const parsed = JSON.parse(made); if (parsed && parsed.v === 1) return upgrade(parsed); }
     } catch (e) {
       /* corrupted or unavailable storage -> fresh demo */
     }
@@ -290,6 +296,7 @@ const Engine = (() => {
     s.ui = s.ui || {};
     s.ui.drafts = s.ui.drafts || {};
     s.pastAlbums = s.pastAlbums || [];
+    s.className = typeof s.className === 'string' ? s.className : '';
     return s;
   }
 
@@ -427,6 +434,12 @@ const Engine = (() => {
       return { ok: true };
     },
 
+    renameClass(s, { name }) {
+      const n = String(name || '').trim().slice(0, 60);
+      if (!n) return { ok: false, msg: 'Give the class a name.' };
+      s.className = n;
+      return { ok: true, msg: 'Class renamed.' };
+    },
     resetDemo() {
       state = freshDemo();
       SEED.useStructure(state.quest.structure); SEED.useContent(state.content);
@@ -1384,6 +1397,16 @@ const Engine = (() => {
   }
 
   /* ---------- shared-state hooks for live sync (sync.js) ---------- */
+  /* A new class: same quests (copied), nothing played yet, an empty journey after the current quest. */
+  function prepareClass(code, name) {
+    const s = clone(state); snapInto(s);
+    const f = freshState();
+    const n = { ...f, ...Object.fromEntries(QUEST_KEYS.map((k) => [k, clone(s[k])])), library: clone(s.library), activeQuest: s.activeQuest,
+      className: String(name || '').trim().slice(0, 60), pastAlbums: [], ui: { drafts: {}, screen: 'next' } };
+    PLAY_KEYS.forEach((k) => { if (f[k] === undefined) delete n[k]; else n[k] = clone(f[k]); }); syncRoster(n); // missing keys are filled in on load
+    n.journey = defaultJourney(n);
+    try { localStorage.setItem(NEW_CLASS_KEY(code), JSON.stringify(n)); return true; } catch { return false; }
+  }
   function sharedState() {
     const { ui, ...rest } = state;
     return JSON.parse(JSON.stringify(rest));
@@ -1408,6 +1431,7 @@ const Engine = (() => {
     subscribe,
     sharedState,
     applyShared,
+    prepareClass,
     freshShared,
     onCommit: (fn) => { commitHook = fn; },
     sel,

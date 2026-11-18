@@ -64,8 +64,23 @@
   const who = (p) => (S().seats && S().seats[p.id] ? S().seats[p.id].nick : p.name);
   const collArt = (c) => Art.cardArt(c, SEED.collectibles.findIndex((x) => x.id === c.id));
   /* One page header for every screen in every role: context eyebrow, the screen's name, actions on the right. */
-  const pageHead = (eyebrow, title, actions = '', tone = '') =>
-    `<div class="spread page-head"><div><div class="eyebrow ${tone}">${eyebrow}</div><h2 style="margin:2px 0 0">${title}</h2></div>${actions ? `<div class="row" style="gap:8px">${actions}</div>` : ''}</div>`;
+  let inClassPage = false;
+  const pageHead = (eyebrow, title, actions = '', tone = '') => (inClassPage
+    ? (actions ? `<div class="row page-actions" style="gap:8px;justify-content:flex-end">${actions}</div>` : '')
+    : `<div class="spread page-head"><div><div class="eyebrow ${tone}">${eyebrow}</div><h2 style="margin:2px 0 0">${title}</h2></div>${actions ? `<div class="row" style="gap:8px">${actions}</div>` : ''}</div>`);
+  /* The classes this teacher has opened on this device. Each class is its own class code. */
+  const CLASS_TABS = [['next', 'Journey'], ['teams', 'Teams'], ['live', 'Live session'], ['report', 'Report'], ['album', 'Class album']];
+  const classList = () => { try { return JSON.parse(localStorage.getItem('wq-classes') || '[]'); } catch { return []; } };
+  function rememberClass(st) {
+    try { const me = { code: sessionCode(), name: st.className || '', quest: st.quest.title || '', at: Date.now() };
+      const list = classList().filter((c) => c.code !== me.code); list.unshift(me); localStorage.setItem('wq-classes', JSON.stringify(list.slice(0, 20))); } catch {}
+  }
+  const className = (st) => st.className || 'Class ' + sessionCode();
+  function goToClass(code) {
+    const u = new URL(location.href); u.searchParams.set('session', code); u.hash = 'educator';
+    try { sessionStorage.setItem('wq-open-class', '1'); } catch {}
+    location.href = u.toString();
+  }
   const topicColor = (t) => SEED.topicMeta[t].color;
   const topicChip = (t) =>
     `<span class="topic-chip ${topicColor(t)}">${Art.icon(SEED.topicMeta[t].icon, 15)}${t} · ${esc(SEED.trackLabel(t))}</span>`;
@@ -79,7 +94,7 @@
   const DEFAULT_SCREEN = { student: 'adventure', teacher: 'dashboard', collaborator: 'overview' };
   const NAV = {
     student: [['adventure', 'sparkle', 'My adventure'], ['map', 'map', 'Quest map'], ['album', 'trophy', 'Class album']],
-    teacher: [['dashboard', 'map', 'My quests'], '§class', ['next', 'arrow', 'Journey'], ['album', 'trophy', 'Class album'], '§run', ['teams', 'team', 'Teams'], ['live', 'eye', 'Live session'], ['report', 'book', 'Report']],
+    teacher: [['dashboard', 'map', 'My quests'], ['classes', 'team', 'My classes']],
     collaborator: [['overview', 'map', 'Overview'], ['contribution', 'pencil', 'My contribution'], ['review', 'eye', 'Review the quest'], ['facilitate', 'voices', 'On the day'], ['work', 'book', 'Student work'], ['spotlight', 'sparkle', 'Community Spotlight']],
   };
   const currentRole = () => ROUTES[location.hash.slice(1)] || null;
@@ -100,7 +115,7 @@
       if (st.ui.role !== role) { st.ui.role = role; st.ui.screen = null; st.ui.lookUp = false; }
       const screen = role === 'student' && !joinedHere(st) ? 'adventure' : st.ui.screen || DEFAULT_SCREEN[role];
       const pp = role === 'collaborator' ? sel.partnerProgress() : null;
-      const badge = (id) => (id === 'review' && pp && !pp.signedOff && pp.contributed && pp.reviewed < pp.items.length ? ` <span class="pill peach">${pp.items.length - pp.reviewed}</span>` : id === 'facilitate' && sel.pendingInteractions().length ? ` <span class="pill peach">${sel.pendingInteractions().length}</span>` : id === 'live' && st.help.some((h) => h.open) ? ` <span class="pill peach">help</span>` : '');
+      const badge = (id) => (id === 'review' && pp && !pp.signedOff && pp.contributed && pp.reviewed < pp.items.length ? ` <span class="pill peach">${pp.items.length - pp.reviewed}</span>` : id === 'facilitate' && sel.pendingInteractions().length ? ` <span class="pill peach">${sel.pendingInteractions().length}</span>` : id === 'work' && partnerToCheck().length ? ` <span class="pill peach">${partnerToCheck().length}</span>` : id === 'classes' && st.help.some((h) => h.open) ? ` <span class="pill peach">help</span>` : '');
       root.innerHTML = `
       <div class="shell role-${role}${demoOn() ? ' demo-on' : ''}">
         <aside class="sidebar">
@@ -109,7 +124,7 @@
           <nav class="side-nav" aria-label="${ROLE_LABEL[role]} screens">
             ${(role === 'student' && !joinedHere(st) ? [['adventure', 'arrow', 'Join a quest']] : NAV[role]).map((n) => typeof n === 'string'
               ? `<div class="side-label side-sub">${n === '§class' ? `Your class · <span class="mono">${esc(sessionCode())}</span>` : `Running · ${esc(st.quest.title || 'Untitled quest')}`}</div>`
-              : `<button data-a="screen" data-screen="${n[0]}" aria-current="${screen === n[0] || (n[0] === 'dashboard' && screen === 'builder')}">${Art.icon(n[1], 19)}${n[2]}${badge(n[0])}</button>`).join('')}
+              : `<button data-a="screen" data-screen="${n[0]}" aria-current="${screen === n[0] || (n[0] === 'dashboard' && screen === 'builder') || (n[0] === 'classes' && CLASS_TABS.some(([k]) => k === screen))}">${Art.icon(n[1], 19)}${n[2]}${badge(n[0])}</button>`).join('')}
           </nav>
           <div class="side-tip"><strong>${Art.icon('leaf', 16)} Look up, not down</strong>
           The best clues are in the real world.</div>
@@ -717,13 +732,63 @@
     return `
       <div class="stack">
         ${screen === 'builder' ? teacherBuilder(st)
-          : screen === 'teams' ? teacherTeams(st)
-          : screen === 'live' ? teacherLive(st)
-          : screen === 'album' ? `<div class="stage-wrap stack">${albumScreen(st, 'teacher')}</div>`
-          : screen === 'report' ? teacherReport(st)
-          : screen === 'next' ? Journey.teacher(st)
+          : screen === 'classes' ? classesScreen(st)
+          : CLASS_TABS.some(([k]) => k === screen) ? classPage(st, screen)
           : teacherDashboard(st)}
       </div>`;
+  }
+
+  function classPage(st, tab) {
+    const live = st.phase !== 'LOBBY', pend = sel.pendingEvidence().length + sel.pendingFinales().length + sel.pendingBonus().length;
+    const quests = Object.entries(st.library).map(([id, r]) => [id, (id === st.activeQuest ? st.quest : r.quest).title || 'Untitled quest']);
+    inClassPage = true;
+    let inner = '';
+    try {
+      inner = tab === 'teams' ? teacherTeams(st) : tab === 'live' ? teacherLive(st) : tab === 'album' ? `<div class="stage-wrap stack">${albumScreen(st, 'teacher')}</div>` : tab === 'report' ? teacherReport(st) : Journey.teacher(st);
+    } finally { inClassPage = false; }
+    return `<div class="stack">
+      ${pageHead(`Class code <span class="mono">${esc(sessionCode())}</span>`, esc(className(st)), `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="classes">${Art.icon('back', 15)} My classes</button>`)}
+      <div class="class-bar">
+        <span class="class-now">${Art.icon('map', 16)} Running <strong>${esc(st.quest.title || 'Untitled quest')}</strong>
+          ${st.ui.pickRun && !live ? '' : `<button class="btn btn-ghost btn-sm" data-a="pick-run" ${live ? 'disabled title="End the live session first"' : ''}>Change</button>`}</span>
+        <span class="class-stat"><strong>${Object.keys(st.seats).length}/${SEED.participants.length}</strong> joined</span>
+        <span class="class-stat"><strong>${pend}</strong> to review</span>
+        <span class="pill ${live ? 'mint' : 'plain'}">${live ? 'Session live' : 'In the lobby'}</span>
+      </div>
+      ${st.ui.pickRun && !live ? `<div class="card row" style="gap:8px;padding:12px 16px"><label class="fld" for="run-q" style="margin:0">Run this quest</label>
+        <select class="input" id="run-q" style="width:auto;min-width:220px">${quests.map(([id, t]) => `<option value="${id}" ${id === st.activeQuest ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+        <button class="btn btn-primary btn-sm" data-a="run-q">Run it</button><button class="btn btn-ghost btn-sm" data-a="pick-run-x">Cancel</button></div>` : ''}
+      <nav class="class-tabs" aria-label="Class sections">${CLASS_TABS.map(([k, l]) => `<button data-a="screen" data-screen="${k}" aria-current="${tab === k}">${l}${k === 'live' && st.help.some((h) => h.open) ? ' <span class="pill peach">help</span>' : ''}</button>`).join('')}</nav>
+      ${inner}
+    </div>`;
+  }
+
+  function classesScreen(st) {
+    const here = sessionCode(), others = classList().filter((c) => c.code !== here), live = st.phase !== 'LOBBY';
+    return `<div class="stack">
+      ${pageHead('Educator studio', 'My classes', `<button class="btn btn-primary" data-a="new-class">${Art.icon('plus', 16)} New class</button>`)}
+      ${st.ui.newClass ? `<form class="card stack" data-form="new-class" style="gap:8px">
+        <div class="spread"><h3 style="margin:0">New class</h3><button class="btn btn-ghost btn-sm" type="button" data-a="new-class-x">Cancel</button></div>
+        <label class="fld" for="nc-name">Class name</label><input class="input" id="nc-name" placeholder="e.g. Year 8 History" required maxlength="60">
+        <p class="hint-note" style="margin:0">It gets its own class code for students to join, and starts with a copy of your quests.</p>
+        <button class="btn btn-primary btn-sm" type="submit" style="align-self:flex-start">Create class</button></form>` : ''}
+      <div class="grid-3">
+        <div class="card quest-card is-active">
+          <div class="spread"><span class="pill mono">${esc(here)}</span><span class="pill ${live ? 'mint' : 'plain'}">${live ? 'Session live' : 'In the lobby'}</span></div>
+          ${st.ui.renameClass ? `<form class="row" data-form="rename-class" style="gap:6px;margin:8px 0 2px"><label class="sr-only" for="rc-name">Class name</label><input class="input" id="rc-name" value="${esc(st.className)}" maxlength="60" style="flex:1"><button class="btn btn-primary btn-sm">Save</button></form>`
+            : `<h3 style="margin:8px 0 2px">${esc(className(st))} <button class="btn btn-ghost btn-sm" data-a="rename-class" aria-label="Rename class">${Art.icon('pencil', 14)}</button></h3>`}
+          <p class="hint-note" style="margin:0 0 10px">Running ${esc(st.quest.title || 'Untitled quest')} · ${Object.keys(st.seats).length}/${SEED.participants.length} joined</p>
+          <div class="row" style="margin-top:auto"><button class="btn btn-secondary btn-sm" data-a="screen" data-screen="${st.ui.classTab || 'next'}">Open</button></div>
+        </div>
+        ${others.map((c) => `<div class="card quest-card">
+          <div class="spread"><span class="pill mono">${esc(c.code)}</span></div>
+          <h3 style="margin:8px 0 2px">${esc(c.name || 'Class ' + c.code)}</h3>
+          <p class="hint-note" style="margin:0 0 10px">${c.quest ? 'Last ran ' + esc(c.quest) : 'No quest yet'}</p>
+          <div class="row" style="margin-top:auto"><button class="btn btn-secondary btn-sm" data-a="go-class" data-code="${esc(c.code)}">Open</button></div>
+        </div>`).join('')}
+      </div>
+      <p class="hint-note" style="margin:0">Classes you’ve opened on this device. Each class has its own students, teams, journey and album.</p>
+    </div>`;
   }
 
   function teacherDashboard(st) {
@@ -734,7 +799,7 @@
     const code = typeof Sync !== 'undefined' ? Sync.state.session : 'FITZ-DEMO';
     return `
       <div class="stack">
-        ${pageHead(`Educator studio · class code <span class="mono">${esc(code)}</span>`, 'My quests', `<button class="btn btn-primary" data-a="new-quest" ${live ? 'disabled title="End the live session first"' : ''}>${Art.icon('plus', 16)} New quest</button>`)}
+        ${pageHead('Educator studio', 'My quests', `<button class="btn btn-primary" data-a="new-quest" ${live ? 'disabled title="End the live session first"' : ''}>${Art.icon('plus', 16)} New quest</button>`)}
         ${st.ui.newQuest && !live ? `<div class="card new-quest">
           <div class="spread"><h3 style="margin:0">Start a new quest</h3><button class="btn btn-ghost btn-sm" data-a="new-quest-x">Cancel</button></div>
           <label class="fld" for="nq-title">Working title (optional)</label><input class="input" id="nq-title" placeholder="e.g. Pollinator Patrol at the community garden" value="${esc(st.ui.nqTitle || '')}">
@@ -758,20 +823,15 @@
           </form>`; })()}</div>` : ''}
         <div class="grid-3">
           ${quests.map(({ id, q, active }) => `<div class="card quest-card ${active ? 'is-active' : ''}">
-            <div class="spread"><span class="pill ${q.status === 'PUBLISHED' ? 'mint' : 'plain'}">${q.status === 'PUBLISHED' ? 'Published' : 'Draft'}</span>${active ? '<span class="pill lavender">Running now</span>' : ''}</div>
+            <div class="spread"><span class="pill ${q.status === 'PUBLISHED' ? 'mint' : 'plain'}">${q.status === 'PUBLISHED' ? 'Published' : 'Draft'}</span>${active ? `<span class="pill lavender">Running in ${esc(className(st))}</span>` : ''}</div>
             <h3 style="margin:8px 0 2px">${esc(q.title || 'Untitled quest')}</h3>
-            <p class="hint-note" style="margin:0 0 10px">${esc(q.venue || 'No venue yet')} · ${q.duration || 60} min · ${q.templateId === 'blank' ? 'written from scratch' : 'from an example'}</p>
+            <p class="hint-note" style="margin:0 0 10px">${esc(q.venue || 'No venue yet')} · ${q.duration || 60} min${q.partner && q.partner.name ? ' · with ' + esc(q.partner.name) : ''}</p>
             <div class="row" style="margin-top:auto">${active
               ? `<button class="btn btn-secondary btn-sm" data-a="screen" data-screen="builder">${Art.icon('pencil', 15)} Edit</button>${q.status === 'PUBLISHED' ? `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="live">${Art.icon('eye', 15)} Live session</button>` : ''}`
-              : `<button class="btn btn-secondary btn-sm" data-a="open-quest" data-id="${id}" ${live ? 'disabled' : ''}>Run with my class</button><button class="btn btn-ghost btn-sm" data-a="del-quest" data-id="${id}">Delete</button>`}</div>
+              : `<button class="btn btn-secondary btn-sm" data-a="edit-quest" data-id="${id}" ${live ? 'disabled title="End the live session first"' : ''}>${Art.icon('pencil', 15)} Edit</button><button class="btn btn-ghost btn-sm" data-a="open-quest" data-id="${id}" ${live ? 'disabled' : ''}>Run with ${esc(className(st))}</button><button class="btn btn-ghost btn-sm" data-a="del-quest" data-id="${id}">Delete</button>`}</div>
           </div>`).join('')}
         </div>
         ${live ? `<p class="hint-note" style="margin:0">A live session is running. Return it to the lobby (Live session → Back) before switching quests.</p>` : ''}
-        <div class="grid-3">
-          <div class="card wash-mint"><div class="eyebrow teal">Students joined</div><h2 style="font-size:40px">${Object.keys(st.seats).length}<small style="font-size:20px">/${SEED.participants.length}</small></h2><p style="margin:0">with class code <span class="mono">${esc(code)}</span></p></div>
-          <div class="card wash-peach"><div class="eyebrow coral">Pending reviews</div><h2 style="font-size:40px">${String(pend).padStart(2, '0')}</h2><p style="margin:0">${pend ? 'Evidence, finales or discoveries waiting in the live room.' : 'Nothing waiting — all clear.'}</p></div>
-          ${Partner.educatorCard(st)}
-        </div>
       </div>`;
   }
 
@@ -835,7 +895,7 @@
       </form>`;
   }
   function builderSources(st) {
-    return `${Assistant.sources()}
+    return `${Assistant.sources()}${Partner.educatorCard(st)}
       <div class="card"><h3 style="margin:0 0 6px">${Art.icon('sparkle', 18)} Want a head start?</h3>
         <p style="margin:0">Add the pages or notes you trust, then ask the assistant to draft the whole quest from them. It uses only these sources, and nothing reaches students until you’ve checked and approved it.</p></div>`;
   }
@@ -1030,11 +1090,25 @@
       <div class="stack">
         ${pageHead(`Community partner · ${esc(pq.title)}`, TITLES[screen], picker, 'coral')}
         ${screen === 'overview' ? Partner.overview(st, pqId) : screen === 'contribution' ? Partner.contribution(st, pqId) : screen === 'review' ? Partner.review(st, pqId)
-          : screen === 'facilitate' ? facilitateScreen(st, sel.pendingInteractions()) : Partner.quotes(st) + partnerWork(st)}
+          : screen === 'facilitate' ? facilitateScreen(st, sel.pendingInteractions()) : partnerChecks(st) + Partner.quotes(st) + partnerWork(st)}
       </div>`;
   }
 
 
+  /* Work on tracks the educator set to be checked by the partner. */
+  const partnerToCheck = () => sel.pendingEvidence().filter((p) => (SEED.missions[p.topic].assess || {}).verify === 'partner');
+  function partnerChecks(st) {
+    const mine = SEED.topics.filter((t) => (SEED.missions[t].assess || {}).verify === 'partner');
+    if (!mine.length) return '';
+    const toCheck = partnerToCheck();
+    return `<div class="card"><div class="spread"><h3 style="margin:0">${Art.icon('check', 18)} Work for you to check</h3><span class="pill ${toCheck.length ? 'peach' : 'plain'}">${toCheck.length}</span></div>
+      <p class="hint-note" style="margin:4px 0 10px">The educator asked you to check ${mine.map((t) => '“' + esc(SEED.missions[t].name || 'Track ' + t) + '”').join(', ')}.</p>
+      ${toCheck.length ? `<div class="stack" style="gap:10px">${toCheck.map((p) => { const m = SEED.missions[p.topic], ev = st.evidence[p.id]; return `<div class="queue-row"><div class="meta"><strong>${esc(who(p))}</strong> · ${esc(m.name)}
+          ${ev.photo ? `<img class="ev-photo" src="${ev.photo}" alt="Photo submitted by ${esc(who(p))}">` : ''}${ev.quiz ? `<p class="hint-note" style="margin:4px 0">Quick check: ${ev.quiz.score}/${ev.quiz.total}</p>` : ''}
+          ${m.assess.evidence === 'photo' ? '' : `<dl class="evidence-quote">${m.evidenceFields.map((f) => `<dt>${esc(f.label)}</dt><dd>${esc(ev.answers[f.key])}</dd>`).join('')}</dl>`}</div>
+          <div class="stack" style="gap:8px"><button class="btn btn-teal btn-sm" data-a="pverify-ev" data-pid="${p.id}">${Art.icon('check', 15)} Looks right</button><button class="btn btn-danger-ghost btn-sm" data-a="preturn-ev" data-pid="${p.id}">Needs changes</button></div></div>`; }).join('')}</div>`
+        : '<p class="hint-note" style="margin:0">Nothing to check yet. Students’ work appears here when they send it.</p>'}</div>`;
+  }
   function partnerWork(st) {
     const homes = SEED.homeGroups.filter((h) => ['SUBMITTED', 'APPROVED'].includes(st.finale[h].status));
     return `<div class="card"><div class="eyebrow coral">Partner feedback</div><h3>Teams’ finale answers</h3>
@@ -1051,17 +1125,13 @@
   function facilitateScreen(st, pendD) {
     const promptIdx = st.contributor.interactionPrompt || 0;
     const hasConversations = SEED.topics.some((t) => SEED.missions[t].needsFacilitator);
-    const toCheck = sel.pendingEvidence().filter((p) => (SEED.missions[p.topic].assess || {}).verify === 'partner');
+    const toCheck = partnerToCheck();
     return `
       <div class="card">
         <div class="eyebrow coral">${st.phase === 'LOBBY' ? 'Before the session starts' : 'Session in progress'}</div>
         <p style="margin:6px 0 0">${!hasConversations ? 'This quest has no arranged conversation activity. You can still review student work after it is submitted.' : st.phase === 'LOBBY' ? 'The educator has not started the session yet. Choose a discussion question while you wait.' : 'Meet students as arranged with the educator. Put your device away while you talk, then return to confirm participation.'}</p>
       </div>
-      ${toCheck.length ? `<div class="card"><div class="spread"><h3>${Art.icon('check', 18)} Evidence for you to verify</h3><span class="pill peach">${toCheck.length}</span></div>
-        <div class="stack" style="gap:10px">${toCheck.map((p) => { const m = SEED.missions[p.topic], ev = st.evidence[p.id]; return `<div class="queue-row"><div class="meta"><strong>${esc(who(p))}</strong> · ${esc(m.name)}
-          ${ev.photo ? `<img class="ev-photo" src="${ev.photo}" alt="Photo submitted by ${esc(who(p))}">` : ''}${ev.quiz ? `<p class="hint-note" style="margin:4px 0">Quick check: ${ev.quiz.score}/${ev.quiz.total}</p>` : ''}
-          ${m.assess.evidence === 'photo' ? '' : `<dl class="evidence-quote">${m.evidenceFields.map((f) => `<dt>${esc(f.label)}</dt><dd>${esc(ev.answers[f.key])}</dd>`).join('')}</dl>`}</div>
-          <div class="stack" style="gap:8px"><button class="btn btn-teal btn-sm" data-a="pverify-ev" data-pid="${p.id}">${Art.icon('check', 15)} Verify</button><button class="btn btn-danger-ghost btn-sm" data-a="preturn-ev" data-pid="${p.id}">Needs revision</button></div></div>`; }).join('')}</div></div>` : ''}
+      ${toCheck.length ? `<div class="card row" style="gap:8px;padding:12px 16px"><span style="flex:1">Work from <strong>${toCheck.length}</strong> student${toCheck.length === 1 ? '' : 's'} is waiting for you to check.</span><button class="btn btn-secondary btn-sm" data-a="screen" data-screen="work">Open Student work</button></div>` : ''}
       <div class="grid-2">
         <div class="card">
           <div class="eyebrow coral">Prepare to talk</div>
@@ -1116,6 +1186,19 @@
     root.querySelectorAll('[data-fwrite]').forEach((t) => t.addEventListener('change', () => { const me = SEED.byId[S().ui.student]; Engine.dispatch('finaleWrite', { home: me.home, stepId: t.dataset.fwrite, text: t.value }); }));
     if (typeof Partner !== 'undefined') Partner.bind(root);
     if (typeof CommunitySpotlight !== 'undefined') CommunitySpotlight.bind(root);
+    root.querySelectorAll('[data-form="new-class"]').forEach((f) => f.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = f.querySelector('#nc-name').value.trim(); if (!name) return;
+      const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let code = '';
+      do { code = 'C-' + Array.from({ length: 5 }, () => abc[Math.floor(Math.random() * abc.length)]).join(''); } while (classList().some((c) => c.code === code));
+      if (!Engine.prepareClass(code, name)) return toast('This browser can’t save a new class (storage is blocked).', 'error');
+      S().ui.newClass = false; rememberClass(S());
+      try { const list = classList(); list.splice(1, 0, { code, name, quest: S().quest.title || '', at: Date.now() }); localStorage.setItem('wq-classes', JSON.stringify(list)); } catch {}
+      goToClass(code);
+    }));
+    root.querySelectorAll('[data-form="rename-class"]').forEach((f) => f.addEventListener('submit', (e) => {
+      e.preventDefault(); const r = act('renameClass', { name: f.querySelector('#rc-name').value }); if (r.ok) { S().ui.renameClass = false; rememberClass(S()); render(); }
+    }));
     root.querySelectorAll('[data-a]').forEach((el) => {
       const a = el.dataset.a;
       if (a === 'pq-sel') { el.addEventListener('change', () => { S().ui.pq = el.value; render(); }); return; }
@@ -1126,7 +1209,7 @@
       el.addEventListener('click', (e) => {
         switch (a) {
           case 'role': location.hash = ROUTE_OF[el.dataset.role] || ''; return;
-          case 'screen': return act('setScreen', { screen: el.dataset.screen });
+          case 'screen': if (CLASS_TABS.some(([k]) => k === el.dataset.screen)) S().ui.classTab = el.dataset.screen; return act('setScreen', { screen: el.dataset.screen });
           case 'reset': if (confirmReset()) { Assistant.forgetAll(); act('resetDemo'); } return;
           case 'mtab': S().ui.missionTab = el.dataset.tab; S().ui.screen = 'adventure'; render(); return;
           case 'hints': S().ui.hintsOpen = !S().ui.hintsOpen; S().ui.hintsShown = 1; render(); return;
@@ -1138,6 +1221,18 @@
           case 'show-code': return JoinCode.open(sessionCode(), S().quest.title);
           case 'demo-toggle': S().ui.demoOpen = !S().ui.demoOpen; render(); return;
           case 'safety': return act('updateQuest', { field: 'safety', value: el.checked }), render();
+          case 'pick-run': S().ui.pickRun = true; return render();
+          case 'pick-run-x': S().ui.pickRun = false; return render();
+          case 'run-q': { const id = (document.getElementById('run-q') || {}).value; S().ui.pickRun = false; if (id && id !== S().activeQuest) act('openQuest', { id }); return render(); }
+          case 'new-class': S().ui.newClass = true; return render();
+          case 'new-class-x': S().ui.newClass = false; return render();
+          case 'rename-class': S().ui.renameClass = true; return render();
+          case 'go-class': return goToClass(el.dataset.code);
+          case 'edit-quest': {
+            const id = el.dataset.id, t = (S().library[id] || { quest: {} }).quest.title || 'this quest';
+            if (!confirm(`Editing “${t}” also makes it the quest ${className(S())} runs. You can switch back from the class page. Continue?`)) return;
+            const r = act('openQuest', { id }); if (r.ok) { S().ui.screen = 'builder'; S().ui.bStep = 'trip'; render(); } return;
+          }
           case 'copy-link': { const t = el.dataset.link; try { navigator.clipboard.writeText(t); toast('Partner link copied — send it to your partner.', 'success'); } catch { prompt('Copy this link:', t); } return; }
           case 'tamper': return typeof Sync !== 'undefined' && Sync.tamperTest().then((r) => toast(r.msg, r.ok ? 'success' : 'error'));
           case 'scan-station': {
@@ -1432,7 +1527,9 @@
   { const pid = S().ui.joinedIn && S().ui.joinedIn[sessionCode()]; if (pid) S().ui.student = pid; }
   document.addEventListener('wq-sync-msg', (e) => toast(e.detail, 'error'));
 
+  try { if (sessionStorage.getItem('wq-open-class')) { sessionStorage.removeItem('wq-open-class'); S().ui.role = 'teacher'; S().ui.screen = S().ui.classTab || 'next'; } } catch {}
   applyDemoParams();
+  rememberClass(S());
   render();
   if (typeof Sync !== 'undefined') Sync.start();
 })();

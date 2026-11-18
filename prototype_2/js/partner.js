@@ -138,7 +138,7 @@ const Partner = (() => {
   function educatorCard(st) {
     const c = st.contributor, p = Engine.sel.partnerProgress(), link = partnerLink();
     return `<form class="card stack" data-form="partner" style="gap:6px">
-      <div class="spread"><div class="eyebrow">Community partner</div><span class="pill ${p.signedOff ? 'mint' : 'peach'}">${p.signedOff ? 'signed off' : p.open ? p.open + ' suggestion' + (p.open > 1 ? 's' : '') : !p.contributed ? 'invited' : 'reviewing'}</span></div>
+      <div class="spread"><h3 style="margin:0">${Art.icon('handshake', 18)} Community partner for this quest</h3><span class="pill ${p.signedOff ? 'mint' : 'peach'}">${p.signedOff ? 'signed off' : p.open ? p.open + ' suggestion' + (p.open > 1 ? 's' : '') : !p.contributed ? 'invited' : 'reviewing'}</span></div>
       <div class="grid-2" style="gap:8px"><div><label class="fld" for="pt-name">Name</label><input class="input" id="pt-name" value="${esc(st.quest.partner.name)}"></div><div><label class="fld" for="pt-org">Organisation</label><input class="input" id="pt-org" value="${esc(st.quest.partner.org)}"></div></div>
       <button class="btn btn-secondary btn-sm" type="submit" style="align-self:flex-start">Save</button>
       <p class="hint-note" style="margin:4px 0 0">Reviewed ${p.reviewed}/${p.items.length} parts${c.availability ? ' · available ' + esc(c.availability) : ''}.${p.open ? ' <a href="#educator" data-a="screen" data-screen="builder">Answer their suggestions</a>.' : ''}</p>

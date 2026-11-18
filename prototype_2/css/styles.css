@@ -850,3 +850,14 @@ a.brand { text-decoration: none; color: inherit; }
 .j-f.me .j-f-ic { border-color: var(--violet); color: var(--violet-deep); }
 .j-f.me small:first-child { color: var(--violet-deep); font-weight: 700; }
 @media (max-width: 700px) { .j-flow { flex-direction: column; gap: 18px; } .j-f { margin-right: 0; } .j-f:not(:last-child)::after { content: '↓'; right: auto; left: 22px; top: auto; bottom: -18px; transform: none; } }
+
+/* class page */
+.class-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 12px 16px; border-radius: var(--radius-mini, 14px); background: var(--white); border: 1.5px solid var(--stroke); }
+.class-now { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 260px; min-width: 0; }
+.class-stat { color: var(--muted); font-size: 14px; }
+.class-stat strong { color: var(--ink); }
+.class-tabs { display: flex; gap: 4px; border-bottom: 1.5px solid var(--stroke); overflow-x: auto; scrollbar-width: none; }
+.class-tabs button { border: 0; background: none; font: 600 15px var(--font-body); color: var(--muted); padding: 10px 14px; border-bottom: 3px solid transparent; margin-bottom: -1.5px; cursor: pointer; white-space: nowrap; }
+.class-tabs button:hover { color: var(--ink); }
+.class-tabs button[aria-current="true"] { color: var(--violet-deep); border-bottom-color: var(--violet); }
+.class-tabs button:focus-visible { outline: 2px solid var(--violet); outline-offset: -2px; border-radius: 8px; }
