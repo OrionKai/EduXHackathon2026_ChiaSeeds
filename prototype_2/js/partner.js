@@ -129,9 +129,10 @@ const Partner = (() => {
   }
 
   /* ---------------- educator side ---------------- */
+  /* The link a partner opens: this class's session, partner view. */
+  const partnerLink = () => `${location.origin}${location.pathname}?session=${encodeURIComponent(typeof Sync !== 'undefined' ? Sync.state.session : '')}#partner`;
   function educatorCard(st) {
-    const c = st.contributor, p = Engine.sel.partnerProgress(), code = typeof Sync !== 'undefined' ? Sync.state.session : '';
-    const link = `${location.origin}${location.pathname}?session=${encodeURIComponent(code)}#partner`;
+    const c = st.contributor, p = Engine.sel.partnerProgress(), link = partnerLink();
     return `<form class="card stack" data-form="partner" style="gap:6px">
       <div class="spread"><div class="eyebrow">Community partner</div><span class="pill ${p.signedOff ? 'mint' : 'peach'}">${p.signedOff ? 'signed off' : p.open ? p.open + ' suggestion' + (p.open > 1 ? 's' : '') : !p.contributed ? 'invited' : 'reviewing'}</span></div>
       <div class="grid-2" style="gap:8px"><div><label class="fld" for="pt-name">Name</label><input class="input" id="pt-name" value="${esc(st.quest.partner.name)}"></div><div><label class="fld" for="pt-org">Organisation</label><input class="input" id="pt-org" value="${esc(st.quest.partner.org)}"></div></div>
@@ -177,5 +178,5 @@ const Partner = (() => {
     }));
   }
 
-  return { overview, contribution, review, quotes, educatorCard, requestsCard, flagsCard, label, bind };
+  return { overview, contribution, review, quotes, educatorCard, requestsCard, flagsCard, label, bind, link: partnerLink };
 })();

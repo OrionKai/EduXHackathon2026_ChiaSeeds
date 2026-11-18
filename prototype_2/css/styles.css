@@ -799,3 +799,16 @@ a.brand { text-decoration: none; color: inherit; }
 .art-opt input:focus-visible + .art-thumb { outline: 2px solid var(--violet); outline-offset: 2px; }
 .art-opt input:disabled + .art-thumb { cursor: default; opacity: .7; }
 .album-grid.past { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+
+/* journey, as seen from the builder */
+.j-flow { list-style: none; margin: 12px 0 0; padding: 0; display: flex; gap: 0; overflow-x: auto; }
+.j-f { flex: 1 0 150px; display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 14px; background: var(--paper); position: relative; margin-right: 22px; }
+.j-f:not(:last-child)::after { content: '→'; position: absolute; right: -18px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 700; }
+.j-f span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.j-f strong { font-size: 14px; line-height: 1.25; }
+.j-f small { font-size: 12px; color: var(--muted); }
+.j-f-ic { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--white); border: 1.5px solid var(--stroke); color: var(--muted); flex: none; }
+.j-f.me { background: var(--lavender); }
+.j-f.me .j-f-ic { border-color: var(--violet); color: var(--violet-deep); }
+.j-f.me small:first-child { color: var(--violet-deep); font-weight: 700; }
+@media (max-width: 700px) { .j-flow { flex-direction: column; gap: 18px; } .j-f { margin-right: 0; } .j-f:not(:last-child)::after { content: '↓'; right: auto; left: 22px; top: auto; bottom: -18px; transform: none; } }

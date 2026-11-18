@@ -849,24 +849,12 @@
         <h3 style="margin:0 0 6px">Ready to publish?</h3>
         ${todo.length ? `<p class="hint-note" style="margin:0 0 6px">${todo.length} thing${todo.length > 1 ? 's' : ''} to do first:</p><ul class="b-todos">${todo.join('')}</ul>` : `<p style="margin:0 0 6px">${Art.icon('check', 16)} Every track, the finale and the extras are complete and approved.</p>`}
         <ul class="b-todos">
-          <li class="b-todo"><span>Community partner: <strong>${p.signedOff ? 'signed off ✓' : p.open ? p.open + ' suggestion(s) waiting for you (Tracks step)' : !p.contributed ? 'hasn’t written their contribution yet' : `reviewing (${p.reviewed}/${p.items.length} parts)`}</strong></span>${p.signedOff ? '' : '<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="dashboard">Partner link</button>'}</li>
-          <li class="b-todo"><label><input type="checkbox" data-a="safety" ${q.safety ? 'checked' : ''} ${dis}> I’ve confirmed safety, supervision and the venue booking</label></li>
+          <li class="b-todo"><span>Community partner: <strong>${p.signedOff ? 'signed off ✓' : p.open ? p.open + ' suggestion(s) waiting for you (Tracks step)' : !p.contributed ? 'hasn’t written their contribution yet' : `reviewing (${p.reviewed}/${p.items.length} parts)`}</strong></span>${p.signedOff ? '' : `<span class="row" style="gap:4px"><button class="btn btn-ghost btn-sm" data-a="copy-link" data-link="${esc(Partner.link())}">${Art.icon('handshake', 14)} Copy partner link</button><a class="btn btn-ghost btn-sm" href="${esc(Partner.link())}" target="_blank" rel="noopener">Open their view</a></span>`}</li>
         </ul>
+        <label class="opt" style="margin:8px 0 12px"><input type="checkbox" data-a="safety" ${q.safety ? 'checked' : ''} ${dis}><span class="opt-box" aria-hidden="true"></span><span class="opt-text">I’ve confirmed safety, supervision and the venue booking<small>Needed before you can publish.</small></span></label>
         <button class="btn btn-teal" data-a="publish" ${dis}>${locked ? 'Published ✓' : 'Publish to students'}</button>
       </div>
-      ${Journey.builderCard(st)}
-      <div class="card wash-mint">
-        <div class="eyebrow teal">What students will see first</div>
-        <div class="preview-phone">
-          <div class="row" style="justify-content:space-between"><strong style="font-family:var(--font-display)">${Art.logo(26)} WorldQuest</strong><span class="pill lavender">Briefing</span></div>
-          <h3 id="pv-title" style="margin-top:12px">${esc(q.title)}</h3>
-          <p id="pv-obj" class="hint-note">${esc(q.objective)}</p>
-          <div class="gallery-note" style="margin-bottom:10px"><h4>${Art.icon('map', 16)} <span id="pv-venue">${esc(q.venue)}</span></h4></div>
-          <p class="hint-note" style="margin:0 0 8px">${esc(st.content.story.opening || 'Your story opening appears here.')}</p>
-          <div class="row" style="margin-bottom:10px">${SEED.topics.map((t) => topicChip(t)).join('')}</div>
-          <div class="card" style="padding:12px;background:var(--grad-collect);text-align:center"><strong>${Art.icon('puzzle', 16)} ${esc(SEED.finale.title)}</strong><br><small>Needs every track in the team</small></div>
-        </div>
-      </div>`;
+      ${Journey.builderCard(st)}`;
   }
 
   /* ---------------- next real experience (educator) ---------------- */
@@ -1141,6 +1129,7 @@
           case 'show-code': return JoinCode.open(sessionCode(), S().quest.title);
           case 'demo-toggle': S().ui.demoOpen = !S().ui.demoOpen; render(); return;
           case 'safety': return act('updateQuest', { field: 'safety', value: el.checked }), render();
+          case 'copy-link': { const t = el.dataset.link; try { navigator.clipboard.writeText(t); toast('Partner link copied — send it to your partner.', 'success'); } catch { prompt('Copy this link:', t); } return; }
           case 'tamper': return typeof Sync !== 'undefined' && Sync.tamperTest().then((r) => toast(r.msg, r.ok ? 'success' : 'error'));
           case 'scan-station': {
             const me = SEED.byId[S().ui.student], m = SEED.missions[me.topic];
@@ -1258,9 +1247,6 @@
     root.querySelectorAll('[data-q]').forEach((el) => {
       el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
         Engine.dispatch('updateQuest', { field: el.dataset.q, value: el.value });
-        const map = { title: 'pv-title', objective: 'pv-obj', venue: 'pv-venue' };
-        const pv = document.getElementById(map[el.dataset.q]);
-        if (pv) pv.textContent = el.value;
       });
     });
 

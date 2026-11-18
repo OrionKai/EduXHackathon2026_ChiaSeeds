@@ -36,14 +36,15 @@ const Engine = (() => {
   function newStep(s, type) {
     const st = { id: 'j' + Date.now().toString(36) + (stepSeq++), type, title: '', when: '', where: '', opens: 'after', date: '', opened: false, reason: '', done: false, checkins: {}, note: '' };
     if (type === 'quest') st.questId = s.activeQuest;
-    if (type === 'experience') st.exp = { activity: '', provider: '', org: '', bring: '', fallback: '', staff: '2', status: 'none', request: '', counterWhen: '' };
+    if (type === 'experience') st.exp = { activity: '', provider: '', org: '', email: '', bring: '', fallback: '', staff: '2', status: 'none', request: '', counterWhen: '' };
     return st;
   }
   function defaultJourney(s) {
     const n = { ...SEED.defaultNext(), ...((s.quest && s.quest.next) || {}) };
     const q = { ...newStep(s, 'quest'), id: 'j1', opens: 'start' };
     const x = { ...newStep(s, 'experience'), id: 'j2', title: n.activity, when: n.when, where: n.org,
-      exp: { activity: n.activity, provider: n.provider, org: n.org, bring: n.bring, fallback: n.fallback, staff: n.staff || '2', status: n.status || 'none', request: n.request || '', counterWhen: n.counterWhen || '' } };
+      whenDate: n.whenDate || '', whenTime: n.whenTime || '',
+      exp: { activity: n.activity, provider: n.provider, org: n.org, email: n.email || '', bring: n.bring, fallback: n.fallback, staff: n.staff || '2', status: n.status || 'none', request: n.request || '', counterWhen: n.counterWhen || '' } };
     const c = { ...newStep(s, 'class'), id: 'j3', title: 'Back in class: debrief', note: 'Use the Report’s “Misconceptions to address” to plan it.' };
     return { steps: n.enabled === false && !n.activity ? [q, c] : [q, x, c] };
   }
@@ -1122,10 +1123,12 @@ const Engine = (() => {
       const st = findStep(s, id), f = fields || {};
       if (!st) return { ok: false };
       ['title', 'when', 'where', 'note'].forEach((k) => { if (typeof f[k] === 'string') st[k] = f[k].trim().slice(0, 200); });
+      if (typeof f.whenDate === 'string') { st.whenDate = /^\d{4}-\d{2}-\d{2}$/.test(f.whenDate) ? f.whenDate : ''; st.whenTime = /^\d{2}:\d{2}$/.test(f.whenTime || '') ? f.whenTime : ''; st.when = SEED.fmtWhen(st.whenDate, st.whenTime); }
       if (['start', 'after', 'manual', 'date'].includes(f.opens)) st.opens = f.opens;
       if (typeof f.date === 'string') st.date = /^\d{4}-\d{2}-\d{2}$/.test(f.date) ? f.date : '';
       if (st.type === 'quest' && f.questId) { if (!s.library[f.questId] && f.questId !== s.activeQuest) return { ok: false, msg: 'Quest not found.' }; st.questId = f.questId; }
       if (st.type === 'experience') ['activity', 'provider', 'org', 'bring', 'fallback', 'staff'].forEach((k) => { if (typeof f[k] === 'string') st.exp[k] = f[k].trim().slice(0, 300); });
+      if (st.type === 'experience' && typeof f.email === 'string') { const m = f.email.trim().slice(0, 120); if (m && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m)) return { ok: false, msg: 'That email address doesn’t look right.' }; st.exp.email = m; }
       if (st.type === 'experience' && !st.title) st.title = st.exp.activity;
       return { ok: true, msg: 'Step saved.' };
     },
@@ -1164,28 +1167,53 @@ const Engine = (() => {
       audit('teacher', `Marked “${stepTitle(s, st)}” as ${st.done ? 'done' : 'not done'}.`);
       return { ok: true, msg: st.done ? `“${stepTitle(s, st)}” done — the next step can open.` : 'Marked as not done.' };
     },
-    sendBooking(s, { id, text }) {
+    sendBooking(s, { id, text, date, time }) {
       const st = id ? findStep(s, id) : firstExperience(s), n = st && st.exp;
       if (!n || !n.activity || !n.provider) return { ok: false, msg: 'Add the activity and provider first.' };
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(n.email || '')) return { ok: false, msg: 'Add the provider’s email in the step details first.' };
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return { ok: false, msg: 'Choose the date you’d like.' };
       const t = String(text || '').trim();
-      if (t.length < 20) return { ok: false, msg: 'Write the request first.' };
-      n.request = t.slice(0, 2000); n.status = 'sent';
+      if (t.length < 20) return { ok: false, msg: 'Write the message first.' };
+      n.request = t.slice(0, 2000); n.status = 'sent'; n.via = 'app'; n.askDate = date; n.askTime = /^\d{2}:\d{2}$/.test(time || '') ? time : ''; n.reply = '';
       audit('teacher', `Sent a booking request to ${n.provider}.`);
-      return { ok: true, msg: 'Request sent (from your school email in the full product).' };
+      return { ok: true, msg: `Request sent to ${n.provider} (simulated in this demo).` };
     },
-    providerReply(s, { id, accept, when }) {
+    bookDirectly(s, { id, date, time }) {
+      const st = findStep(s, id), n = st && st.exp;
+      if (!n) return { ok: false };
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return { ok: false, msg: 'Choose the date you agreed.' };
+      st.whenDate = date; st.whenTime = /^\d{2}:\d{2}$/.test(time || '') ? time : ''; st.when = SEED.fmtWhen(st.whenDate, st.whenTime);
+      n.status = 'accepted'; n.via = 'self';
+      audit('teacher', `Recorded a booking arranged directly${n.provider ? ' with ' + n.provider : ''}: ${st.when}.`);
+      return { ok: true, msg: `Booked for ${st.when}.` };
+    },
+    resetBooking(s, { id }) {
+      const st = findStep(s, id), n = st && st.exp;
+      if (!n) return { ok: false };
+      Object.assign(n, { status: 'none', via: '', reply: '', counterDate: '', counterTime: '', counterWhen: '' });
+      return { ok: true, silent: true };
+    },
+    providerReply(s, { id, decision, date, time, note, accept }) {
       const st = id ? findStep(s, id) : firstExperience(s), n = st && st.exp;
       if (!n || n.status !== 'sent') return { ok: false };
-      if (accept) { n.status = 'accepted'; audit('system', `${n.provider} accepted the booking (simulated provider).`); return { ok: true, msg: `${n.provider} accepted — booked.` }; }
-      n.status = 'counter'; n.counterWhen = String(when || 'another date').slice(0, 120);
+      const d = decision || (accept ? 'accept' : 'counter');
+      n.reply = String(note || '').trim().slice(0, 300);
+      if (d === 'accept') {
+        if (n.askDate) { st.whenDate = n.askDate; st.whenTime = n.askTime || ''; st.when = SEED.fmtWhen(st.whenDate, st.whenTime); }
+        n.status = 'accepted'; audit('system', `${n.provider} accepted the booking (simulated provider).`); return { ok: true, msg: `${n.provider} accepted — booked.` };
+      }
+      if (d === 'decline') { n.status = 'declined'; audit('system', `${n.provider} declined (simulated provider).`); return { ok: true, msg: `${n.provider} declined.` }; }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return { ok: false, msg: 'Choose the date to suggest.' };
+      n.status = 'counter'; n.counterDate = date; n.counterTime = /^\d{2}:\d{2}$/.test(time || '') ? time : ''; n.counterWhen = SEED.fmtWhen(n.counterDate, n.counterTime);
       audit('system', `${n.provider} suggested ${n.counterWhen} (simulated provider).`);
-      return { ok: true, msg: `${n.provider} suggested another date.` };
+      return { ok: true, msg: `${n.provider} suggested another time.` };
     },
     acceptCounter(s, { id } = {}) {
       const st = id ? findStep(s, id) : firstExperience(s), n = st && st.exp;
       if (!n || n.status !== 'counter') return { ok: false };
-      st.when = n.counterWhen; n.status = 'accepted';
-      audit('teacher', `Accepted the new date: ${st.when}.`);
+      if (n.counterDate) { st.whenDate = n.counterDate; st.whenTime = n.counterTime || ''; st.when = SEED.fmtWhen(st.whenDate, st.whenTime); } else st.when = n.counterWhen;
+      n.status = 'accepted';
+      audit('teacher', `Accepted the new time: ${st.when}.`);
       return { ok: true, msg: `Booked for ${st.when}.` };
     },
     experienceCheckIn(s, { participantId, code, byTeacher, stepId }) {

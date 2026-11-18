@@ -318,7 +318,7 @@ const TEMPLATES = {
 TEMPLATES.lost_museum.meta = { id: 'lost_museum', name: 'The Lost Museum', blurb: 'Fitzwilliam Museum, Cambridge · four galleries · 20 students' };
 TEMPLATES.lost_museum.questDefaults = { objective: 'Tell the difference between what objects show and what we guess', venue: 'The Fitzwilliam Museum, Cambridge', duration: 60, audience: { kind: 'secondary', ages: '13–16' },
   structure: { tracks: 4, classSize: 20, expertGroup: 5 },
-  next: { enabled: true, activity: 'Drawing class: draw an object from the trip', provider: 'Riverside Art Studio', org: 'Example art studio (simulated)', when: 'Thu 3 Dec, 2–3:30pm', bring: 'Your notes and your team’s museum sign', fallback: 'A drawing lesson in class with the art teacher', staff: '2', unlock: 'all', status: 'none', request: '', counterWhen: '' } };
+  next: { enabled: true, activity: 'Drawing class: draw an object from the trip', provider: 'Riverside Art Studio', org: 'Example art studio (simulated)', email: 'bookings@riverside-art.example', when: 'Thu 3 Dec, 14:00', whenDate: '2026-12-03', whenTime: '14:00', bring: 'Your notes and your team’s museum sign', fallback: 'A drawing lesson in class with the art teacher', staff: '2', unlock: 'all', status: 'none', request: '', counterWhen: '' } };
 /* How each track is assessed: check-in at the place, what evidence students submit, an optional
    multiple-choice check with a pass mark, and who verifies it. */
 SEED.defaultAssess = () => ({ checkin: 'photo_teacher', evidence: 'notes', quiz: [], pass: 0, verify: 'teacher' });
@@ -521,6 +521,13 @@ TEMPLATES.lost_museum.collectibles.unshift(...['A', 'B', 'C', 'D'].map((t, i) =>
   kind: 'track', track: t, hidden: false, evolves: true, activity: '', fact: 'You finished your track and taught your team.', promptLabel: '' })));
 TEMPLATES.blank.collectibles.forEach((c) => Object.assign(c, SEED.defaultEarn()));
 /* The next real experience after the quest (booked with a provider, unlocked for the class). */
+/* Dates and times are picked, never typed; this is how they read everywhere. */
+SEED.fmtWhen = (date, time) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return '';
+  const d = new Date(date + 'T12:00:00');
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + (/^\d{2}:\d{2}$/.test(time || '') ? ', ' + time : '');
+};
+SEED.splitWhen = (x) => ({ date: x.whenDate || '', time: x.whenTime || '' });
 SEED.defaultNext = () => ({ enabled: false, activity: '', provider: '', org: '', when: '', bring: '', fallback: '', staff: '2', unlock: 'all', status: 'none', request: '', counterWhen: '' });
 
 /* ================= Jigsaw structure is configurable per quest =================
