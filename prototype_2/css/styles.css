@@ -851,13 +851,35 @@ a.brand { text-decoration: none; color: inherit; }
 .j-f.me small:first-child { color: var(--violet-deep); font-weight: 700; }
 @media (max-width: 700px) { .j-flow { flex-direction: column; gap: 18px; } .j-f { margin-right: 0; } .j-f:not(:last-child)::after { content: '↓'; right: auto; left: 22px; top: auto; bottom: -18px; transform: none; } }
 
-/* class page */
-.class-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 12px 16px; border-radius: var(--radius-mini, 14px); background: var(--white); border: 1.5px solid var(--stroke); }
-.class-now { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 260px; min-width: 0; }
-.class-stat { color: var(--muted); font-size: 14px; }
-.class-stat strong { color: var(--ink); }
-.class-tabs { display: flex; gap: 4px; border-bottom: 1.5px solid var(--stroke); overflow-x: auto; scrollbar-width: none; }
-.class-tabs button { border: 0; background: none; font: 600 15px var(--font-body); color: var(--muted); padding: 10px 14px; border-bottom: 3px solid transparent; margin-bottom: -1.5px; cursor: pointer; white-space: nowrap; }
-.class-tabs button:hover { color: var(--ink); }
-.class-tabs button[aria-current="true"] { color: var(--violet-deep); border-bottom-color: var(--violet); }
-.class-tabs button:focus-visible { outline: 2px solid var(--violet); outline-offset: -2px; border-radius: 8px; }
+
+/* ---------- class page: class sections, then the quest it is running ---------- */
+.class-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: -6px; color: var(--muted); font-size: 14px; }
+.class-meta strong { color: var(--ink); }
+.seg { display: flex; gap: 4px; padding: 5px; width: fit-content; max-width: 100%; overflow-x: auto; scrollbar-width: none;
+  background: var(--white); border: 1.5px solid var(--stroke); border-radius: 999px; box-shadow: var(--shadow-card); }
+.seg button { border: 0; background: none; border-radius: 999px; padding: 10px 18px; min-height: 44px; cursor: pointer; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 8px; font: 700 15px var(--font-body); color: var(--muted); position: relative; transition: background .15s, color .15s; }
+.seg button:hover { color: var(--ink); background: var(--paper); }
+.seg button[aria-current="true"] { background: var(--violet); color: #fff; box-shadow: 0 6px 16px rgba(107, 92, 231, .28); }
+.seg button:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+.dot-alert { width: 8px; height: 8px; border-radius: 50%; background: #F07B7B; display: inline-block; box-shadow: 0 0 0 2px var(--white); }
+.run-card { background: var(--white); border: 1.5px solid var(--stroke); border-radius: var(--radius-card); box-shadow: var(--shadow-card); padding: 18px 20px 0; }
+.run-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.run-head h3 { margin: 2px 0 6px; font-size: 22px; }
+.run-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; color: var(--muted); font-size: 14px; }
+.run-meta strong { color: var(--ink); }
+.run-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 14px; border-radius: 14px; background: var(--lavender); }
+.run-tabs { display: flex; gap: 4px; margin: 16px -20px 0; padding: 0 12px; border-top: 1.5px solid var(--stroke); overflow-x: auto; scrollbar-width: none; }
+.run-tabs button { border: 0; background: none; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 7px;
+  padding: 13px 12px 11px; font: 600 15px var(--font-body); color: var(--muted); border-bottom: 3px solid transparent; }
+.run-tabs button:hover { color: var(--ink); }
+.run-tabs button[aria-current="true"] { color: var(--violet-deep); border-bottom-color: var(--violet); }
+.run-tabs button:focus-visible { outline: 2px solid var(--violet); outline-offset: -3px; border-radius: 8px; }
+@media (max-width: 700px) {
+  .seg { width: 100%; }
+  .seg button { flex: 1 1 0; justify-content: center; padding: 9px 8px; font-size: 13.5px; gap: 6px; }
+  .run-card { padding: 14px 14px 0; }
+  .run-tabs { margin: 12px -14px 0; padding: 0 6px; }
+  .run-tabs button { flex: 1 1 0; justify-content: center; padding: 12px 6px 10px; font-size: 14px; }
+}
+@media (max-width: 480px) { .seg button svg { display: none; } .seg button { padding: 9px 4px; } }

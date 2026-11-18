@@ -70,6 +70,9 @@
     : `<div class="spread page-head"><div><div class="eyebrow ${tone}">${eyebrow}</div><h2 style="margin:2px 0 0">${title}</h2></div>${actions ? `<div class="row" style="gap:8px">${actions}</div>` : ''}</div>`);
   /* The classes this teacher has opened on this device. Each class is its own class code. */
   const CLASS_TABS = [['next', 'Journey'], ['teams', 'Teams'], ['live', 'Live session'], ['report', 'Report'], ['album', 'Class album']];
+  /* A class has a journey and an album of its own; the quest it is running now has its live session, teams and report. */
+  const RUN_TABS = [['live', 'Live session', 'eye'], ['teams', 'Teams', 'team'], ['report', 'Report', 'book']];
+  const CLASS_SECTIONS = [['run', 'Current quest', 'map'], ['next', 'Journey', 'arrow'], ['album', 'Class album', 'trophy']];
   const classList = () => { try { return JSON.parse(localStorage.getItem('wq-classes') || '[]'); } catch { return []; } };
   function rememberClass(st) {
     try { const me = { code: sessionCode(), name: st.className || '', quest: st.quest.title || '', at: Date.now() };
@@ -753,25 +756,32 @@
   function classPage(st, tab) {
     const live = st.phase !== 'LOBBY', pend = sel.pendingEvidence().length + sel.pendingFinales().length + sel.pendingBonus().length;
     const S2 = Engine.studioState, quests = Object.entries(S2.library).map(([id, r]) => [id, (id === S2.activeQuest ? S2.quest : r.quest).title || 'Untitled quest']), outdated = Engine.runOutdated();
+    const inRun = RUN_TABS.some(([k]) => k === tab), section = inRun ? 'run' : tab;
+    const steps = st.journey.steps, at = steps.findIndex((x) => x.type === 'quest' && x.questId === st.activeQuest);
+    const help = st.help.some((h) => h.open);
     inClassPage = true;
     let inner = '';
     try {
       inner = tab === 'teams' ? teacherTeams(st) : tab === 'live' ? teacherLive(st) : tab === 'album' ? `<div class="stage-wrap stack">${albumScreen(st, 'teacher')}</div>` : tab === 'report' ? teacherReport(st) : Journey.teacher(st);
     } finally { inClassPage = false; }
+    const run = `<section class="run-card" aria-label="The quest this class is running">
+        <div class="run-head">
+          <div style="min-width:0"><div class="eyebrow">${at >= 0 ? `Step ${at + 1} of ${steps.length} in the journey` : 'Not in the journey yet'}</div>
+            <h3>${esc(st.quest.title || 'Untitled quest')}</h3>
+            <div class="run-meta"><span class="pill ${st.quest.status === 'PUBLISHED' ? 'mint' : 'plain'}">${st.quest.status === 'PUBLISHED' ? 'Published' : 'Draft'}</span><span><strong>${pend}</strong> to review</span>${help ? '<span class="pill peach">help asked</span>' : ''}</div></div>
+          <div class="row" style="gap:6px">${st.ui.pickRun && !live ? '' : `<button class="btn btn-secondary btn-sm" data-a="pick-run" ${live ? 'disabled title="End the live session first"' : ''}>Change quest</button>`}<button class="btn btn-ghost btn-sm" data-a="edit-quest" data-id="${esc(st.activeQuest)}">${Art.icon('pencil', 14)} Edit</button></div>
+        </div>
+        ${outdated ? `<div class="run-note">${Art.icon('pencil', 15)}<span style="flex:1">This quest has changed in My quests since the class got it.</span>${live ? '<span class="hint-note" style="margin:0">Update it after the session.</span>' : `<button class="btn btn-primary btn-sm" data-a="run-quest" data-id="${esc(st.activeQuest)}">Use the new version</button>`}</div>` : ''}
+        ${st.ui.pickRun && !live ? `<div class="run-note"><label class="fld" for="run-q" style="margin:0">Quest for this class</label>
+          <select class="input" id="run-q" style="width:auto;min-width:200px;flex:1">${quests.map(([id, t]) => `<option value="${id}" ${id === st.activeQuest ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+          <button class="btn btn-primary btn-sm" data-a="run-q">Use this quest</button><button class="btn btn-ghost btn-sm" data-a="pick-run-x">Cancel</button></div>` : ''}
+        <nav class="run-tabs" aria-label="Current quest">${RUN_TABS.map(([k, l, ic]) => `<button data-a="screen" data-screen="${k}" aria-current="${tab === k}">${Art.icon(ic, 16)}${l}${k === 'live' && help ? ' <span class="dot-alert" aria-label="help asked"></span>' : ''}</button>`).join('')}</nav>
+      </section>`;
     return `<div class="stack">
       ${pageHead(`Class code <span class="mono">${esc(sessionCode())}</span>`, esc(className(st)), `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="classes">${Art.icon('back', 15)} My classes</button>`)}
-      <div class="class-bar">
-        <span class="class-now">${Art.icon('map', 16)} Running <strong>${esc(st.quest.title || 'Untitled quest')}</strong>
-          ${st.ui.pickRun && !live ? '' : `<button class="btn btn-ghost btn-sm" data-a="pick-run" ${live ? 'disabled title="End the live session first"' : ''}>Change</button>`}</span>
-        <span class="class-stat"><strong>${Object.keys(st.seats).length}/${SEED.participants.length}</strong> joined</span>
-        <span class="class-stat"><strong>${pend}</strong> to review</span>
-        <span class="pill ${live ? 'mint' : 'plain'}">${live ? 'Session live' : 'In the lobby'}</span>
-      </div>
-      ${outdated ? `<div class="card row wash-lavender" style="gap:8px;padding:12px 16px"><span style="flex:1">${Art.icon('pencil', 15)} “${esc(st.quest.title)}” has changed in My quests since this class got it.</span>${live ? '<span class="hint-note" style="margin:0">You can update it after the session.</span>' : `<button class="btn btn-primary btn-sm" data-a="run-quest" data-id="${esc(st.activeQuest)}">Use the new version</button>`}</div>` : ''}
-      ${st.ui.pickRun && !live ? `<div class="card row" style="gap:8px;padding:12px 16px"><label class="fld" for="run-q" style="margin:0">Quest for this class</label>
-        <select class="input" id="run-q" style="width:auto;min-width:220px">${quests.map(([id, t]) => `<option value="${id}" ${id === st.activeQuest ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
-        <button class="btn btn-primary btn-sm" data-a="run-q">Use this quest</button><button class="btn btn-ghost btn-sm" data-a="pick-run-x">Cancel</button></div>` : ''}
-      <nav class="class-tabs" aria-label="Class sections">${CLASS_TABS.map(([k, l]) => `<button data-a="screen" data-screen="${k}" aria-current="${tab === k}">${l}${k === 'live' && st.help.some((h) => h.open) ? ' <span class="pill peach">help</span>' : ''}</button>`).join('')}</nav>
+      <div class="class-meta"><span><strong>${Object.keys(st.seats).length}/${SEED.participants.length}</strong> students joined</span><span class="pill ${live ? 'mint' : 'plain'}">${live ? 'Session live' : 'In the lobby'}</span></div>
+      <nav class="seg" aria-label="Class">${CLASS_SECTIONS.map(([k, l, ic]) => `<button data-a="${k === 'run' ? 'class-run' : 'screen'}" data-screen="${k}" aria-current="${section === k}">${Art.icon(ic, 17)}<span>${l}</span>${k === 'run' && help ? '<span class="dot-alert" aria-label="help asked"></span>' : ''}</button>`).join('')}</nav>
+      ${inRun ? run : ''}
       ${inner}
     </div>`;
   }
@@ -991,7 +1001,7 @@
           <div class="path-steps" style="margin-top:8px">
             ${SEED.phases.map((ph, i) => `<div class="path-step ${i < idx ? 'done' : i === idx ? 'now' : ''}"><div class="path-dot">${i < idx ? Art.icon('check', 17) : i + 1}</div><small>${esc(SEED.phaseMeta[ph].label)}</small></div>`).join('')}
           </div>
-          <p class="hint-note" style="margin:10px 0 0">${esc(SEED.phaseMeta[st.phase].desc)} ${st.phase === 'LOBBY' && st.quest.status !== 'PUBLISHED' ? '· Publish the quest first (Quest builder).' : ''}</p>
+          <p class="hint-note" style="margin:10px 0 0">${esc(SEED.phaseMeta[st.phase].desc)} ${st.phase === 'LOBBY' && st.quest.status !== 'PUBLISHED' ? '· Publish the quest in My quests first, then use the new version here.' : ''}</p>
         </div>
 
         ${Partner.flagsCard(st)}
@@ -1223,7 +1233,7 @@
       el.addEventListener('click', (e) => {
         switch (a) {
           case 'role': location.hash = ROUTE_OF[el.dataset.role] || ''; return;
-          case 'screen': if (CLASS_TABS.some(([k]) => k === el.dataset.screen)) S().ui.classTab = el.dataset.screen; return act('setScreen', { screen: el.dataset.screen });
+          case 'screen': if (CLASS_TABS.some(([k]) => k === el.dataset.screen)) S().ui.classTab = el.dataset.screen; if (RUN_TABS.some(([k]) => k === el.dataset.screen)) S().ui.runTab = el.dataset.screen; return act('setScreen', { screen: el.dataset.screen });
           case 'reset': if (confirmReset()) { Assistant.forgetAll(); act('resetDemo'); } return;
           case 'mtab': S().ui.missionTab = el.dataset.tab; S().ui.screen = 'adventure'; render(); return;
           case 'hints': S().ui.hintsOpen = !S().ui.hintsOpen; S().ui.hintsShown = 1; render(); return;
@@ -1236,7 +1246,8 @@
           case 'demo-toggle': S().ui.demoOpen = !S().ui.demoOpen; render(); return;
           case 'safety': return act('updateQuest', { field: 'safety', value: el.checked }), render();
           case 'pick-run': S().ui.pickRun = true; return render();
-          case 'pick-run-open': S().ui.pickRun = true; S().ui.screen = S().ui.classTab || 'next'; return render();
+          case 'class-run': S().ui.classTab = S().ui.runTab || 'live'; return act('setScreen', { screen: S().ui.classTab });
+          case 'pick-run-open': S().ui.pickRun = true; S().ui.screen = S().ui.runTab || 'live'; return render();
           case 'pick-run-x': S().ui.pickRun = false; return render();
           case 'run-q': { const id = (document.getElementById('run-q') || {}).value; S().ui.pickRun = false; if (id && id !== Engine.classState.activeQuest) runQuest(id); return render(); }
           case 'run-quest': return runQuest(el.dataset.id);

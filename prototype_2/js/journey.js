@@ -44,7 +44,7 @@ const Journey = (() => {
         ${x.type === 'experience' && s.state !== 'done' && Object.keys(x.checkins).length ? `<p style="margin:6px 0 0"><strong>${Object.keys(x.checkins).length}</strong> checked in</p>` : ''}
         <div class="row j-actions">
           <button class="btn btn-secondary btn-sm" data-j="toggle" data-id="${x.id}" aria-expanded="${expanded}">${expanded ? 'Close' : x.type === 'experience' ? 'Details & booking' : 'Details'}</button>
-          ${x.type === 'quest' ? (isActive ? `<button class="btn btn-ghost btn-sm" data-a="edit-quest" data-id="${esc(x.questId)}">${Art.icon('pencil', 14)} Edit quest</button>`
+          ${x.type === 'quest' ? (isActive ? `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="live">${Art.icon('eye', 14)} Open current quest</button>`
             : `<button class="btn btn-ghost btn-sm" data-j="use" data-id="${x.id}" ${live ? 'disabled title="End the live session first"' : ''}>Run it now</button>`) : ''}
           ${s.state === 'locked' || s.state === 'waiting' ? `<button class="btn btn-ghost btn-sm" data-j="open-ask" data-id="${x.id}">Open now</button>` : ''}
           ${s.state === 'done' ? `<button class="btn btn-ghost btn-sm" data-j="undone" data-id="${x.id}">Mark not done</button>` : s.state === 'open' ? `<button class="btn btn-ghost btn-sm" data-j="done" data-id="${x.id}">${Art.icon('check', 14)} Mark done</button>` : ''}
