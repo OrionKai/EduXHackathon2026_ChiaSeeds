@@ -17,6 +17,7 @@ const Journey = (() => {
   const questOf = (id) => { const S2 = Engine.studioState, C = Engine.classState;
     const r = (S2 && (id === S2.activeQuest ? S2 : S2.library[id])) || (C && (id === C.activeQuest ? C : C.library && C.library[id]));
     return r ? r.quest : null; };
+  const SETTINGS = { quest: 'Schedule', experience: 'Booking & schedule', class: 'Plan' };
   const stateLabel = (s) => ({ done: ['mint', 'Done'], open: ['lavender', 'Open'], waiting: ['peach', 'Booking not confirmed'], locked: ['plain', 'Locked'] }[s.state]);
 
   /* ---------------- educator: the Journey screen ---------------- */
@@ -50,12 +51,13 @@ const Journey = (() => {
         <p class="hint-note" style="margin:6px 0 0">${esc(meta)}${s.why ? ` · ${esc(s.why)}` : ''}</p>
         ${x.type === 'experience' && s.state !== 'done' && Object.keys(x.checkins).length ? `<p style="margin:6px 0 0"><strong>${Object.keys(x.checkins).length}</strong> checked in</p>` : ''}
         <div class="row j-actions">
-          <button class="btn btn-secondary btn-sm" data-j="toggle" data-id="${x.id}" aria-expanded="${expanded}">${expanded ? 'Close details' : x.type === 'experience' ? 'Details & booking' : 'Details'}</button>
-          ${x.type === 'quest' && qv ? `<button class="btn btn-ghost btn-sm" data-a="edit-quest" data-id="${esc(x.questId)}">${Art.icon('pencil', 14)} Edit quest</button>` : ''}
+          <button class="btn btn-secondary btn-sm ${expanded ? 'is-on' : ''}" data-j="toggle" data-id="${x.id}" aria-expanded="${expanded}">${Art.icon(x.type === 'class' ? 'pencil' : 'clock', 14)} ${SETTINGS[x.type]}</button>
+          ${x.type === 'quest' && qv ? `<button class="btn btn-ghost btn-sm" data-a="edit-quest" data-id="${esc(x.questId)}">${Art.icon('pencil', 14)} Edit in My quests</button>` : ''}
           ${s.state === 'locked' || s.state === 'waiting' ? `<button class="btn btn-ghost btn-sm" data-j="open-ask" data-id="${x.id}">Open now</button>` : ''}
           ${s.state === 'done' ? `<button class="btn btn-ghost btn-sm" data-j="undone" data-id="${x.id}">Mark not done</button>` : s.state === 'open' ? `<button class="btn btn-ghost btn-sm" data-j="done" data-id="${x.id}">${Art.icon('check', 14)} Mark done</button>` : ''}
-          <span class="j-move"><button class="btn btn-ghost btn-sm" data-j="up" data-id="${x.id}" aria-label="Move step ${i + 1} up" ${i === 0 ? 'disabled' : ''}>↑</button><button class="btn btn-ghost btn-sm" data-j="down" data-id="${x.id}" aria-label="Move step ${i + 1} down" ${i === steps().length - 1 ? 'disabled' : ''}>↓</button>
-          <button class="btn btn-danger-ghost btn-sm" data-j="remove" data-id="${x.id}" >Remove</button></span>
+          <details class="menu j-more"><summary class="btn btn-ghost btn-sm" aria-label="More for step ${i + 1}">⋯</summary><div class="menu-pop">
+            <button data-j="up" data-id="${x.id}" ${i === 0 ? 'disabled' : ''}>Move up</button><button data-j="down" data-id="${x.id}" ${i === steps().length - 1 ? 'disabled' : ''}>Move down</button>
+            <button class="danger" data-j="remove" data-id="${x.id}">Remove step</button></div></details>
         </div>
         ${ui().jOpenNow === x.id ? `<div class="row" style="margin-top:8px"><label class="sr-only" for="j-reason">Reason</label><input class="input" id="j-reason" placeholder="${x.opens === 'after' ? 'Why open it early? (shown to students)' : 'Note (optional)'}" style="flex:1;min-width:180px"><button class="btn btn-primary btn-sm" data-j="open" data-id="${x.id}">Open for the class</button></div>` : ''}
         ${expanded ? details(st, x, i) : ''}
@@ -67,7 +69,8 @@ const Journey = (() => {
     const inp = (id, label, v, ph = '', type = 'text') => `<div class="fld-group"><label class="fld" for="${id}">${label}</label><input class="input" id="${id}" type="${type}" value="${esc(v)}" placeholder="${esc(ph)}"></div>`;
     const S2 = Engine.studioState, quests = Object.entries(S2.library).map(([id, r]) => [id, (id === S2.activeQuest ? S2.quest : r.quest).title || 'Untitled quest']);
     return `<form class="stack j-form" data-jform="${x.id}" style="gap:6px;margin-top:12px">
-      ${x.type === 'quest' ? `<div class="fld-group"><label class="fld" for="j-q">Quest</label><select class="input" id="j-q">${quests.map(([id, t]) => `<option value="${id}" ${id === x.questId ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`
+      <h4 class="j-form-h">${SETTINGS[x.type]} for this step</h4>
+      ${x.type === 'quest' ? `<div class="fld-group"><label class="fld" for="j-q">Which quest</label><select class="input" id="j-q">${quests.map(([id, t]) => `<option value="${id}" ${id === x.questId ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`
         : inp('j-title', x.type === 'experience' ? 'Activity' : 'Session title', x.type === 'experience' ? x.exp.activity : x.title, x.type === 'experience' ? 'e.g. Still-life drawing class' : 'e.g. Debrief and exit ticket')}
       ${x.type === 'quest' ? `<div class="grid-2" style="gap:8px">${inp('j-wdate', 'Date', when.date, '', 'date')}${inp('j-wtime', 'Time', when.time, '', 'time')}</div>
         <p class="hint-note" style="margin:0">Where: ${esc((questOf(x.questId) || {}).venue || 'set in the quest')} (set in the quest).</p>`
@@ -77,7 +80,7 @@ const Journey = (() => {
       ${x.type === 'experience' ? `<div class="grid-3" style="gap:8px">${inp('j-prov', 'Provider', x.exp.provider, 'Who runs it')}${inp('j-org', 'Organisation', x.exp.org)}${inp('j-mail', 'Their email', x.exp.email, 'name@example.org', 'email')}</div>
         ${inp('j-bring', 'Students bring', x.exp.bring, 'e.g. their field notes')}${inp('j-fb', 'If the provider cancels', x.exp.fallback)}${inp('j-staff', 'Supervising adults', x.exp.staff)}` : ''}
       ${x.type === 'class' ? `<div class="fld-group"><label class="fld" for="j-note">Plan / notes</label><textarea class="input" id="j-note" rows="2">${esc(x.note)}</textarea></div>` : ''}
-      <button class="btn btn-primary btn-sm" type="submit" style="align-self:flex-start">Save step</button>
+      <div class="row" style="gap:6px"><button class="btn btn-primary btn-sm" type="submit">Save</button><button class="btn btn-ghost btn-sm" type="button" data-j="toggle" data-id="${x.id}">Cancel</button></div>
     </form>
     ${x.type === 'experience' ? booking(st, x, i) : ''}`;
   }

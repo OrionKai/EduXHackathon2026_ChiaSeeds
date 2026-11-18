@@ -931,3 +931,23 @@ a.brand { text-decoration: none; color: inherit; }
 .now-card:hover { transform: none; border-color: var(--stroke); }
 .now-card .btn { flex: none; }
 @media (max-width: 700px) { .now-card { flex-wrap: wrap; } .now-card .btn { width: 100%; justify-content: center; } }
+
+.pq-label { display: inline; margin: 0 6px 0 0; }
+.b-todo.ok { background: #E8F7F1; }
+.jr-head { justify-content: flex-start; }
+.jr-tools { display: inline-flex; gap: 4px; margin-left: auto; }
+.j-form-h { margin: 0 0 2px; font-size: 15px; }
+.btn.is-on { background: var(--lavender); border-color: var(--violet); color: var(--violet-deep); }
+/* small "more" menu */
+.menu { position: relative; margin-left: auto; }
+.menu > summary { list-style: none; cursor: pointer; font-size: 18px; line-height: 1; min-width: 40px; justify-content: center; }
+.menu > summary::-webkit-details-marker { display: none; }
+.menu-pop { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; min-width: 170px; display: flex; flex-direction: column; padding: 6px;
+  background: var(--white); border: 1.5px solid var(--stroke); border-radius: 14px; box-shadow: var(--shadow-card); }
+.menu-pop button { border: 0; background: none; text-align: left; padding: 9px 12px; border-radius: 10px; font: 600 14px var(--font-body); color: var(--ink); cursor: pointer; }
+.menu-pop button:hover:not(:disabled) { background: var(--paper); }
+.menu-pop button:disabled { color: var(--muted); cursor: default; }
+.menu-pop button.danger { color: #B4235A; }
+
+#pq-sel { max-width: 100%; }
+@media (max-width: 700px) { #pq-sel { width: 100% !important; min-width: 0 !important; } }

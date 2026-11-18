@@ -39,7 +39,12 @@ const Partner = (() => {
   function overview(st, qid) {
     const rec = recOf(st, qid), q = rec.quest, t = todos(st, qid), p = Engine.sel.partnerProgress(qid);
     const au = q.audience || SEED.defaultAudience();
-    return `<div class="card">
+    const ids = Object.keys(st.library);
+    const all = ids.length > 1 ? `<div class="card"><h3 style="margin:0 0 8px">Your quests</h3><div class="stack" style="gap:6px">${ids.map((id) => { const r = recOf(st, id), pp = Engine.sel.partnerProgress(id);
+      return `<div class="queue-row" style="align-items:center"><span style="flex:1"><strong>${esc(r.quest.title || 'Untitled quest')}</strong>${id === Engine.classState.activeQuest ? ' <span class="hint-note">· the class is running it</span>' : ''}</span>
+        <span class="pill ${pp.signedOff ? 'mint' : pp.contributed ? 'peach' : 'plain'}">${pp.signedOff ? 'Signed off' : !pp.contributed ? 'Not started' : `${pp.reviewed}/${pp.items.length} reviewed`}</span>
+        ${id === qid ? '<span class="pill lavender">Open</span>' : `<button class="btn btn-ghost btn-sm" data-a="pq-pick" data-id="${esc(id)}">Open</button>`}</div>`; }).join('')}</div></div>` : '';
+    return `${all}<div class="card">
         <p style="margin:0">The educator invited you to help with <strong>${esc(q.title)}</strong>${q.venue ? ` at ${esc(q.venue)}` : ''}, for ${esc((SEED.AUDIENCES[au.kind] || 'school').toLowerCase())} learners${au.ages ? ' aged ' + esc(au.ages) : ''}.</p>
         <ul style="margin:8px 0 0;padding-left:20px"><li><strong>Before:</strong> share your knowledge and review how it is used.</li><li><strong>On the day:</strong> put devices away and talk with students. Confirm participation afterwards.</li><li><strong>After:</strong> read students' work and offer feedback when you have time.</li></ul>
         <div style="margin-top:12px">${pipe(st, qid)}</div></div>

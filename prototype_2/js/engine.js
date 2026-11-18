@@ -627,9 +627,9 @@ const Engine = (() => {
       if (typeof name === 'string' && name.trim()) rec.quest.partner.name = name.trim().slice(0, 80);
       if (typeof org === 'string') rec.quest.partner.org = org.trim().slice(0, 120);
       const was = c.status;
-      c.status = 'CONTRIBUTED';
+      if (was !== 'APPROVED') c.status = 'CONTRIBUTED'; // your sign-off is about how the quest represents you; editing your own words keeps it
       audit('collaborator', `Saved their contribution to “${rec.quest.title}”.`);
-      return { ok: true, msg: was === 'APPROVED' ? 'Saved — sign off again when you’re happy.' : 'Contribution saved. Next: review how your community is represented.' };
+      return { ok: true, msg: was === 'APPROVED' ? 'Saved. Your sign-off still stands.' : 'Contribution saved. Next: review the quest.' };
     },
     reviewItem(s, { questId, item }) {
       const rec = recOf(s, questId); if (!rec || !partnerItems(rec).includes(item)) return { ok: false };

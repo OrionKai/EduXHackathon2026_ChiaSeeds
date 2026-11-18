@@ -820,10 +820,9 @@
           : `<button class="jr-chip add" data-a="new-journey">${Art.icon('plus', 15)} New journey</button>`}
       </div>
       <div class="jr-head">
-        ${st.ui.renameJourney === view.id ? `<form class="row" data-form="rename-journey" data-id="${esc(view.id)}" style="gap:6px;flex:1"><label class="sr-only" for="rj-name">Journey name</label><input class="input" id="rj-name" value="${esc(view.name)}" maxlength="60" style="flex:1;min-width:180px"><button class="btn btn-primary btn-sm">Save</button></form>`
-          : `<h3 style="margin:0">${esc(view.name)} <button class="btn btn-ghost btn-sm" data-a="rename-journey" data-id="${esc(view.id)}" aria-label="Rename journey">${Art.icon('pencil', 14)}</button></h3>`}
-        <span class="row" style="gap:6px">${isCur ? '<span class="pill mint">The class is on this journey</span>' : `<button class="btn btn-secondary btn-sm" data-a="use-journey" data-id="${esc(view.id)}" ${['LOBBY', 'COMPLETE'].includes(st.phase) ? '' : 'disabled title="End the live session first"'}>Move the class to this journey</button>`}
-          ${list.length > 1 ? `<button class="btn btn-danger-ghost btn-sm" data-a="remove-journey" data-id="${esc(view.id)}">Remove</button>` : ''}</span>
+        ${st.ui.renameJourney === view.id ? `<form class="row" data-form="rename-journey" data-id="${esc(view.id)}" style="gap:6px;flex:1"><label class="sr-only" for="rj-name">Journey name</label><input class="input" id="rj-name" value="${esc(view.name)}" maxlength="60" style="flex:1;min-width:180px"><button class="btn btn-primary btn-sm">Save</button><button class="btn btn-ghost btn-sm" type="button" data-a="rename-journey-x">Cancel</button></form>`
+          : `${isCur ? '<span class="pill mint">The class is on this journey</span>' : `<button class="btn btn-secondary btn-sm" data-a="use-journey" data-id="${esc(view.id)}" ${['LOBBY', 'COMPLETE'].includes(st.phase) ? '' : 'disabled title="End the live session first"'}>Move the class to this journey</button>`}
+            <span class="jr-tools"><button class="btn btn-ghost btn-sm" data-a="rename-journey" data-id="${esc(view.id)}">${Art.icon('pencil', 14)} Rename</button>${list.length > 1 ? `<button class="btn btn-danger-ghost btn-sm" data-a="remove-journey" data-id="${esc(view.id)}">Remove journey</button>` : ''}</span>`}
       </div>
       ${Journey.teacher(st, view.id)}
     </div>`;
@@ -837,9 +836,9 @@
     let inner = '';
     try { inner = tab === 'teams' ? teacherTeams(st) : tab === 'report' ? teacherReport(st) : teacherLive(st); } finally { inClassPage = false; }
     return `<div class="stack">
-      ${crumbs([['My classes', 'data-a="screen" data-screen="classes"'], [className(st), 'data-a="screen" data-screen="next"']].concat(at >= 0 ? [[cur.name, `data-a="view-journey-go" data-id="${esc(cur.id)}"`]] : []))}
+      ${crumbs([['My classes', 'data-a="screen" data-screen="classes"'], [className(st), 'data-a="screen" data-screen="next"']])}
       <div class="page-title spread"><div style="min-width:0"><h2>${esc(st.quest.title || 'Untitled quest')}</h2>
-          <p class="page-meta">${at >= 0 ? `<span>Step ${at + 1} of ${cur.steps.length}</span>` : ''}<span class="pill ${live ? 'mint' : 'plain'}">${live ? 'Session live' : st.phase === 'COMPLETE' ? 'Session finished' : 'In the lobby'}</span><span><strong>${Object.keys(st.seats).length}/${SEED.participants.length}</strong> joined</span><span><strong>${pend}</strong> to review</span></p></div>
+          <p class="page-meta">${at >= 0 ? `<span>Step ${at + 1} of ${cur.steps.length} in “${esc(cur.name)}”</span>` : ''}<span class="pill ${live ? 'mint' : 'plain'}">${live ? 'Session live' : st.phase === 'COMPLETE' ? 'Session finished' : 'In the lobby'}</span><span><strong>${Object.keys(st.seats).length}/${SEED.participants.length}</strong> joined</span><span><strong>${pend}</strong> to review</span></p></div>
         <button class="btn btn-ghost btn-sm" data-a="edit-quest" data-id="${esc(st.activeQuest)}">${Art.icon('pencil', 14)} Edit quest</button></div>
       ${outdated ? `<div class="run-note">${Art.icon('pencil', 15)}<span style="flex:1">This quest has changed in My quests since the class got it.</span>${live ? '<span class="hint-note" style="margin:0">Update it after the session.</span>' : `<button class="btn btn-primary btn-sm" data-a="run-quest" data-id="${esc(st.activeQuest)}">Use the new version</button>`}</div>` : ''}
       <div class="tabbar\" role="tablist" aria-label="This quest">${RUN_TABS.map(([k, l, ic]) => `<button role="tab" data-a="screen" data-screen="${k}" aria-selected="${tab === k}">${Art.icon(ic, 16)}${l}${k === 'live' && help ? ' <span class="dot-alert" aria-label="help asked"></span>' : ''}</button>`).join('')}</div>
@@ -989,12 +988,12 @@
     SEED.topics.filter((t) => st.tracks[t] !== 'APPROVED' && !probs.some((x) => x.startsWith(`Track ${t}:`))).forEach((t) => todo.push(fix(`Approve Track ${t} (${SEED.missions[t].name || 'untitled'})`, 'tracks', t)));
     return `<div class="card">
         <h3 style="margin:0 0 6px">Ready to publish?</h3>
-        ${todo.length ? `<p class="hint-note" style="margin:0 0 6px">${todo.length} thing${todo.length > 1 ? 's' : ''} to do first:</p><ul class="b-todos">${todo.join('')}</ul>` : `<p style="margin:0 0 6px">${Art.icon('check', 16)} Every track, the finale and the extras are complete and approved.</p>`}
+        ${(() => { const n = todo.length + (p.signedOff ? 0 : 1) + (q.safety ? 0 : 1); return n && !locked ? `<p class="hint-note" style="margin:0 0 6px">${n} thing${n > 1 ? 's' : ''} left before you can publish:</p>` : ''; })()}${todo.length ? `<ul class="b-todos">${todo.join('')}</ul>` : `<p style="margin:0 0 6px">${Art.icon('check', 16)} Every track, the finale and the extras are complete and approved.</p>`}
         <ul class="b-todos">
-          <li class="b-todo"><span>Community partner: <strong>${p.signedOff ? 'signed off ✓' : p.open ? p.open + ' suggestion(s) waiting for you (Tracks step)' : !p.contributed ? 'hasn’t written their contribution yet' : `reviewing (${p.reviewed}/${p.items.length} parts)`}</strong></span>${p.signedOff ? '' : `<span class="row" style="gap:4px"><button class="btn btn-ghost btn-sm" data-a="copy-link" data-link="${esc(Partner.link())}">${Art.icon('handshake', 14)} Copy partner link</button><a class="btn btn-ghost btn-sm" href="${esc(Partner.link())}" target="_blank" rel="noopener">Open their view</a></span>`}</li>
+          <li class="b-todo ${p.signedOff ? 'ok' : ''}"><span>${p.signedOff ? Art.icon('check', 15) + ' Your community partner signed off this quest' : `Community partner sign-off for this quest: <strong>${p.open ? p.open + ' suggestion(s) waiting for your answer (Tracks step)' : !p.contributed ? 'they haven’t written their contribution yet' : `they’ve reviewed ${p.reviewed} of ${p.items.length} parts`}</strong>`}</span>${p.signedOff ? '' : `<span class="row" style="gap:4px"><button class="btn btn-ghost btn-sm" data-a="copy-link" data-link="${esc(Partner.link())}">${Art.icon('handshake', 14)} Copy partner link</button><a class="btn btn-ghost btn-sm" href="${esc(Partner.link())}" target="_blank" rel="noopener">Open their view</a></span>`}</li>
         </ul>
         <label class="opt" style="margin:8px 0 12px"><input type="checkbox" data-a="safety" ${q.safety ? 'checked' : ''} ${dis}><span class="opt-box" aria-hidden="true"></span><span class="opt-text">I’ve confirmed safety, supervision and the venue booking<small>Needed before you can publish.</small></span></label>
-        <button class="btn btn-teal" data-a="publish" ${dis}>${locked ? 'Published ✓' : 'Publish to students'}</button>
+        ${(() => { const ready = !todo.length && p.signedOff && q.safety; return `<button class="btn btn-teal" data-a="publish" ${locked || !ready ? 'disabled' : ''}>${locked ? 'Published ✓' : 'Publish to students'}</button>${locked || ready ? '' : '<p class="hint-note" style="margin:6px 0 0">Publishing opens once everything above is done.</p>'}`; })()}
       </div>
       ${Journey.builderCard(st)}`;
   }
@@ -1171,7 +1170,9 @@
     const questLevel = ['overview', 'contribution', 'review'].includes(screen);
     const pqId = questLevel ? partnerQuestId(st) : st.activeQuest;
     const pq = pqId === st.activeQuest ? st.quest : st.library[pqId].quest;
-    const picker = questLevel && Object.keys(st.library).length > 1 ? `<label class="sr-only" for="pq-sel">Quest</label><select class="input" id="pq-sel" data-a="pq-sel" style="width:auto;min-width:200px">${Object.entries(st.library).map(([id, r]) => `<option value="${id}" ${id === pqId ? 'selected' : ''}>${esc((id === st.activeQuest ? st.quest : r.quest).title)}${id === st.activeQuest ? ' (this class)' : ''}</option>`).join('')}</select>` : '';
+    const runId = Engine.classState.activeQuest;
+    const picker = questLevel && screen !== 'overview' && Object.keys(st.library).length > 1 ? `<label class="fld pq-label" for="pq-sel">Quest</label><select class="input" id="pq-sel" data-a="pq-sel" style="width:auto;min-width:220px">${Object.entries(st.library).map(([id, r]) => { const rr = id === st.activeQuest ? st : r; const pp = sel.partnerProgress(id);
+      return `<option value="${id}" ${id === pqId ? 'selected' : ''}>${esc(rr.quest.title || 'Untitled quest')} — ${pp.signedOff ? 'signed off' : !pp.contributed ? 'not started' : `${pp.reviewed}/${pp.items.length} reviewed`}${id === runId ? ' · the class’s quest' : ''}</option>`; }).join('')}</select>` : '';
     return `
       <div class="stack">
         ${pageHead(`Community partner · ${esc(pq.title)}`, TITLES[screen], picker, 'coral')}
@@ -1294,6 +1295,7 @@
     root.querySelectorAll('[data-a]').forEach((el) => {
       const a = el.dataset.a;
       if (a === 'pq-sel') { el.addEventListener('change', () => { S().ui.pq = el.value; render(); }); return; }
+      if (a === 'pq-pick') { el.addEventListener('click', () => { S().ui.pq = el.dataset.id; render(); window.scrollTo(0, 0); }); return; }
       if (a === 'student-sel') {
         el.addEventListener('change', () => { S().ui.demoPlay = el.value; markJoined(el.value); act('setStudent', { id: el.value }); });
         return;
@@ -1320,6 +1322,7 @@
           case 'new-journey': S().ui.newJourney = true; render(); document.getElementById('nj-name')?.focus(); return;
           case 'new-journey-x': S().ui.newJourney = false; return render();
           case 'rename-journey': S().ui.renameJourney = el.dataset.id; render(); document.getElementById('rj-name')?.focus(); return;
+          case 'rename-journey-x': S().ui.renameJourney = null; return render();
           case 'use-journey': { const r = act('useJourney', { id: el.dataset.id }); if (r.ok && r.msg) toast(r.msg, 'success'); return; }
           case 'remove-journey': { const j = S().journeys.find((x) => x.id === el.dataset.id); if (j && confirm(`Remove the journey “${j.name}” and its steps?`)) { act('removeJourney', { id: j.id }); S().ui.viewJourney = null; render(); } return; }
           case 'pick-run': S().ui.pickRun = true; return render();
