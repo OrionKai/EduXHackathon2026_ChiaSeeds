@@ -54,7 +54,7 @@ const Sync = (() => {
       db = window.supabase.createClient(CONFIG.url, CONFIG.key);
       await connect('class');
       setStatus('live');
-      Engine.onCommit((type, payload, result, sp) => { queue = queue.then(() => push(type, payload, sp || 'class')).catch(() => setStatus('error')); });
+      Engine.onCommit((type, payload, result, sp) => { queue = queue.then(() => push(type, payload, sp || 'class', 0, result)).catch(() => setStatus('error')); });
       ensureStudio();
       window.addEventListener('hashchange', ensureStudio);
     } catch (e) {
@@ -63,10 +63,10 @@ const Sync = (() => {
     }
   }
 
-  async function push(type, payload, sp, tries = 0) {
+  async function push(type, payload, sp, tries = 0, result = null) {
     const r = rows[sp];
     if (!r.on) return;
-    if (type === 'resetDemo' || type === 'createQuest' || type === 'openQuest' || type === 'runQuest' || type === 'deleteQuest') {
+    if (type === 'resetDemo' || type === 'createQuest' || type === 'openQuest' || type === 'runQuest' || type === 'deleteQuest' || (result && result.reset)) {
       // Resetting or switching quests legitimately clears claims, so these use the reset function instead of the guarded save.
       const { data: rv, error: re } = await db.rpc('wq_reset_session', { p_id: r.id, p_state: Engine.sharedState(sp) });
       if (re) setStatus('error'); else if (rv) { r.version = rv; if (sp === 'class') state.version = rv; }
@@ -87,7 +87,7 @@ const Sync = (() => {
     if (!(await reload())) return;
     if (tries >= 3) return;
     const res = Engine.dispatch(type, payload, { replay: true });
-    if (res.ok) return push(type, payload, sp, tries + 1);
+    if (res.ok) return push(type, payload, sp, tries + 1, res);
     if (res.msg) notify(`Another device got there first: ${res.msg}`);
   }
 

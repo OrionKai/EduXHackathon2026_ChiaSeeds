@@ -13,6 +13,10 @@ const Journey = (() => {
   const steps = () => Engine.sel.journeyById(viewJ).steps;
   const nameOf = (st, id) => (st.seats[id] ? st.seats[id].nick : (SEED.byId[id] || {}).name || id);
   const ui = () => Engine.state.ui;
+  /* A quest step reads its title and venue from the quest itself. */
+  const questOf = (id) => { const S2 = Engine.studioState, C = Engine.classState;
+    const r = (S2 && (id === S2.activeQuest ? S2 : S2.library[id])) || (C && (id === C.activeQuest ? C : C.library && C.library[id]));
+    return r ? r.quest : null; };
   const stateLabel = (s) => ({ done: ['mint', 'Done'], open: ['lavender', 'Open'], waiting: ['peach', 'Booking not confirmed'], locked: ['plain', 'Locked'] }[s.state]);
 
   /* ---------------- educator: the Journey screen ---------------- */
@@ -34,20 +38,20 @@ const Journey = (() => {
 
   function stepCard(st, x, i) {
     const s = Engine.sel.stepState(i, viewJ), [cls, lab] = stateLabel(s), [ic, typeLabel] = TYPE[x.type];
-    const isActive = x.type === 'quest' && x.questId === st.activeQuest && (!viewJ || viewJ === st.journeyId), live = st.phase !== 'LOBBY';
-    const meta = [x.when, x.where, i === 0 ? 'First step' : 'Opens: ' + (OPENS[x.opens] || OPENS.after).toLowerCase() + (x.opens === 'date' && x.date ? ' (' + x.date + ')' : '')].filter(Boolean).join(' · ');
+    const isActive = x.type === 'quest' && x.questId === st.activeQuest && (!viewJ || viewJ === st.journeyId);
+    const qv = x.type === 'quest' ? questOf(x.questId) : null;
+    const meta = [x.when, x.type === 'quest' ? (qv && qv.venue) : x.where, i === 0 ? 'First step' : 'Opens: ' + (OPENS[x.opens] || OPENS.after).toLowerCase() + (x.opens === 'date' && x.date ? ' (' + x.date + ')' : '')].filter(Boolean).join(' · ');
     const expanded = ui().jOpen === x.id;
     return `<li class="j-step j-${s.state}">
       <div class="j-dot" aria-hidden="true">${s.state === 'done' ? Art.icon('check', 16) : Art.icon(ic, 16)}</div>
       <div class="card j-card">
         <div class="spread"><div><div class="eyebrow">Step ${i + 1} · ${typeLabel}</div><h3 style="margin:2px 0 0">${esc(Engine.sel.stepTitle(x))}</h3></div>
-          <div class="row" style="gap:6px">${x.type === 'experience' ? `<span class="pill ${BOOK[x.exp.status][0]}">${BOOK[x.exp.status][1]}</span>` : ''}<span class="pill ${cls}">${lab}</span></div></div>
+          <div class="row" style="gap:6px">${isActive ? '<span class="pill lavender">Running now</span>' : ''}${x.type === 'experience' ? `<span class="pill ${BOOK[x.exp.status][0]}">${BOOK[x.exp.status][1]}</span>` : ''}<span class="pill ${cls}">${lab}</span></div></div>
         <p class="hint-note" style="margin:6px 0 0">${esc(meta)}${s.why ? ` · ${esc(s.why)}` : ''}</p>
         ${x.type === 'experience' && s.state !== 'done' && Object.keys(x.checkins).length ? `<p style="margin:6px 0 0"><strong>${Object.keys(x.checkins).length}</strong> checked in</p>` : ''}
         <div class="row j-actions">
-          <button class="btn btn-secondary btn-sm" data-j="toggle" data-id="${x.id}" aria-expanded="${expanded}">${expanded ? 'Close' : x.type === 'experience' ? 'Details & booking' : 'Details'}</button>
-          ${x.type === 'quest' ? (isActive ? `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="live">${Art.icon('eye', 14)} Open live session</button>`
-            : `<button class="btn btn-ghost btn-sm" data-j="use" data-id="${x.id}" ${live ? 'disabled title="End the live session first"' : ''}>Run it now</button>`) : ''}
+          <button class="btn btn-secondary btn-sm" data-j="toggle" data-id="${x.id}" aria-expanded="${expanded}">${expanded ? 'Close details' : x.type === 'experience' ? 'Details & booking' : 'Details'}</button>
+          ${x.type === 'quest' && qv ? `<button class="btn btn-ghost btn-sm" data-a="edit-quest" data-id="${esc(x.questId)}">${Art.icon('pencil', 14)} Edit quest</button>` : ''}
           ${s.state === 'locked' || s.state === 'waiting' ? `<button class="btn btn-ghost btn-sm" data-j="open-ask" data-id="${x.id}">Open now</button>` : ''}
           ${s.state === 'done' ? `<button class="btn btn-ghost btn-sm" data-j="undone" data-id="${x.id}">Mark not done</button>` : s.state === 'open' ? `<button class="btn btn-ghost btn-sm" data-j="done" data-id="${x.id}">${Art.icon('check', 14)} Mark done</button>` : ''}
           <span class="j-move"><button class="btn btn-ghost btn-sm" data-j="up" data-id="${x.id}" aria-label="Move step ${i + 1} up" ${i === 0 ? 'disabled' : ''}>↑</button><button class="btn btn-ghost btn-sm" data-j="down" data-id="${x.id}" aria-label="Move step ${i + 1} down" ${i === steps().length - 1 ? 'disabled' : ''}>↓</button>
@@ -65,7 +69,9 @@ const Journey = (() => {
     return `<form class="stack j-form" data-jform="${x.id}" style="gap:6px;margin-top:12px">
       ${x.type === 'quest' ? `<div class="fld-group"><label class="fld" for="j-q">Quest</label><select class="input" id="j-q">${quests.map(([id, t]) => `<option value="${id}" ${id === x.questId ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`
         : inp('j-title', x.type === 'experience' ? 'Activity' : 'Session title', x.type === 'experience' ? x.exp.activity : x.title, x.type === 'experience' ? 'e.g. Still-life drawing class' : 'e.g. Debrief and exit ticket')}
-      <div class="grid-3" style="gap:8px">${inp('j-wdate', 'Date', when.date, '', 'date')}${inp('j-wtime', 'Time', when.time, '', 'time')}${inp('j-where', 'Where', x.where, x.type === 'class' ? 'e.g. Room 12' : 'e.g. Riverside Art Studio')}</div>
+      ${x.type === 'quest' ? `<div class="grid-2" style="gap:8px">${inp('j-wdate', 'Date', when.date, '', 'date')}${inp('j-wtime', 'Time', when.time, '', 'time')}</div>
+        <p class="hint-note" style="margin:0">Where: ${esc((questOf(x.questId) || {}).venue || 'set in the quest')} (set in the quest).</p>`
+        : `<div class="grid-3" style="gap:8px">${inp('j-wdate', 'Date', when.date, '', 'date')}${inp('j-wtime', 'Time', when.time, '', 'time')}${inp('j-where', 'Where', x.where, x.type === 'class' ? 'e.g. Room 12' : 'e.g. Riverside Art Studio')}</div>`}
       ${i > 0 ? `<div class="grid-2" style="gap:8px"><div class="fld-group"><label class="fld" for="j-opens">Opens</label><select class="input" id="j-opens">${Object.entries(OPENS).map(([k, l]) => `<option value="${k}" ${x.opens === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
         <div data-j-datebox ${x.opens === 'date' ? '' : 'hidden'}>${inp('j-date', 'Opens for students on', x.date, '', 'date')}</div></div>` : ''}
       ${x.type === 'experience' ? `<div class="grid-3" style="gap:8px">${inp('j-prov', 'Provider', x.exp.provider, 'Who runs it')}${inp('j-org', 'Organisation', x.exp.org)}${inp('j-mail', 'Their email', x.exp.email, 'name@example.org', 'email')}</div>
@@ -183,7 +189,6 @@ const Journey = (() => {
         case 'add-me': act('addStep', { type: 'quest', at: Engine.classState.journey.steps.length, journeyId: Engine.classState.journeyId, questId: Engine.studioState.activeQuest }); return render();
         case 'add': { const r = act('addStep', { type: el.dataset.type, at: Number(el.dataset.i), journeyId: el.dataset.jid || undefined }); S.ui.jAdd = null; if (r.ok) S.ui.jOpen = r.id; return render(); }
         case 'toggle': S.ui.jOpen = S.ui.jOpen === id ? null : id; return render();
-        case 'use': { const jr = (S.journeys || []).find((j) => j.steps.some((y) => y.id === id)), x = jr && jr.steps.find((y) => y.id === id); if (!x) return; act('useJourney', { id: jr.id }); window.WQ.runQuest(x.questId); return; }
         case 'open-ask': S.ui.jOpenNow = S.ui.jOpenNow === id ? null : id; return render();
         case 'open': { const r = act('openStep', { id, reason: (document.getElementById('j-reason') || {}).value || '' }); if (r.ok) S.ui.jOpenNow = null; return render(); }
         case 'done': return act('markStepDone', { id, done: true });

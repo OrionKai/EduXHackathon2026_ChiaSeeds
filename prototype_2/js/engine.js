@@ -82,6 +82,23 @@ const Engine = (() => {
     s.catalog = s.catalog || {};
     s.catalog[id] = { title: snap.quest.title || 'Untitled quest', cards: (snap.content.collectibles || []).map((c) => ({ id: c.id, title: c.title, kind: c.kind, hidden: !!c.hidden, art: c.art || '', image: c.image || null })) };
   }
+  /* The step the class is on: the first step of its journey that isn't done. */
+  function nowOf(s) {
+    const j = s.journey, i = j.steps.findIndex((x) => !x.done);
+    return { journey: j, index: i, step: i >= 0 ? j.steps[i] : null, state: i >= 0 ? stepState(s, i, j.id) : null };
+  }
+  /* Keep the running quest in line with the journey: when the class's current step is a quest, the class runs it.
+     Only between sessions (lobby, or a finished session) — never in the middle of one. */
+  function alignRun(s) {
+    if (s !== classState || !studioState) return '';
+    const n = nowOf(s);
+    if (!n.step || n.step.type !== 'quest' || n.step.questId === s.activeQuest) return '';
+    if (!['LOBBY', 'COMPLETE'].includes(s.phase)) return '';
+    const snap = questSnapshot(n.step.questId);
+    if (!snap) return '';
+    runInto(s, n.step.questId, snap);
+    return `The class is now on “${s.quest.title || 'Untitled quest'}”.`;
+  }
   function stepState(s, i, jid) {
     const steps = jById(s, jid).steps, st = steps[i];
     if (!st) return { state: 'locked', why: '' };
@@ -361,6 +378,17 @@ const Engine = (() => {
     return s;
   }
 
+  /* Load a copy of a quest into the class (keeps seats when it's the same quest with the same teams). */
+  function runInto(s, id, snapshot) {
+    const same = id === s.activeQuest && JSON.stringify(snapshot.quest.structure) === JSON.stringify(s.quest.structure);
+    const seats = same ? clone(s.seats) : null;
+    if (!same) archiveAlbum(s);
+    s.library = s.library || {}; s.library[id] = clone(snapshot);
+    loadQuest(s, id); catalogQuest(s, id);
+    if (seats) s.seats = seats;
+    audit('teacher', same ? `Updated the class to the latest “${s.quest.title}”.` : `The class is now on “${s.quest.title}”.`);
+    return same;
+  }
   /* ---------- quest library ---------- */
   /* The class album outlives a quest: before the class switches, keep the cards it found. */
   function archiveAlbum(s) {
@@ -459,6 +487,7 @@ const Engine = (() => {
 
     stepState: (i, jid) => stepState(state, i, jid),
     journeyById: (jid) => jById(state, jid),
+    nowStep: () => nowOf(state),
     partnerItems: (qid) => partnerItems(recOf(state, qid)),
     partnerProgress: (qid) => partnerProgress(recOf(state, qid)),
     stepTitle: (st) => stepTitle(state, st),
@@ -499,15 +528,9 @@ const Engine = (() => {
 
     runQuest(s, { id, snapshot }) {
       if (!snapshot || !snapshot.quest || !snapshot.content) return { ok: false, msg: 'Quest not found.' };
-      if (s.phase !== 'LOBBY') return { ok: false, msg: 'End the live session first (Live session → back to the lobby).' };
-      const same = id === s.activeQuest && JSON.stringify(snapshot.quest.structure) === JSON.stringify(s.quest.structure);
-      const seats = same ? clone(s.seats) : null;
-      if (!same) archiveAlbum(s);
-      s.library = s.library || {}; s.library[id] = clone(snapshot);
-      loadQuest(s, id); catalogQuest(s, id);
-      if (seats) { s.seats = seats; }
-      audit('teacher', same ? `Updated the class to the latest “${s.quest.title}”.` : `This class now runs “${s.quest.title}”.`);
-      return { ok: true, msg: same ? 'Updated to the latest version.' : `This class now runs “${s.quest.title || 'Untitled quest'}”.` };
+      if (!['LOBBY', 'COMPLETE'].includes(s.phase)) return { ok: false, msg: 'End the live session first (Live session → back to the lobby).' };
+      const same = runInto(s, id, snapshot);
+      return { ok: true, reset: true, msg: same ? 'Updated to the latest version.' : `The class is now on “${s.quest.title || 'Untitled quest'}”.` };
     },
     addJourney(s, { name }) {
       const n = String(name || '').trim().slice(0, 60);
@@ -531,11 +554,16 @@ const Engine = (() => {
       audit('teacher', `Removed the journey “${gone.name}”.`);
       return { ok: true, msg: `Removed “${gone.name}”.` };
     },
+    startNow(s) {
+      const m = alignRun(s);
+      return m ? { ok: true, reset: true, msg: m } : { ok: false, msg: 'Nothing to start right now.' };
+    },
     useJourney(s, { id }) {
       if (!s.journeys.some((x) => x.id === id)) return { ok: false };
       if (s.journeyId === id) return { ok: true, silent: true };
+      if (!['LOBBY', 'COMPLETE'].includes(s.phase)) return { ok: false, msg: 'End the live session first (Live session → back to the lobby).' };
       s.journeyId = id;
-      return { ok: true, msg: 'Students now follow this journey.' };
+      return { ok: true, msg: 'The class is now on this journey.' };
     },
     renameClass(s, { name }) {
       const n = String(name || '').trim().slice(0, 60);
@@ -1490,6 +1518,10 @@ const Engine = (() => {
   const UI_ACTIONS = new Set(['setRole', 'setStudent', 'setScreen', 'setLookUp', 'markMasterSeen', 'setAnalysis']);
   let commitHook = null; // set by sync.js: called after a shared action succeeds locally
 
+  ['useJourney', 'markStepDone', 'addStep', 'removeStep', 'moveStep', 'updateStep'].forEach((k) => {
+    const f = actions[k];
+    actions[k] = (s, p) => { const r = f(s, p); if (r && r.ok) { const m = alignRun(s); if (m) return { ...r, silent: false, reset: true, msg: m }; } return r; };
+  });
   /* Actions that write quests happen in the studio; everything else happens in the class. */
   const STUDIO_ACTIONS = new Set(['updateQuest', 'generateDraft', 'publishQuest', 'saveContribution', 'reviewItem', 'requestChange', 'answerRequest', 'approveContribution',
     'reviseTrack', 'approveTrack', 'createQuest', 'openQuest', 'deleteQuest', 'setPartner', 'removeTrack', 'setStructure', 'setContent', 'editTrack', 'editFinale', 'editExtras',

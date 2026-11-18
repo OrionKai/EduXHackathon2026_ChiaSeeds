@@ -920,3 +920,14 @@ a.brand { text-decoration: none; color: inherit; }
   .now-go { font-size: 0; } .now-go svg { width: 20px; height: 20px; }
   .tabbar button { flex: 1 1 0; justify-content: center; padding: 12px 6px 10px; font-size: 14px; }
 }
+
+/* one page frame for nested pages: breadcrumb (the parents), the page's name, one line of status */
+.page-title h2 { margin: 0 0 6px; }
+.page-title { gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.page-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 0; color: var(--muted); font-size: 14px; }
+.page-meta strong { color: var(--ink); }
+.crumbs { margin-bottom: -8px; }
+.now-card { cursor: default; }
+.now-card:hover { transform: none; border-color: var(--stroke); }
+.now-card .btn { flex: none; }
+@media (max-width: 700px) { .now-card { flex-wrap: wrap; } .now-card .btn { width: 100%; justify-content: center; } }
