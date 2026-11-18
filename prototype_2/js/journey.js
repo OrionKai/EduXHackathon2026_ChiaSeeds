@@ -9,30 +9,32 @@ const Journey = (() => {
   const TYPE = { quest: ['map', 'WorldQuest'], experience: ['handshake', 'Real experience'], class: ['book', 'In class'] };
   const OPENS = { after: 'When the step before is done', manual: 'When I open it', date: 'On a date' };
   const BOOK = { none: ['plain', 'not booked yet'], sent: ['peach', 'waiting for provider'], counter: ['peach', 'new time suggested'], declined: ['peach', 'declined'], accepted: ['mint', 'booked'] };
-  const steps = () => Engine.state.journey.steps;
+  let viewJ = null; // the journey being shown (teacher); null = the class's current journey
+  const steps = () => Engine.sel.journeyById(viewJ).steps;
   const nameOf = (st, id) => (st.seats[id] ? st.seats[id].nick : (SEED.byId[id] || {}).name || id);
   const ui = () => Engine.state.ui;
   const stateLabel = (s) => ({ done: ['mint', 'Done'], open: ['lavender', 'Open'], waiting: ['peach', 'Booking not confirmed'], locked: ['plain', 'Locked'] }[s.state]);
 
   /* ---------------- educator: the Journey screen ---------------- */
-  function teacher(st) {
+  function teacher(st, jid) {
+    viewJ = jid || null;
     const code = typeof Sync !== 'undefined' ? Sync.state.session : '';
     const list = steps();
     return `${window.WQ.pageHead(`Class code <span class="mono">${esc(code)}</span>`, 'Journey')}
-      <p class="hint-note" style="margin:0 0 6px">Plan the class’s programme in order. Each step opens when you choose; students always see what’s next.</p>
+      ${list.length ? '' : '<p class="hint-note" style="margin:0">No steps yet. Add a quest, a real experience or a class session.</p>'}
       <ol class="journey">${list.map((x, i) => addSlot(i) + stepCard(st, x, i)).join('')}${addSlot(list.length)}</ol>`;
   }
 
   function addSlot(i) {
     if (ui().jAdd !== i) return `<li class="j-add"><button class="btn btn-ghost btn-sm" data-j="add-open" data-i="${i}">${Art.icon('plus', 14)} Add a step here</button></li>`;
     return `<li class="j-add open"><div class="card j-addcard"><strong>Add a step</strong>
-      <div class="row" style="gap:8px;margin-top:8px">${Object.entries(TYPE).map(([t, [ic, lb]]) => `<button class="btn btn-secondary btn-sm" data-j="add" data-type="${t}" data-i="${i}">${Art.icon(ic, 15)} ${lb}</button>`).join('')}
+      <div class="row" style="gap:8px;margin-top:8px">${Object.entries(TYPE).map(([t, [ic, lb]]) => `<button class="btn btn-secondary btn-sm" data-j="add" data-type="${t}" data-i="${i}" data-jid="${esc(viewJ || '')}">${Art.icon(ic, 15)} ${lb}</button>`).join('')}
       <button class="btn btn-ghost btn-sm" data-j="add-close">Cancel</button></div></div></li>`;
   }
 
   function stepCard(st, x, i) {
-    const s = Engine.sel.stepState(i), [cls, lab] = stateLabel(s), [ic, typeLabel] = TYPE[x.type];
-    const isActive = x.type === 'quest' && x.questId === st.activeQuest, live = st.phase !== 'LOBBY';
+    const s = Engine.sel.stepState(i, viewJ), [cls, lab] = stateLabel(s), [ic, typeLabel] = TYPE[x.type];
+    const isActive = x.type === 'quest' && x.questId === st.activeQuest && (!viewJ || viewJ === st.journeyId), live = st.phase !== 'LOBBY';
     const meta = [x.when, x.where, i === 0 ? 'First step' : 'Opens: ' + (OPENS[x.opens] || OPENS.after).toLowerCase() + (x.opens === 'date' && x.date ? ' (' + x.date + ')' : '')].filter(Boolean).join(' · ');
     const expanded = ui().jOpen === x.id;
     return `<li class="j-step j-${s.state}">
@@ -44,12 +46,12 @@ const Journey = (() => {
         ${x.type === 'experience' && s.state !== 'done' && Object.keys(x.checkins).length ? `<p style="margin:6px 0 0"><strong>${Object.keys(x.checkins).length}</strong> checked in</p>` : ''}
         <div class="row j-actions">
           <button class="btn btn-secondary btn-sm" data-j="toggle" data-id="${x.id}" aria-expanded="${expanded}">${expanded ? 'Close' : x.type === 'experience' ? 'Details & booking' : 'Details'}</button>
-          ${x.type === 'quest' ? (isActive ? `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="live">${Art.icon('eye', 14)} Open current quest</button>`
+          ${x.type === 'quest' ? (isActive ? `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="live">${Art.icon('eye', 14)} Open live session</button>`
             : `<button class="btn btn-ghost btn-sm" data-j="use" data-id="${x.id}" ${live ? 'disabled title="End the live session first"' : ''}>Run it now</button>`) : ''}
           ${s.state === 'locked' || s.state === 'waiting' ? `<button class="btn btn-ghost btn-sm" data-j="open-ask" data-id="${x.id}">Open now</button>` : ''}
           ${s.state === 'done' ? `<button class="btn btn-ghost btn-sm" data-j="undone" data-id="${x.id}">Mark not done</button>` : s.state === 'open' ? `<button class="btn btn-ghost btn-sm" data-j="done" data-id="${x.id}">${Art.icon('check', 14)} Mark done</button>` : ''}
           <span class="j-move"><button class="btn btn-ghost btn-sm" data-j="up" data-id="${x.id}" aria-label="Move step ${i + 1} up" ${i === 0 ? 'disabled' : ''}>↑</button><button class="btn btn-ghost btn-sm" data-j="down" data-id="${x.id}" aria-label="Move step ${i + 1} down" ${i === steps().length - 1 ? 'disabled' : ''}>↓</button>
-          <button class="btn btn-danger-ghost btn-sm" data-j="remove" data-id="${x.id}" ${steps().length <= 1 ? 'disabled' : ''}>Remove</button></span>
+          <button class="btn btn-danger-ghost btn-sm" data-j="remove" data-id="${x.id}" >Remove</button></span>
         </div>
         ${ui().jOpenNow === x.id ? `<div class="row" style="margin-top:8px"><label class="sr-only" for="j-reason">Reason</label><input class="input" id="j-reason" placeholder="${x.opens === 'after' ? 'Why open it early? (shown to students)' : 'Note (optional)'}" style="flex:1;min-width:180px"><button class="btn btn-primary btn-sm" data-j="open" data-id="${x.id}">Open for the class</button></div>` : ''}
         ${expanded ? details(st, x, i) : ''}
@@ -76,7 +78,7 @@ const Journey = (() => {
 
   function booking(st, x, i) {
     const n = x.exp, stage = n.status === 'accepted' ? 3 : n.status === 'none' ? 1 : 2, draft = ui().jDraft && ui().jDraft[x.id] != null ? ui().jDraft[x.id] : n.request;
-    const s = Engine.sel.stepState(i), code = ('WQ-' + x.id).toUpperCase(), checked = Object.keys(x.checkins), when = SEED.splitWhen(x);
+    const s = Engine.sel.stepState(i, viewJ), code = ('WQ-' + x.id).toUpperCase(), checked = Object.keys(x.checkins), when = SEED.splitWhen(x);
     const how = (ui().jHow || {})[x.id] || (n.via === 'self' ? 'self' : 'app');
     const dt = (pre, d, t) => `<div class="grid-2" style="gap:8px"><div><label class="fld" for="${pre}-d">Date</label><input class="input" id="${pre}-d" type="date" value="${esc(d || '')}"></div><div><label class="fld" for="${pre}-t">Time</label><input class="input" id="${pre}-t" type="time" value="${esc(t || '')}"></div></div>`;
     const opt = (v, label, note) => `<label class="opt"><input type="radio" name="j-how-${x.id}" data-j-how="${x.id}" value="${v}" ${how === v ? 'checked' : ''}><span class="opt-box round" aria-hidden="true"></span><span class="opt-text">${label}<small>${note}</small></span></label>`;
@@ -135,7 +137,8 @@ const Journey = (() => {
       ${mine < 0 ? `<div class="row" style="margin-top:10px;gap:8px"><span class="hint-note" style="margin:0">This quest isn’t in the class journey yet.</span><button class="btn btn-secondary btn-sm" data-j="add-me">${Art.icon('plus', 14)} Add it as the next step</button></div>` : ''}</section>`;
   }
   function liveCard(st) {
-    const open = steps().map((x, i) => [x, i]).filter(([x, i]) => x.type === 'experience' && Engine.sel.stepState(i).state === 'open');
+    viewJ = null;
+    const open = steps().map((x, i) => [x, i]).filter(([x, i]) => x.type === 'experience' && Engine.sel.stepState(i, viewJ).state === 'open');
     return open.map(([x]) => `<div class="card"><div class="spread"><h3>${Art.icon('handshake', 18)} ${esc(Engine.sel.stepTitle(x))}</h3><span class="pill mint">${Object.keys(x.checkins).length} checked in</span></div>
       <p class="hint-note" style="margin:4px 0 0">Students check in by scanning the door code; you can also check someone in. <button class="btn btn-ghost btn-sm" data-a="screen" data-screen="next">Journey</button></p>
       <div class="row" style="margin-top:6px">${Object.keys(st.seats).filter((id) => !x.checkins[id]).map((id) => `<button class="btn btn-secondary btn-sm" data-j="t-checkin" data-id="${x.id}" data-pid="${id}">Check in ${esc(nameOf(st, id))}</button>`).join('')}</div></div>`).join('');
@@ -143,18 +146,20 @@ const Journey = (() => {
 
   /* ---------------- students: where am I in the journey, and the next real experience ---------------- */
   function strip(st) {
+    viewJ = null;
     const list = steps();
     return `<div class="card"><div class="eyebrow">Your journey</div>
-      <ol class="j-strip">${list.map((x, i) => { const s = Engine.sel.stepState(i), [ic] = TYPE[x.type];
+      <ol class="j-strip">${list.map((x, i) => { const s = Engine.sel.stepState(i, viewJ), [ic] = TYPE[x.type];
         const tag = s.state === 'done' ? 'done' : s.state === 'open' ? 'now' : s.state === 'waiting' ? 'coming up' : 'next';
         return `<li class="j-s ${s.state}">${Art.icon(s.state === 'done' ? 'check' : ic, 15)}<span><strong>${esc(Engine.sel.stepTitle(x))}</strong><small>${tag}${s.state === 'locked' && s.why ? ' · ' + esc(s.why) : ''}</small></span></li>`; }).join('')}</ol></div>`;
   }
   function student(st, me) {
+    viewJ = null;
     const list = steps();
-    const exp = list.map((x, i) => [x, i]).find(([x, i]) => x.type === 'experience' && Engine.sel.stepState(i).state !== 'done');
+    const exp = list.map((x, i) => [x, i]).find(([x, i]) => x.type === 'experience' && Engine.sel.stepState(i, viewJ).state !== 'done');
     let card = '';
     if (exp) {
-      const [x, i] = exp, s = Engine.sel.stepState(i), here = !!x.checkins[me.id];
+      const [x, i] = exp, s = Engine.sel.stepState(i, viewJ), here = !!x.checkins[me.id];
       card = `<div class="card next-exp">
         <div class="spread"><div class="eyebrow teal">Next: a real experience</div><span class="pill ${here ? 'mint' : s.state === 'open' ? 'mint' : 'plain'}">${here ? 'checked in' : s.state === 'open' ? 'open' : 'locked'}</span></div>
         <h3 style="margin:4px 0">${esc(Engine.sel.stepTitle(x))}</h3>
@@ -175,10 +180,10 @@ const Journey = (() => {
       switch (el.dataset.j) {
         case 'add-open': S.ui.jAdd = Number(el.dataset.i); return render();
         case 'add-close': S.ui.jAdd = null; return render();
-        case 'add-me': act('addStep', { type: 'quest', at: Engine.classState.journey.steps.length, questId: Engine.studioState.activeQuest }); return render();
-        case 'add': { const r = act('addStep', { type: el.dataset.type, at: Number(el.dataset.i) }); S.ui.jAdd = null; if (r.ok) S.ui.jOpen = r.id; return render(); }
+        case 'add-me': act('addStep', { type: 'quest', at: Engine.classState.journey.steps.length, journeyId: Engine.classState.journeyId, questId: Engine.studioState.activeQuest }); return render();
+        case 'add': { const r = act('addStep', { type: el.dataset.type, at: Number(el.dataset.i), journeyId: el.dataset.jid || undefined }); S.ui.jAdd = null; if (r.ok) S.ui.jOpen = r.id; return render(); }
         case 'toggle': S.ui.jOpen = S.ui.jOpen === id ? null : id; return render();
-        case 'use': { const x = S.journey.steps.find((y) => y.id === id); if (x) window.WQ.runQuest(x.questId); return; }
+        case 'use': { const jr = (S.journeys || []).find((j) => j.steps.some((y) => y.id === id)), x = jr && jr.steps.find((y) => y.id === id); if (!x) return; act('useJourney', { id: jr.id }); window.WQ.runQuest(x.questId); return; }
         case 'open-ask': S.ui.jOpenNow = S.ui.jOpenNow === id ? null : id; return render();
         case 'open': { const r = act('openStep', { id, reason: (document.getElementById('j-reason') || {}).value || '' }); if (r.ok) S.ui.jOpenNow = null; return render(); }
         case 'done': return act('markStepDone', { id, done: true });

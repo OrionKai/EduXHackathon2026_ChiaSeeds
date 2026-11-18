@@ -72,7 +72,7 @@
   const CLASS_TABS = [['next', 'Journey'], ['teams', 'Teams'], ['live', 'Live session'], ['report', 'Report'], ['album', 'Class album']];
   /* A class has a journey and an album of its own; the quest it is running now has its live session, teams and report. */
   const RUN_TABS = [['live', 'Live session', 'eye'], ['teams', 'Teams', 'team'], ['report', 'Report', 'book']];
-  const CLASS_SECTIONS = [['run', 'Current quest', 'map'], ['next', 'Journey', 'arrow'], ['album', 'Class album', 'trophy']];
+  const CLASS_SECTIONS = [['next', 'Journeys', 'arrow'], ['album', 'Class album', 'trophy']];
   const classList = () => { try { return JSON.parse(localStorage.getItem('wq-classes') || '[]'); } catch { return []; } };
   function rememberClass(st) {
     try { const me = { code: sessionCode(), name: st.className || '', quest: st.quest.title || '', at: Date.now() };
@@ -703,14 +703,34 @@
 
   /* ================= album (shared) ================= */
 
+  /* Every other quest's cards: all your quests for the teacher; the class's journey quests for students. */
+  function otherAlbums(st, viewer) {
+    const past = Object.fromEntries((st.pastAlbums || []).map((p) => [p.questId, p])), src = {};
+    if (viewer === 'teacher') {
+      const S2 = Engine.studioState, ids = Object.keys(S2.library);
+      if (!ids.includes(S2.activeQuest)) ids.push(S2.activeQuest);
+      ids.forEach((id) => { const r = id === S2.activeQuest ? S2 : S2.library[id]; src[id] = { title: r.quest.title || 'Untitled quest', cards: r.content.collectibles || [] }; });
+    } else Object.entries(st.catalog || {}).forEach(([id, c]) => { src[id] = { title: c.title, cards: c.cards || [] }; });
+    Object.values(past).forEach((p) => { if (!src[p.questId]) src[p.questId] = { title: p.title, cards: p.cards.map((c) => ({ id: c.id, title: c.title, kind: c.scope === 'student' ? 'track' : 'finale', art: c.artKey, image: c.image })) }; });
+    delete src[st.activeQuest];
+    return Object.entries(src).map(([id, q]) => { const p = past[id], got = new Map((p ? p.cards : []).map((c) => [c.id, c]));
+      return { id, title: q.title, played: !!p, master: p && p.master, cards: q.cards.map((c, i) => ({ c, i, e: got.get(c.id) })) }; })
+      .sort((a, b) => (b.played - a.played) || a.title.localeCompare(b.title));
+  }
   function albumScreen(st, viewer) {
     const n = sel.claimedCount(), past = st.pastAlbums || [];
-    const head = pageHead(`Your class · <span class="mono">${esc(sessionCode())}</span>`, 'Class album', past.length ? `<span class="pill plain">${past.length + 1} quests</span>` : '');
-    const earlier = past.length ? `<h3 class="album-sec">Earlier quests</h3>${past.map((p) => `<div class="card stack" style="gap:10px">
-        <div class="spread"><strong>${esc(p.title)}</strong><span class="pill mint">${p.cards.length} card${p.cards.length === 1 ? '' : 's'} found${p.master ? ' · ' + esc(p.master) : ''}</span></div>
-        ${p.cards.length ? `<div class="album-grid past">${p.cards.map((c) => `<div class="collect-card claimed" aria-label="${esc(c.title)}">${Art.cardArt({ id: c.id, art: c.artKey, image: c.image }, c.art)}<span class="holo"></span>
-          <span class="card-strip"><strong>${esc(c.title)}</strong><small>${c.scope === 'student' ? 'Badge' : 'Team card'} · ${c.got} of ${c.total}</small></span></div>`).join('')}</div>` : ''}</div>`).join('')}` : '';
-    if (!SEED.collectibles.length) return `${head}<h3 class="album-sec">Now · ${esc(st.quest.title)}</h3><div class="card"><p style="margin:0">This quest has no reward cards.</p></div>${earlier}`;
+    const others = otherAlbums(st, viewer), scopeOf = (c) => (c.kind === 'track' || c.kind === 'egg' ? 'Badge' : 'Team card');
+    const found = n + others.reduce((t, q) => t + q.cards.filter((x) => x.e).length, 0), total = SEED.collectibles.length + others.reduce((t, q) => t + q.cards.length, 0);
+    const head = `${pageHead(`Your class · <span class="mono">${esc(sessionCode())}</span>`, 'Class album')}
+      <div class="album-sum"><div><strong>${found}</strong> of ${total} cards found <span class="hint-note">across ${others.length + 1} quest${others.length ? 's' : ''}</span></div>
+        <div class="album-progress" role="progressbar" aria-valuenow="${found}" aria-valuemin="0" aria-valuemax="${total}" aria-label="Cards found across all quests"><div style="width:${Math.round(found / Math.max(1, total) * 100)}%"></div></div></div>`;
+    const earlier = others.length ? others.map((q) => { const f = q.cards.filter((x) => x.e).length;
+      return `<details class="album-q" ${q.played ? 'open' : ''}><summary><span class="album-q-t">${esc(q.title)}</span><span class="pill ${f ? 'mint' : 'plain'}">${f}/${q.cards.length} found</span>${q.played ? (q.master ? `<span class="pill sun">${esc(q.master)}</span>` : '') : '<span class="pill plain">not played yet</span>'}</summary>
+        ${q.cards.length ? `<div class="album-grid past">${q.cards.map(({ c, i, e }) => (e
+          ? `<div class="collect-card claimed" aria-label="${esc(c.title)}">${Art.cardArt({ id: c.id, art: e.artKey || c.art, image: e.image || c.image }, e.art != null ? e.art : i)}<span class="holo"></span><span class="card-strip"><strong>${esc(c.title)}</strong><small>${e.scope === 'student' ? 'Badge' : 'Team card'} · ${e.got} of ${e.total}</small></span></div>`
+          : `<div class="collect-card locked" aria-label="${esc(c.hidden ? 'Hidden card' : c.title || 'Untitled card')}: not found yet">${Art.lockedArt()}<span class="card-strip"><strong>${c.hidden ? 'Hidden card' : esc(c.title || 'Untitled card')}</strong><small>${scopeOf(c)} · not found yet</small></span></div>`)).join('')}</div>`
+          : '<p class="hint-note" style="margin:8px 0 0">This quest has no reward cards.</p>'}</details>`; }).join('') : '';
+    if (!SEED.collectibles.length) return `${head}<section class="album-now"><h3 class="album-sec">Now · ${esc(st.quest.title)}</h3><div class="card"><p style="margin:0">This quest has no reward cards.</p></div></section>${earlier}`;
     return `
       ${head}
       <h3 class="album-sec">Now · ${esc(st.quest.title)} <small>${n} of ${SEED.collectibles.length} found</small></h3>
@@ -725,7 +745,6 @@
           </button>`;
         }).join('')}
       </div>
-      <div class="album-progress" role="progressbar" aria-valuenow="${n}" aria-valuemin="0" aria-valuemax="${SEED.collectibles.length}" aria-label="Album progress"><div style="width:${Math.round(n / Math.max(1, SEED.collectibles.length) * 100)}%"></div></div>
       <div class="card ${st.master ? '' : 'wash-lavender'}" style="${st.master ? 'background:var(--grad-collect)' : ''}">
         <div class="grid-2" style="grid-template-columns: 110px 1fr; gap:16px; align-items:center">
           <div class="collect-card ${st.master ? 'claimed' : 'locked'}" style="max-width:110px;cursor:default">${st.master ? Art.masterArt() : Art.lockedArt()}</div>
@@ -754,35 +773,61 @@
   }
 
   function classPage(st, tab) {
+    if (RUN_TABS.some(([k]) => k === tab)) return runPage(st, tab);
     const live = st.phase !== 'LOBBY', pend = sel.pendingEvidence().length + sel.pendingFinales().length + sel.pendingBonus().length;
-    const S2 = Engine.studioState, quests = Object.entries(S2.library).map(([id, r]) => [id, (id === S2.activeQuest ? S2.quest : r.quest).title || 'Untitled quest']), outdated = Engine.runOutdated();
-    const inRun = RUN_TABS.some(([k]) => k === tab), section = inRun ? 'run' : tab;
-    const steps = st.journey.steps, at = steps.findIndex((x) => x.type === 'quest' && x.questId === st.activeQuest);
-    const help = st.help.some((h) => h.open);
+    const cur = st.journey, at = cur.steps.findIndex((x) => x.type === 'quest' && x.questId === st.activeQuest), help = st.help.some((h) => h.open);
     inClassPage = true;
     let inner = '';
-    try {
-      inner = tab === 'teams' ? teacherTeams(st) : tab === 'live' ? teacherLive(st) : tab === 'album' ? `<div class="stage-wrap stack">${albumScreen(st, 'teacher')}</div>` : tab === 'report' ? teacherReport(st) : Journey.teacher(st);
-    } finally { inClassPage = false; }
-    const run = `<section class="run-card" aria-label="The quest this class is running">
-        <div class="run-head">
-          <div style="min-width:0"><div class="eyebrow">${at >= 0 ? `Step ${at + 1} of ${steps.length} in the journey` : 'Not in the journey yet'}</div>
-            <h3>${esc(st.quest.title || 'Untitled quest')}</h3>
-            <div class="run-meta"><span class="pill ${st.quest.status === 'PUBLISHED' ? 'mint' : 'plain'}">${st.quest.status === 'PUBLISHED' ? 'Published' : 'Draft'}</span><span><strong>${pend}</strong> to review</span>${help ? '<span class="pill peach">help asked</span>' : ''}</div></div>
-          <div class="row" style="gap:6px">${st.ui.pickRun && !live ? '' : `<button class="btn btn-secondary btn-sm" data-a="pick-run" ${live ? 'disabled title="End the live session first"' : ''}>Change quest</button>`}<button class="btn btn-ghost btn-sm" data-a="edit-quest" data-id="${esc(st.activeQuest)}">${Art.icon('pencil', 14)} Edit</button></div>
-        </div>
-        ${outdated ? `<div class="run-note">${Art.icon('pencil', 15)}<span style="flex:1">This quest has changed in My quests since the class got it.</span>${live ? '<span class="hint-note" style="margin:0">Update it after the session.</span>' : `<button class="btn btn-primary btn-sm" data-a="run-quest" data-id="${esc(st.activeQuest)}">Use the new version</button>`}</div>` : ''}
-        ${st.ui.pickRun && !live ? `<div class="run-note"><label class="fld" for="run-q" style="margin:0">Quest for this class</label>
-          <select class="input" id="run-q" style="width:auto;min-width:200px;flex:1">${quests.map(([id, t]) => `<option value="${id}" ${id === st.activeQuest ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
-          <button class="btn btn-primary btn-sm" data-a="run-q">Use this quest</button><button class="btn btn-ghost btn-sm" data-a="pick-run-x">Cancel</button></div>` : ''}
-        <nav class="run-tabs" aria-label="Current quest">${RUN_TABS.map(([k, l, ic]) => `<button data-a="screen" data-screen="${k}" aria-current="${tab === k}">${Art.icon(ic, 16)}${l}${k === 'live' && help ? ' <span class="dot-alert" aria-label="help asked"></span>' : ''}</button>`).join('')}</nav>
-      </section>`;
+    try { inner = tab === 'album' ? `<div class="stage-wrap stack">${albumScreen(st, 'teacher')}</div>` : journeysSection(st); } finally { inClassPage = false; }
     return `<div class="stack">
       ${pageHead(`Class code <span class="mono">${esc(sessionCode())}</span>`, esc(className(st)), `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="classes">${Art.icon('back', 15)} My classes</button>`)}
-      <div class="class-meta"><span><strong>${Object.keys(st.seats).length}/${SEED.participants.length}</strong> students joined</span><span class="pill ${live ? 'mint' : 'plain'}">${live ? 'Session live' : 'In the lobby'}</span></div>
-      <nav class="seg" aria-label="Class">${CLASS_SECTIONS.map(([k, l, ic]) => `<button data-a="${k === 'run' ? 'class-run' : 'screen'}" data-screen="${k}" aria-current="${section === k}">${Art.icon(ic, 17)}<span>${l}</span>${k === 'run' && help ? '<span class="dot-alert" aria-label="help asked"></span>' : ''}</button>`).join('')}</nav>
-      ${inRun ? run : ''}
+      <div class="class-meta"><span><strong>${Object.keys(st.seats).length}/${SEED.participants.length}</strong> students joined</span></div>
+      <a class="now-card" href="#educator" data-a="screen" data-screen="${st.ui.runTab || 'live'}">
+        <span class="now-dot ${live ? 'on' : ''}" aria-hidden="true"></span>
+        <span class="now-text"><small>${live ? 'Live now' : 'Running now'}</small><strong>${esc(st.quest.title || 'Untitled quest')}</strong>
+          <span>${at >= 0 ? `Step ${at + 1} of “${esc(cur.name)}”` : 'Not in a journey'} · ${live ? 'session live' : 'in the lobby'}${pend ? ` · ${pend} to review` : ''}${help ? ' · help asked' : ''}</span></span>
+        <span class="now-go">Open ${Art.icon('arrow', 16)}</span>
+      </a>
+      <nav class="seg" aria-label="Class">${CLASS_SECTIONS.map(([k, l, ic]) => `<button data-a="screen" data-screen="${k}" aria-current="${tab === k}">${Art.icon(ic, 17)}<span>${l}</span></button>`).join('')}</nav>
       ${inner}
+    </div>`;
+  }
+
+  /* The class's journeys: pick one to look at, make one the class's current journey, add more. */
+  function journeysSection(st) {
+    const list = st.journeys, view = list.find((j) => j.id === st.ui.viewJourney) || st.journey, isCur = view.id === st.journeyId;
+    return `<div class="stack" style="gap:14px">
+      <div class="jr-bar" role="tablist" aria-label="Journeys">
+        ${list.map((j) => `<button role="tab" class="jr-chip" data-a="view-journey" data-id="${esc(j.id)}" aria-selected="${j.id === view.id}">${j.id === st.journeyId ? '<span class="jr-cur" aria-label="current journey"></span>' : ''}${esc(j.name)}<small>${j.steps.length} step${j.steps.length === 1 ? '' : 's'}</small></button>`).join('')}
+        ${st.ui.newJourney ? `<form class="jr-new" data-form="new-journey"><label class="sr-only" for="nj-name">Journey name</label><input class="input" id="nj-name" placeholder="e.g. Spring term: local history" maxlength="60" required><button class="btn btn-primary btn-sm">Create</button><button class="btn btn-ghost btn-sm" type="button" data-a="new-journey-x">Cancel</button></form>`
+          : `<button class="jr-chip add" data-a="new-journey">${Art.icon('plus', 15)} New journey</button>`}
+      </div>
+      <div class="jr-head">
+        ${st.ui.renameJourney === view.id ? `<form class="row" data-form="rename-journey" data-id="${esc(view.id)}" style="gap:6px;flex:1"><label class="sr-only" for="rj-name">Journey name</label><input class="input" id="rj-name" value="${esc(view.name)}" maxlength="60" style="flex:1;min-width:180px"><button class="btn btn-primary btn-sm">Save</button></form>`
+          : `<h3 style="margin:0">${esc(view.name)} <button class="btn btn-ghost btn-sm" data-a="rename-journey" data-id="${esc(view.id)}" aria-label="Rename journey">${Art.icon('pencil', 14)}</button></h3>`}
+        <span class="row" style="gap:6px">${isCur ? '<span class="pill mint">Students follow this journey</span>' : `<button class="btn btn-secondary btn-sm" data-a="use-journey" data-id="${esc(view.id)}">Make it the class’s journey</button>`}
+          ${list.length > 1 ? `<button class="btn btn-danger-ghost btn-sm" data-a="remove-journey" data-id="${esc(view.id)}">Remove</button>` : ''}</span>
+      </div>
+      ${Journey.teacher(st, view.id)}
+    </div>`;
+  }
+
+  /* The quest the class is running: its live session, teams and report. */
+  function runPage(st, tab) {
+    const live = st.phase !== 'LOBBY', pend = sel.pendingEvidence().length + sel.pendingFinales().length + sel.pendingBonus().length, outdated = Engine.runOutdated();
+    const cur = st.journey, at = cur.steps.findIndex((x) => x.type === 'quest' && x.questId === st.activeQuest), help = st.help.some((h) => h.open);
+    inClassPage = true;
+    let inner = '';
+    try { inner = tab === 'teams' ? teacherTeams(st) : tab === 'report' ? teacherReport(st) : teacherLive(st); } finally { inClassPage = false; }
+    return `<div class="stack">
+      <nav class="crumbs" aria-label="Breadcrumb"><button data-a="screen" data-screen="classes">My classes</button><span aria-hidden="true">›</span><button data-a="screen" data-screen="next">${esc(className(st))}</button><span aria-hidden="true">›</span><button data-a="screen" data-screen="next">${esc(cur.name)}</button></nav>
+      <div class="spread page-head"><div style="min-width:0"><div class="eyebrow">${at >= 0 ? `Step ${at + 1} of ${cur.steps.length}` : 'Not in a journey'} · class code <span class="mono">${esc(sessionCode())}</span></div>
+          <h2 style="margin:2px 0 6px">${esc(st.quest.title || 'Untitled quest')}</h2>
+          <div class="run-meta"><span class="pill ${live ? 'mint' : 'plain'}">${live ? 'Session live' : 'In the lobby'}</span><span><strong>${Object.keys(st.seats).length}/${SEED.participants.length}</strong> joined</span><span><strong>${pend}</strong> to review</span></div></div>
+        <div class="row" style="gap:8px"><button class="btn btn-ghost btn-sm" data-a="edit-quest" data-id="${esc(st.activeQuest)}">${Art.icon('pencil', 14)} Edit quest</button></div></div>
+      ${outdated ? `<div class="run-note">${Art.icon('pencil', 15)}<span style="flex:1">This quest has changed in My quests since the class got it.</span>${live ? '<span class="hint-note" style="margin:0">Update it after the session.</span>' : `<button class="btn btn-primary btn-sm" data-a="run-quest" data-id="${esc(st.activeQuest)}">Use the new version</button>`}</div>` : ''}
+      <div class="tabbar" role="tablist" aria-label="This quest">${RUN_TABS.map(([k, l, ic]) => `<button role="tab" data-a="screen" data-screen="${k}" aria-selected="${tab === k}">${Art.icon(ic, 16)}${l}${k === 'live' && help ? ' <span class="dot-alert" aria-label="help asked"></span>' : ''}</button>`).join('')}</div>
+      <div class="tabpanel" role="tabpanel">${inner}</div>
     </div>`;
   }
 
@@ -801,7 +846,7 @@
           ${st.ui.renameClass ? `<form class="row" data-form="rename-class" style="gap:6px;margin:8px 0 2px"><label class="sr-only" for="rc-name">Class name</label><input class="input" id="rc-name" value="${esc(st.className)}" maxlength="60" style="flex:1"><button class="btn btn-primary btn-sm">Save</button></form>`
             : `<h3 style="margin:8px 0 2px">${esc(className(st))} <button class="btn btn-ghost btn-sm" data-a="rename-class" aria-label="Rename class">${Art.icon('pencil', 14)}</button></h3>`}
           <p class="hint-note" style="margin:0 0 10px">Running ${esc(st.quest.title || 'Untitled quest')} · ${Object.keys(st.seats).length}/${SEED.participants.length} joined</p>
-          <div class="row" style="margin-top:auto"><button class="btn btn-secondary btn-sm" data-a="screen" data-screen="${st.ui.classTab || 'next'}">Open</button><button class="btn btn-ghost btn-sm" data-a="pick-run-open" ${live ? 'disabled title="End the live session first"' : ''}>Change quest</button></div>
+          <div class="row" style="margin-top:auto"><button class="btn btn-secondary btn-sm" data-a="screen" data-screen="${st.ui.classTab || 'next'}">Open</button><button class="btn btn-ghost btn-sm" data-a="screen" data-screen="next">Journeys</button></div>
         </div>
         ${others.map((c) => `<div class="card quest-card">
           <div class="spread"><span class="pill mono">${esc(c.code)}</span></div>
@@ -1220,6 +1265,12 @@
       try { const list = classList(); list.splice(1, 0, { code, name, quest: S().quest.title || '', at: Date.now() }); localStorage.setItem('wq-classes', JSON.stringify(list)); } catch {}
       goToClass(code);
     }));
+    root.querySelectorAll('[data-form="new-journey"]').forEach((f) => f.addEventListener('submit', (e) => {
+      e.preventDefault(); const r = act('addJourney', { name: f.querySelector('#nj-name').value }); if (r.ok) { S().ui.newJourney = false; S().ui.viewJourney = r.id; render(); }
+    }));
+    root.querySelectorAll('[data-form="rename-journey"]').forEach((f) => f.addEventListener('submit', (e) => {
+      e.preventDefault(); const r = act('renameJourney', { id: f.dataset.id, name: f.querySelector('#rj-name').value }); if (r.ok) { S().ui.renameJourney = null; render(); }
+    }));
     root.querySelectorAll('[data-form="rename-class"]').forEach((f) => f.addEventListener('submit', (e) => {
       e.preventDefault(); const r = act('renameClass', { name: f.querySelector('#rc-name').value }); if (r.ok) { S().ui.renameClass = false; rememberClass(S()); render(); }
     }));
@@ -1245,6 +1296,12 @@
           case 'show-code': return JoinCode.open(sessionCode(), S().quest.title);
           case 'demo-toggle': S().ui.demoOpen = !S().ui.demoOpen; render(); return;
           case 'safety': return act('updateQuest', { field: 'safety', value: el.checked }), render();
+          case 'view-journey': S().ui.viewJourney = el.dataset.id; S().ui.renameJourney = null; return render();
+          case 'new-journey': S().ui.newJourney = true; render(); document.getElementById('nj-name')?.focus(); return;
+          case 'new-journey-x': S().ui.newJourney = false; return render();
+          case 'rename-journey': S().ui.renameJourney = el.dataset.id; render(); document.getElementById('rj-name')?.focus(); return;
+          case 'use-journey': return act('useJourney', { id: el.dataset.id });
+          case 'remove-journey': { const j = S().journeys.find((x) => x.id === el.dataset.id); if (j && confirm(`Remove the journey “${j.name}” and its steps?`)) { act('removeJourney', { id: j.id }); S().ui.viewJourney = null; render(); } return; }
           case 'pick-run': S().ui.pickRun = true; return render();
           case 'class-run': S().ui.classTab = S().ui.runTab || 'live'; return act('setScreen', { screen: S().ui.classTab });
           case 'pick-run-open': S().ui.pickRun = true; S().ui.screen = S().ui.runTab || 'live'; return render();

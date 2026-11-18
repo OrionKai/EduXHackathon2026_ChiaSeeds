@@ -60,20 +60,42 @@ const Engine = (() => {
     return st.title || 'Classroom session';
   }
   /* done | open | waiting (experience not booked yet) | locked, with the reason students and teachers see */
-  function stepState(s, i) {
-    const steps = s.journey.steps, st = steps[i];
+  /* A class can have several journeys; `s.journey` is the class's current one (the one students follow). */
+  const jById = (s, jid) => (jid && s.journeys && s.journeys.find((j) => j.id === jid)) || s.journey;
+  const jOf = (s, stepId) => (s.journeys || [s.journey]).find((j) => j.steps.some((x) => x.id === stepId)) || s.journey;
+  function ensureJourneys(s) {
+    if (!Array.isArray(s.journeys) || !s.journeys.length) {
+      const d = Object.getOwnPropertyDescriptor(s, 'journey'), old = d && d.value && Array.isArray(d.value.steps) && d.value.steps.length ? d.value : defaultJourney(s);
+      s.journeys = [{ id: 'jr1', name: 'Main journey', steps: old.steps }];
+    }
+    s.journeys.forEach((j) => { j.name = j.name || 'Journey'; j.steps = Array.isArray(j.steps) ? j.steps : []; });
+    if (!s.journeys.some((j) => j.id === s.journeyId)) s.journeyId = s.journeys[0].id;
+    delete s.journey;
+    Object.defineProperty(s, 'journey', { get() { return this.journeys.find((j) => j.id === this.journeyId) || this.journeys[0]; }, configurable: true, enumerable: false });
+    s.catalog = s.catalog || {};
+    return s;
+  }
+  /* The reward cards of a quest the class will run (so students' album can show what's still to find). */
+  function catalogQuest(s, id) {
+    const snap = typeof questSnapshot === 'function' && studioState ? questSnapshot(id) : null;
+    if (!snap) return;
+    s.catalog = s.catalog || {};
+    s.catalog[id] = { title: snap.quest.title || 'Untitled quest', cards: (snap.content.collectibles || []).map((c) => ({ id: c.id, title: c.title, kind: c.kind, hidden: !!c.hidden, art: c.art || '', image: c.image || null })) };
+  }
+  function stepState(s, i, jid) {
+    const steps = jById(s, jid).steps, st = steps[i];
     if (!st) return { state: 'locked', why: '' };
     if (st.done) return { state: 'done', why: '' };
     const prev = steps[i - 1];
     let open = i === 0 || st.opens === 'start', why = '';
-    if (!open && st.opens === 'after') { open = !!(prev && prev.done); why = `Opens when “${stepTitle(s, prev)}” is done`; }
+    if (!open && st.opens === 'after') { open = !!(prev && prev.done); why = prev ? `Opens when “${stepTitle(s, prev)}” is done` : ''; }
     if (!open && st.opens === 'manual') why = 'Opens when the teacher opens it';
     if (!open && st.opens === 'date') { open = !!st.date && st.date <= todayISO(); why = st.date ? `Opens on ${st.date}` : 'Opens on a date (not set yet)'; }
     if (st.opened) open = true;
     if (open && st.type === 'experience' && st.exp.status !== 'accepted') return { state: 'waiting', why: 'Waiting for the booking to be confirmed' };
     return open ? { state: 'open', why: st.opened && st.reason ? 'Opened early: ' + st.reason : '' } : { state: 'locked', why };
   }
-  const findStep = (s, id) => (s.journey.steps.find((x) => x.id === id) || null);
+  const findStep = (s, id) => ((s.journeys || [s.journey]).flatMap((j) => j.steps).find((x) => x.id === id) || null);
   const firstExperience = (s) => s.journey.steps.find((x) => x.type === 'experience') || null;
 
   /* ---------- community partner: structured contribution, review of how they're represented, sign-off ---------- */
@@ -139,7 +161,7 @@ const Engine = (() => {
     snapInto(f);
     makeQuest(f, { template: 'two_explorers', id: 'q_eg', quiet: true });
     snapInto(f);
-    f.journey = defaultJourney(f);
+    f.journey = defaultJourney(f); ensureJourneys(f);
     f.className = 'Demo class';
     return f;
   }
@@ -321,7 +343,7 @@ const Engine = (() => {
     Object.keys(s.bonus).forEach((k) => { if (!k.includes('@')) { const c = (s.content.collectibles || []).find((x) => x.id === k); if (c && c.home) s.bonus[k + '@' + c.home] = s.bonus[k]; delete s.bonus[k]; } });
     s.analysis = s.analysis || {};
     s.quest.next = { ...SEED.defaultNext(), ...(s.quest.next || {}) };
-    if (!s.journey || !Array.isArray(s.journey.steps) || !s.journey.steps.length) s.journey = defaultJourney(s);
+    ensureJourneys(s);
     (s.content.collectibles || []).forEach((c) => { if (!c.kind) Object.assign(c, SEED.defaultEarn()); });
     normContributor(s.contributor);
     Object.values(s.library || {}).forEach((r) => r.contributor && normContributor(r.contributor));
@@ -435,7 +457,8 @@ const Engine = (() => {
 
     pendingFinales: () => SEED.homeGroups.filter((h) => state.finale[h].status === 'SUBMITTED'),
 
-    stepState: (i) => stepState(state, i),
+    stepState: (i, jid) => stepState(state, i, jid),
+    journeyById: (jid) => jById(state, jid),
     partnerItems: (qid) => partnerItems(recOf(state, qid)),
     partnerProgress: (qid) => partnerProgress(recOf(state, qid)),
     stepTitle: (st) => stepTitle(state, st),
@@ -481,10 +504,38 @@ const Engine = (() => {
       const seats = same ? clone(s.seats) : null;
       if (!same) archiveAlbum(s);
       s.library = s.library || {}; s.library[id] = clone(snapshot);
-      loadQuest(s, id);
+      loadQuest(s, id); catalogQuest(s, id);
       if (seats) { s.seats = seats; }
       audit('teacher', same ? `Updated the class to the latest “${s.quest.title}”.` : `This class now runs “${s.quest.title}”.`);
       return { ok: true, msg: same ? 'Updated to the latest version.' : `This class now runs “${s.quest.title || 'Untitled quest'}”.` };
+    },
+    addJourney(s, { name }) {
+      const n = String(name || '').trim().slice(0, 60);
+      if (!n) return { ok: false, msg: 'Give the journey a name.' };
+      const j = { id: 'jr' + Date.now().toString(36), name: n, steps: [] };
+      s.journeys.push(j);
+      audit('teacher', `Created the journey “${n}”.`);
+      return { ok: true, msg: `Journey “${n}” created.`, id: j.id };
+    },
+    renameJourney(s, { id, name }) {
+      const j = s.journeys.find((x) => x.id === id), n = String(name || '').trim().slice(0, 60);
+      if (!j || !n) return { ok: false, msg: 'Give the journey a name.' };
+      j.name = n; return { ok: true, msg: 'Journey renamed.' };
+    },
+    removeJourney(s, { id }) {
+      if (s.journeys.length <= 1) return { ok: false, msg: 'A class keeps at least one journey.' };
+      const i = s.journeys.findIndex((x) => x.id === id);
+      if (i < 0) return { ok: false };
+      const [gone] = s.journeys.splice(i, 1);
+      if (s.journeyId === id) s.journeyId = s.journeys[0].id;
+      audit('teacher', `Removed the journey “${gone.name}”.`);
+      return { ok: true, msg: `Removed “${gone.name}”.` };
+    },
+    useJourney(s, { id }) {
+      if (!s.journeys.some((x) => x.id === id)) return { ok: false };
+      if (s.journeyId === id) return { ok: true, silent: true };
+      s.journeyId = id;
+      return { ok: true, msg: 'Students now follow this journey.' };
     },
     renameClass(s, { name }) {
       const n = String(name || '').trim().slice(0, 60);
@@ -1172,15 +1223,17 @@ const Engine = (() => {
       return { ok: true, msg: 'Next experience saved.' };
     },
     /* ----- the class journey (educator) ----- */
-    addStep(s, { type, at }) {
+    addStep(s, { type, at, journeyId }) {
       if (!STEP_TYPES.includes(type)) return { ok: false };
+      const J = jById(s, journeyId);
       const st = newStep(s, type);
       if (type === 'quest' && arguments[1].questId) st.questId = String(arguments[1].questId);
-      else if (type === 'quest') { const used = new Set(s.journey.steps.filter((x) => x.type === 'quest').map((x) => x.questId)); const free = Object.keys(s.library).find((k) => !used.has(k)); st.questId = free || s.activeQuest; }
-      const i = Math.max(0, Math.min(Number.isInteger(at) ? at : s.journey.steps.length, s.journey.steps.length));
-      s.journey.steps.splice(i, 0, st);
-      if (i === 0 && s.journey.steps[1] && s.journey.steps[1].opens === 'start') s.journey.steps[1].opens = 'after';
+      else if (type === 'quest') { const used = new Set(J.steps.filter((x) => x.type === 'quest').map((x) => x.questId)); const free = Object.keys(s.library).find((k) => !used.has(k)); st.questId = free || s.activeQuest; }
+      const i = Math.max(0, Math.min(Number.isInteger(at) ? at : J.steps.length, J.steps.length));
+      J.steps.splice(i, 0, st);
+      if (i === 0 && J.steps[1] && J.steps[1].opens === 'start') J.steps[1].opens = 'after';
       if (i === 0) st.opens = 'start';
+      if (st.type === 'quest') catalogQuest(s, st.questId);
       audit('teacher', `Added a ${type === 'class' ? 'classroom session' : type} step to the journey.`);
       return { ok: true, msg: 'Step added — fill in the details.', id: st.id };
     },
@@ -1191,33 +1244,34 @@ const Engine = (() => {
       if (typeof f.whenDate === 'string') { st.whenDate = /^\d{4}-\d{2}-\d{2}$/.test(f.whenDate) ? f.whenDate : ''; st.whenTime = /^\d{2}:\d{2}$/.test(f.whenTime || '') ? f.whenTime : ''; st.when = SEED.fmtWhen(st.whenDate, st.whenTime); }
       if (['start', 'after', 'manual', 'date'].includes(f.opens)) st.opens = f.opens;
       if (typeof f.date === 'string') st.date = /^\d{4}-\d{2}-\d{2}$/.test(f.date) ? f.date : '';
-      if (st.type === 'quest' && f.questId) { if (!s.library[f.questId] && f.questId !== s.activeQuest) return { ok: false, msg: 'Quest not found.' }; st.questId = f.questId; }
+      if (st.type === 'quest' && f.questId) { if (!s.library[f.questId] && f.questId !== s.activeQuest) return { ok: false, msg: 'Quest not found.' }; st.questId = f.questId; catalogQuest(s, st.questId); }
       if (st.type === 'experience') ['activity', 'provider', 'org', 'bring', 'fallback', 'staff'].forEach((k) => { if (typeof f[k] === 'string') st.exp[k] = f[k].trim().slice(0, 300); });
       if (st.type === 'experience' && typeof f.email === 'string') { const m = f.email.trim().slice(0, 120); if (m && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m)) return { ok: false, msg: 'That email address doesn’t look right.' }; st.exp.email = m; }
       if (st.type === 'experience' && !st.title) st.title = st.exp.activity;
       return { ok: true, msg: 'Step saved.' };
     },
     removeStep(s, { id }) {
-      if (s.journey.steps.length <= 1) return { ok: false, msg: 'A journey needs at least one step.' };
-      const i = s.journey.steps.findIndex((x) => x.id === id);
+      const J = jOf(s, id);
+      const i = J.steps.findIndex((x) => x.id === id);
       if (i < 0) return { ok: false };
-      const [gone] = s.journey.steps.splice(i, 1);
-      if (i === 0 && s.journey.steps[0]) s.journey.steps[0].opens = 'start';
+      const [gone] = J.steps.splice(i, 1);
+      if (i === 0 && J.steps[0]) J.steps[0].opens = 'start';
       audit('teacher', `Removed “${stepTitle(s, gone)}” from the journey.`);
       return { ok: true, msg: 'Step removed.' };
     },
     moveStep(s, { id, dir }) {
-      const steps = s.journey.steps, i = steps.findIndex((x) => x.id === id), j = i + (dir < 0 ? -1 : 1);
+      const steps = jOf(s, id).steps, i = steps.findIndex((x) => x.id === id), j = i + (dir < 0 ? -1 : 1);
       if (i < 0 || j < 0 || j >= steps.length) return { ok: false };
       [steps[i], steps[j]] = [steps[j], steps[i]];
       steps.forEach((x, k) => { if (k === 0) x.opens = 'start'; else if (x.opens === 'start') x.opens = 'after'; });
       return { ok: true, silent: true };
     },
     openStep(s, { id, reason }) {
-      const i = s.journey.steps.findIndex((x) => x.id === id), st = s.journey.steps[i];
+      const J = jOf(s, id);
+      const i = J.steps.findIndex((x) => x.id === id), st = J.steps[i];
       if (!st) return { ok: false };
       if (st.type === 'experience' && st.exp.status !== 'accepted') return { ok: false, msg: 'Confirm the booking with the provider first.' };
-      const now = stepState(s, i);
+      const now = stepState(s, i, J.id);
       if (now.state === 'open' || now.state === 'done') return { ok: false, msg: 'This step is already open.' };
       const r = String(reason || '').trim();
       if (st.opens === 'after' && r.length < 3) return { ok: false, msg: 'The step before isn’t done yet — add a short reason to open this one early.' };
@@ -1283,9 +1337,10 @@ const Engine = (() => {
     },
     experienceCheckIn(s, { participantId, code, byTeacher, stepId }) {
       const p = SEED.byId[participantId];
-      const i = s.journey.steps.findIndex((x) => x.type === 'experience' && (stepId ? x.id === stepId : ['open'].includes(stepState(s, s.journey.steps.indexOf(x)).state)));
-      const st = s.journey.steps[i];
-      if (!p || !st || stepState(s, i).state !== 'open') return { ok: false, msg: 'This experience isn’t open yet.' };
+      const J = stepId ? jOf(s, stepId) : s.journey;
+      const i = J.steps.findIndex((x) => x.type === 'experience' && (stepId ? x.id === stepId : ['open'].includes(stepState(s, J.steps.indexOf(x), J.id).state)));
+      const st = J.steps[i];
+      if (!p || !st || stepState(s, i, J.id).state !== 'open') return { ok: false, msg: 'This experience isn’t open yet.' };
       if (!byTeacher && String(code || '').trim().toUpperCase() !== ('WQ-' + st.id).toUpperCase()) return { ok: false, msg: 'That isn’t the check-in code for this experience.' };
       if (st.checkins[participantId]) return { ok: true, silent: true };
       st.checkins[participantId] = Date.now();
@@ -1423,7 +1478,7 @@ const Engine = (() => {
         if (met) claim(s, c, h, 'system', c.kind === 'finale' ? 'solved the finale' : 'every expert finished');
       });
     });
-    for (const st of (s.journey && s.journey.steps) || []) {
+    for (const st of (s.journeys || []).flatMap((j) => j.steps)) {
       if (st.type === 'quest' && !st.done && st.questId === s.activeQuest && (s.phase === 'COMPLETE' || allFinished(s))) {
         st.done = true;
         audit('system', `Every team finished “${s.quest.title}” — the next step in the journey can open.`);
@@ -1468,7 +1523,7 @@ const Engine = (() => {
     const n = { ...f, ...Object.fromEntries(QUEST_KEYS.map((k) => [k, clone(s[k])])), library: clone(s.library), activeQuest: s.activeQuest,
       className: String(name || '').trim().slice(0, 60), studio: classState.studio || 'DEMO', pastAlbums: [], ui: { drafts: {}, screen: 'next' } };
     PLAY_KEYS.forEach((k) => { if (f[k] === undefined) delete n[k]; else n[k] = clone(f[k]); }); syncRoster(n); // missing keys are filled in on load
-    n.journey = defaultJourney(n);
+    n.journey = defaultJourney(n); ensureJourneys(n);
     try { localStorage.setItem(NEW_CLASS_KEY(code), JSON.stringify(n)); return true; } catch { return false; }
   }
   function sharedState(sp = 'class') {
