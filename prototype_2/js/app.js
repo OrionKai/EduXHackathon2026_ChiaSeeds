@@ -768,9 +768,9 @@
         <span class="pill ${live ? 'mint' : 'plain'}">${live ? 'Session live' : 'In the lobby'}</span>
       </div>
       ${outdated ? `<div class="card row wash-lavender" style="gap:8px;padding:12px 16px"><span style="flex:1">${Art.icon('pencil', 15)} “${esc(st.quest.title)}” has changed in My quests since this class got it.</span>${live ? '<span class="hint-note" style="margin:0">You can update it after the session.</span>' : `<button class="btn btn-primary btn-sm" data-a="run-quest" data-id="${esc(st.activeQuest)}">Use the new version</button>`}</div>` : ''}
-      ${st.ui.pickRun && !live ? `<div class="card row" style="gap:8px;padding:12px 16px"><label class="fld" for="run-q" style="margin:0">Run this quest</label>
+      ${st.ui.pickRun && !live ? `<div class="card row" style="gap:8px;padding:12px 16px"><label class="fld" for="run-q" style="margin:0">Quest for this class</label>
         <select class="input" id="run-q" style="width:auto;min-width:220px">${quests.map(([id, t]) => `<option value="${id}" ${id === st.activeQuest ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
-        <button class="btn btn-primary btn-sm" data-a="run-q">Run it</button><button class="btn btn-ghost btn-sm" data-a="pick-run-x">Cancel</button></div>` : ''}
+        <button class="btn btn-primary btn-sm" data-a="run-q">Use this quest</button><button class="btn btn-ghost btn-sm" data-a="pick-run-x">Cancel</button></div>` : ''}
       <nav class="class-tabs" aria-label="Class sections">${CLASS_TABS.map(([k, l]) => `<button data-a="screen" data-screen="${k}" aria-current="${tab === k}">${l}${k === 'live' && st.help.some((h) => h.open) ? ' <span class="pill peach">help</span>' : ''}</button>`).join('')}</nav>
       ${inner}
     </div>`;
@@ -791,7 +791,7 @@
           ${st.ui.renameClass ? `<form class="row" data-form="rename-class" style="gap:6px;margin:8px 0 2px"><label class="sr-only" for="rc-name">Class name</label><input class="input" id="rc-name" value="${esc(st.className)}" maxlength="60" style="flex:1"><button class="btn btn-primary btn-sm">Save</button></form>`
             : `<h3 style="margin:8px 0 2px">${esc(className(st))} <button class="btn btn-ghost btn-sm" data-a="rename-class" aria-label="Rename class">${Art.icon('pencil', 14)}</button></h3>`}
           <p class="hint-note" style="margin:0 0 10px">Running ${esc(st.quest.title || 'Untitled quest')} · ${Object.keys(st.seats).length}/${SEED.participants.length} joined</p>
-          <div class="row" style="margin-top:auto"><button class="btn btn-secondary btn-sm" data-a="screen" data-screen="${st.ui.classTab || 'next'}">Open</button></div>
+          <div class="row" style="margin-top:auto"><button class="btn btn-secondary btn-sm" data-a="screen" data-screen="${st.ui.classTab || 'next'}">Open</button><button class="btn btn-ghost btn-sm" data-a="pick-run-open" ${live ? 'disabled title="End the live session first"' : ''}>Change quest</button></div>
         </div>
         ${others.map((c) => `<div class="card quest-card">
           <div class="spread"><span class="pill mono">${esc(c.code)}</span></div>
@@ -839,9 +839,7 @@
             <div class="spread"><span class="pill ${q.status === 'PUBLISHED' ? 'mint' : 'plain'}">${q.status === 'PUBLISHED' ? 'Published' : 'Draft'}</span>${active ? `<span class="pill lavender">Running in ${esc(className(C))}</span>` : ''}</div>
             <h3 style="margin:8px 0 2px">${esc(q.title || 'Untitled quest')}</h3>
             <p class="hint-note" style="margin:0 0 10px">${esc(q.venue || 'No venue yet')} · ${q.duration || 60} min${q.partner && q.partner.name ? ' · with ' + esc(q.partner.name) : ''}</p>
-            <div class="row" style="margin-top:auto"><button class="btn btn-secondary btn-sm" data-a="edit-quest" data-id="${id}">${Art.icon('pencil', 15)} Edit</button>${active
-              ? (Engine.runOutdated() ? `<button class="btn btn-ghost btn-sm" data-a="run-quest" data-id="${id}" ${live ? 'disabled title="After the live session"' : ''}>Update ${esc(className(C))}</button>` : '')
-              : `<button class="btn btn-ghost btn-sm" data-a="run-quest" data-id="${id}" ${live ? 'disabled title="End the live session first"' : ''}>Run with ${esc(className(C))}</button><button class="btn btn-ghost btn-sm" data-a="del-quest" data-id="${id}">Delete</button>`}</div>
+            <div class="row" style="margin-top:auto"><button class="btn btn-secondary btn-sm" data-a="edit-quest" data-id="${id}">${Art.icon('pencil', 15)} Edit</button>${active ? '' : `<button class="btn btn-ghost btn-sm" data-a="del-quest" data-id="${id}">Delete</button>`}</div>
           </div>`).join('')}
         </div>
       </div>`;
@@ -1238,6 +1236,7 @@
           case 'demo-toggle': S().ui.demoOpen = !S().ui.demoOpen; render(); return;
           case 'safety': return act('updateQuest', { field: 'safety', value: el.checked }), render();
           case 'pick-run': S().ui.pickRun = true; return render();
+          case 'pick-run-open': S().ui.pickRun = true; S().ui.screen = S().ui.classTab || 'next'; return render();
           case 'pick-run-x': S().ui.pickRun = false; return render();
           case 'run-q': { const id = (document.getElementById('run-q') || {}).value; S().ui.pickRun = false; if (id && id !== Engine.classState.activeQuest) runQuest(id); return render(); }
           case 'run-quest': return runQuest(el.dataset.id);
