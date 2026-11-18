@@ -1295,16 +1295,14 @@ const Engine = (() => {
       return { ok: true, silent: true };
     },
     openStep(s, { id, reason }) {
-      const J = jOf(s, id);
-      const i = J.steps.findIndex((x) => x.id === id), st = J.steps[i];
+      const J = jOf(s, id), i = J.steps.findIndex((x) => x.id === id), st = J.steps[i];
       if (!st) return { ok: false };
+      if (i !== J.steps.findIndex((x) => !x.done)) return { ok: false, msg: 'Steps happen in order. Finish (or mark done) the step before it first.' };
       if (st.type === 'experience' && st.exp.status !== 'accepted') return { ok: false, msg: 'Confirm the booking with the provider first.' };
       const now = stepState(s, i, J.id);
       if (now.state === 'open' || now.state === 'done') return { ok: false, msg: 'This step is already open.' };
-      const r = String(reason || '').trim();
-      if (st.opens === 'after' && r.length < 3) return { ok: false, msg: 'The step before isn’t done yet — add a short reason to open this one early.' };
-      st.opened = true; st.reason = r;
-      audit('teacher', `Opened “${stepTitle(s, st)}”${r ? ' early: ' + r : ''}.`);
+      st.opened = true; st.reason = String(reason || '').trim().slice(0, 200);
+      audit('teacher', `Opened “${stepTitle(s, st)}” for the class.`);
       return { ok: true, msg: `“${stepTitle(s, st)}” is open for the class.` };
     },
     markStepDone(s, { id, done }) {

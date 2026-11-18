@@ -782,14 +782,14 @@
       ${crumbs([['My classes', 'data-a="screen" data-screen="classes"']])}
       <div class="page-title"><h2>${esc(className(st))}</h2>
         <p class="page-meta"><span>Class code <span class="mono">${esc(sessionCode())}</span></span><span><strong>${Object.keys(st.seats).length}/${SEED.participants.length}</strong> students joined</span></p></div>
-      ${nowCard(st)}
+      ${nowCard(st, tab)}
       <nav class="seg" aria-label="Class">${CLASS_SECTIONS.map(([k, l, ic]) => `<button data-a="screen" data-screen="${k}" aria-current="${tab === k}">${Art.icon(ic, 17)}<span>${l}</span></button>`).join('')}</nav>
       ${inner}
     </div>`;
   }
 
   /* What the class is doing now: the current step of its journey, whatever kind of step it is. */
-  function nowCard(st) {
+  function nowCard(st, tab) {
     const n = sel.nowStep(), j = n.journey, live = st.phase !== 'LOBBY' && st.phase !== 'COMPLETE';
     const pend = sel.pendingEvidence().length + sel.pendingFinales().length + sel.pendingBonus().length, help = st.help.some((h) => h.open);
     const frame = (dot, label, title, line, action) => `<div class="now-card"><span class="now-dot ${dot}" aria-hidden="true"></span>
@@ -807,7 +807,7 @@
     const kind = x.type === 'experience' ? 'Real experience' : 'In class';
     const status = n.state && n.state.state === 'open' ? 'open for the class' : n.state && n.state.why ? n.state.why.charAt(0).toLowerCase() + n.state.why.slice(1) : 'not open yet';
     return frame(n.state && n.state.state === 'open' ? 'on' : '', `Now · ${kind}`, esc(sel.stepTitle(x)), `${where} · ${esc(status)}`,
-      `<button class="btn btn-primary btn-sm" data-a="open-step" data-id="${esc(x.id)}">${x.type === 'experience' ? 'Booking & check-in' : 'Details'}</button>`);
+      tab === 'next' && st.ui.viewJourney && st.ui.viewJourney !== st.journeyId || tab !== 'next' ? `<button class="btn btn-secondary btn-sm" data-a="open-step" data-id="${esc(x.id)}">Show in the journey</button>` : '');
   }
 
   /* The class's journeys: pick one to look at, make one the class's current journey, add more. */
@@ -1318,7 +1318,7 @@
           case 'view-journey': S().ui.viewJourney = el.dataset.id; S().ui.renameJourney = null; return render();
           case 'view-journey-go': S().ui.viewJourney = el.dataset.id; return act('setScreen', { screen: 'next' });
           case 'start-now': { const r = act('startNow'); if (r.ok) toast(r.msg, 'success'); return; }
-          case 'open-step': S().ui.viewJourney = S().journeyId; S().ui.jOpen = el.dataset.id; act('setScreen', { screen: 'next' }); setTimeout(() => document.querySelector(`[data-jform="${el.dataset.id}"]`)?.closest('.j-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30); return;
+          case 'open-step': S().ui.viewJourney = S().journeyId; act('setScreen', { screen: 'next' }); setTimeout(() => document.querySelector('.j-step.j-now')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 30); return;
           case 'new-journey': S().ui.newJourney = true; render(); document.getElementById('nj-name')?.focus(); return;
           case 'new-journey-x': S().ui.newJourney = false; return render();
           case 'rename-journey': S().ui.renameJourney = el.dataset.id; render(); document.getElementById('rj-name')?.focus(); return;

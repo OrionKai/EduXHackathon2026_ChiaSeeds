@@ -25,9 +25,10 @@ const Journey = (() => {
     viewJ = jid || null;
     const code = typeof Sync !== 'undefined' ? Sync.state.session : '';
     const list = steps();
+    const cur = list.findIndex((x) => !x.done);
     return `${window.WQ.pageHead(`Class code <span class="mono">${esc(code)}</span>`, 'Journey')}
       ${list.length ? '' : '<p class="hint-note" style="margin:0">No steps yet. Add a quest, a real experience or a class session.</p>'}
-      <ol class="journey">${list.map((x, i) => addSlot(i) + stepCard(st, x, i)).join('')}${addSlot(list.length)}</ol>`;
+      <ol class="journey">${list.map((x, i) => addSlot(i) + stepCard(st, x, i, cur)).join('')}${addSlot(list.length)}</ol>`;
   }
 
   function addSlot(i) {
@@ -37,29 +38,36 @@ const Journey = (() => {
       <button class="btn btn-ghost btn-sm" data-j="add-close">Cancel</button></div></div></li>`;
   }
 
-  function stepCard(st, x, i) {
-    const s = Engine.sel.stepState(i, viewJ), [cls, lab] = stateLabel(s), [ic, typeLabel] = TYPE[x.type];
-    const isActive = x.type === 'quest' && x.questId === st.activeQuest && (!viewJ || viewJ === st.journeyId);
+  /* One step: what it is, where it stands (Done / Now / Later + one sentence), and the actions that apply now. */
+  function stepCard(st, x, i, cur) {
+    const s = Engine.sel.stepState(i, viewJ), [ic, typeLabel] = TYPE[x.type], isNow = i === cur, done = s.state === 'done';
+    const isRunning = x.type === 'quest' && x.questId === st.activeQuest && (!viewJ || viewJ === st.journeyId);
     const qv = x.type === 'quest' ? questOf(x.questId) : null;
-    const meta = [x.when, x.type === 'quest' ? (qv && qv.venue) : x.where, i === 0 ? 'First step' : 'Opens: ' + (OPENS[x.opens] || OPENS.after).toLowerCase() + (x.opens === 'date' && x.date ? ' (' + x.date + ')' : '')].filter(Boolean).join(' · ');
+    const meta = [x.when, x.type === 'quest' ? qv && qv.venue : x.where].filter(Boolean).join(' · ');
+    const rule = x.opens === 'manual' ? 'Opens when you open it' : x.opens === 'date' ? (x.date ? 'Opens on ' + SEED.fmtWhen(x.date) : 'Opens on a date (not set yet)') : i === 0 ? 'The first step' : 'Opens when the step before is done';
+    const status = done ? 'Done' : isNow ? (s.state === 'open' ? (isRunning ? 'Open to students · the class is running this quest' : 'Open to students') : s.why || 'Not open to students yet') : rule;
+    const [pc, pl] = done ? ['mint', 'Done'] : isNow ? ['lavender', 'Now'] : ['plain', 'Later'];
+    const canOpen = isNow && s.state === 'locked';
+    const needsBooking = isNow && s.state === 'waiting';
     const expanded = ui().jOpen === x.id;
-    return `<li class="j-step j-${s.state}">
-      <div class="j-dot" aria-hidden="true">${s.state === 'done' ? Art.icon('check', 16) : Art.icon(ic, 16)}</div>
+    return `<li class="j-step ${done ? 'j-done' : isNow ? 'j-now' : 'j-later'}">
+      <div class="j-dot" aria-hidden="true">${done ? Art.icon('check', 16) : Art.icon(ic, 16)}</div>
       <div class="card j-card">
-        <div class="spread"><div><div class="eyebrow">Step ${i + 1} · ${typeLabel}</div><h3 style="margin:2px 0 0">${esc(Engine.sel.stepTitle(x))}</h3></div>
-          <div class="row" style="gap:6px">${isActive ? '<span class="pill lavender">Running now</span>' : ''}${x.type === 'experience' ? `<span class="pill ${BOOK[x.exp.status][0]}">${BOOK[x.exp.status][1]}</span>` : ''}<span class="pill ${cls}">${lab}</span></div></div>
-        <p class="hint-note" style="margin:6px 0 0">${esc(meta)}${s.why ? ` · ${esc(s.why)}` : ''}</p>
-        ${x.type === 'experience' && s.state !== 'done' && Object.keys(x.checkins).length ? `<p style="margin:6px 0 0"><strong>${Object.keys(x.checkins).length}</strong> checked in</p>` : ''}
+        <div class="spread"><div style="min-width:0"><div class="eyebrow">Step ${i + 1} · ${typeLabel}</div><h3 style="margin:2px 0 0">${esc(Engine.sel.stepTitle(x))}</h3></div>
+          <div class="row" style="gap:6px">${x.type === 'experience' && !done ? `<span class="pill ${BOOK[x.exp.status][0]}">${BOOK[x.exp.status][1]}</span>` : ''}<span class="pill ${pc}">${pl}</span></div></div>
+        ${meta ? `<p class="hint-note" style="margin:6px 0 0">${esc(meta)}</p>` : ''}
+        <p class="j-status ${isNow && !done ? 'now' : ''}">${esc(status)}${x.type === 'experience' && Object.keys(x.checkins).length ? ` · ${Object.keys(x.checkins).length} checked in` : ''}</p>
         <div class="row j-actions">
-          <button class="btn btn-secondary btn-sm ${expanded ? 'is-on' : ''}" data-j="toggle" data-id="${x.id}" aria-expanded="${expanded}">${Art.icon(x.type === 'class' ? 'pencil' : 'clock', 14)} ${SETTINGS[x.type]}</button>
+          <button class="btn ${needsBooking ? 'btn-primary' : 'btn-secondary'} btn-sm ${expanded ? 'is-on' : ''}" data-j="toggle" data-id="${x.id}" aria-expanded="${expanded}">${Art.icon(x.type === 'class' ? 'pencil' : 'clock', 14)} ${SETTINGS[x.type]}</button>
           ${x.type === 'quest' && qv ? `<button class="btn btn-ghost btn-sm" data-a="edit-quest" data-id="${esc(x.questId)}">${Art.icon('pencil', 14)} Edit in My quests</button>` : ''}
-          ${s.state === 'locked' || s.state === 'waiting' ? `<button class="btn btn-ghost btn-sm" data-j="open-ask" data-id="${x.id}">Open now</button>` : ''}
-          ${s.state === 'done' ? `<button class="btn btn-ghost btn-sm" data-j="undone" data-id="${x.id}">Mark not done</button>` : s.state === 'open' ? `<button class="btn btn-ghost btn-sm" data-j="done" data-id="${x.id}">${Art.icon('check', 14)} Mark done</button>` : ''}
+          ${canOpen ? `<button class="btn btn-primary btn-sm" data-j="open" data-id="${x.id}">${x.opens === 'date' ? 'Open early' : 'Open for students'}</button>` : ''}
+          ${isNow && s.state === 'open' ? `<button class="btn btn-ghost btn-sm" data-j="done" data-id="${x.id}">${Art.icon('check', 14)} Mark done</button>` : ''}
+          ${done ? `<button class="btn btn-ghost btn-sm" data-j="undone" data-id="${x.id}">Mark not done</button>` : ''}
           <details class="menu j-more"><summary class="btn btn-ghost btn-sm" aria-label="More for step ${i + 1}">⋯</summary><div class="menu-pop">
             <button data-j="up" data-id="${x.id}" ${i === 0 ? 'disabled' : ''}>Move up</button><button data-j="down" data-id="${x.id}" ${i === steps().length - 1 ? 'disabled' : ''}>Move down</button>
+            ${isNow && !done && s.state !== 'open' ? `<button data-j="done" data-id="${x.id}">Skip this step</button>` : ''}
             <button class="danger" data-j="remove" data-id="${x.id}">Remove step</button></div></details>
         </div>
-        ${ui().jOpenNow === x.id ? `<div class="row" style="margin-top:8px"><label class="sr-only" for="j-reason">Reason</label><input class="input" id="j-reason" placeholder="${x.opens === 'after' ? 'Why open it early? (shown to students)' : 'Note (optional)'}" style="flex:1;min-width:180px"><button class="btn btn-primary btn-sm" data-j="open" data-id="${x.id}">Open for the class</button></div>` : ''}
         ${expanded ? details(st, x, i) : ''}
       </div></li>`;
   }
@@ -185,6 +193,7 @@ const Journey = (() => {
   function bind(root) {
     root.querySelectorAll('[data-j]').forEach((el) => el.addEventListener('click', (e) => {
       e.preventDefault();
+      const menu = el.closest('details.menu'); if (menu) menu.open = false;
       const S = Engine.state, id = el.dataset.id, act = window.WQ.act, render = window.WQ.render;
       switch (el.dataset.j) {
         case 'add-open': S.ui.jAdd = Number(el.dataset.i); return render();
@@ -192,8 +201,7 @@ const Journey = (() => {
         case 'add-me': act('addStep', { type: 'quest', at: Engine.classState.journey.steps.length, journeyId: Engine.classState.journeyId, questId: Engine.studioState.activeQuest }); return render();
         case 'add': { const r = act('addStep', { type: el.dataset.type, at: Number(el.dataset.i), journeyId: el.dataset.jid || undefined }); S.ui.jAdd = null; if (r.ok) S.ui.jOpen = r.id; return render(); }
         case 'toggle': S.ui.jOpen = S.ui.jOpen === id ? null : id; return render();
-        case 'open-ask': S.ui.jOpenNow = S.ui.jOpenNow === id ? null : id; return render();
-        case 'open': { const r = act('openStep', { id, reason: (document.getElementById('j-reason') || {}).value || '' }); if (r.ok) S.ui.jOpenNow = null; return render(); }
+        case 'open': return act('openStep', { id });
         case 'done': return act('markStepDone', { id, done: true });
         case 'undone': return act('markStepDone', { id, done: false });
         case 'up': return act('moveStep', { id, dir: -1 }), render();
@@ -230,7 +238,8 @@ const Journey = (() => {
       const fields = { whenDate: v('j-wdate'), whenTime: v('j-wtime'), where: v('j-where'), opens: v('j-opens'), date: v('j-date'), questId: v('j-q'), note: v('j-note') };
       if (x.type === 'experience') Object.assign(fields, { activity: v('j-title'), title: v('j-title'), provider: v('j-prov'), org: v('j-org'), email: v('j-mail'), bring: v('j-bring'), fallback: v('j-fb'), staff: v('j-staff') });
       if (x.type === 'class') fields.title = v('j-title');
-      window.WQ.act('updateStep', { id, fields });
+      const r = window.WQ.act('updateStep', { id, fields });
+      if (r && r.ok) { Engine.state.ui.jOpen = null; window.WQ.render(); }
     }));
   }
 

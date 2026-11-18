@@ -951,3 +951,10 @@ a.brand { text-decoration: none; color: inherit; }
 
 #pq-sel { max-width: 100%; }
 @media (max-width: 700px) { #pq-sel { width: 100% !important; min-width: 0 !important; } }
+
+/* journey steps: Done / Now / Later */
+.j-step.j-now .j-dot { border-color: var(--violet); color: var(--violet-deep); background: var(--lavender); }
+.j-step.j-now .j-card { border: 2px solid var(--violet); }
+.j-step.j-later .j-card { opacity: .92; }
+.j-status { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+.j-status.now { color: var(--violet-deep); font-weight: 600; }
