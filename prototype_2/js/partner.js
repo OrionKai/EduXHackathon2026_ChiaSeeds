@@ -41,10 +41,10 @@ const Partner = (() => {
     const au = q.audience || SEED.defaultAudience();
     return `<div class="card">
         <p style="margin:0">The educator invited you to help with <strong>${esc(q.title)}</strong>${q.venue ? ` at ${esc(q.venue)}` : ''}, for ${esc((SEED.AUDIENCES[au.kind] || 'school').toLowerCase())} learners${au.ages ? ' aged ' + esc(au.ages) : ''}.</p>
-        <ul style="margin:8px 0 0;padding-left:20px"><li>Share what students can only learn from you.</li><li>Check how your community is represented, and suggest changes.</li><li>Sign off — the quest can’t be published without you.</li><li>On the day, talk with students and confirm each conversation.</li></ul>
+        <ul style="margin:8px 0 0;padding-left:20px"><li><strong>Before:</strong> share your knowledge and review how it is used.</li><li><strong>On the day:</strong> put devices away and talk with students. Confirm participation afterwards.</li><li><strong>After:</strong> read students' work and offer feedback when you have time.</li></ul>
         <div style="margin-top:12px">${pipe(st, qid)}</div></div>
       <div class="card next-step"><div class="eyebrow">What to do now</div>
-        ${t.list.length ? `<ol class="ns-steps">${t.list.map(([text, screen], i) => `<li class="${i === 0 ? 'now' : ''}"><span style="flex:1">${esc(text)}</span><button class="btn btn-sm ${i === 0 ? 'btn-primary' : 'btn-ghost'}" data-a="screen" data-screen="${screen}">Go</button></li>`).join('')}</ol>`
+        ${t.list.length ? `<ol class="ns-steps">${t.list.map(([text, screen], i) => `<li class="${i === 0 ? 'now' : ''}"><span style="flex:1">${esc(text)}</span><button class="btn btn-sm ${i === 0 ? 'btn-primary' : 'btn-ghost'}" data-a="screen" data-screen="${screen}">${({ contribution: 'Add contribution', review: 'Open review', facilitate: 'Open session' })[screen]}</button></li>`).join('')}</ol>`
           : `<p style="margin:4px 0 0">${p.signedOff ? 'All done for now — you’ve signed off. Thank you!' : 'Nothing to do right now.'}</p>`}
         ${t.waiting ? `<p class="hint-note" style="margin:8px 0 0">${Art.icon('clock', 14)} Waiting for the educator to answer ${t.waiting} suggestion${t.waiting > 1 ? 's' : ''}.</p>` : ''}
       </div>`;
@@ -55,6 +55,7 @@ const Partner = (() => {
     const radio = (v, l) => `<label class="toggle"><input type="radio" name="credit" value="${v}" ${c.credit === v ? 'checked' : ''} ${dis}> ${l}</label>`;
     return `<div class="grid-2">
       <form class="card stack" data-form="contribution" data-qid="${qid}" style="gap:8px">
+        <p class="hint-note" style="margin:0">Share your knowledge, preferences and availability. Save below, then open "Review the quest".</p>
         <div class="fld-group"><label class="fld" for="contrib">What can students learn only from you?</label>
           <textarea class="input" id="contrib" rows="4" placeholder="e.g. How objects like these are remembered in my community, and questions we still ask about them" ${dis}>${esc(c.text)}</textarea></div>
         <div class="fld-group"><label class="fld" for="c-avoid">Anything to avoid or handle with care?</label>
@@ -69,10 +70,11 @@ const Partner = (() => {
       </form>
       <div class="stack">
         <div class="card"><div class="eyebrow coral">How this is used</div>
-          <p style="margin:6px 0">Your contribution becomes an approved source the quest assistant may draw on, together with your “handle with care” notes. You edit only your own words — never the educator’s curriculum.</p>
+          <p style="margin:6px 0">The quest assistant uses your knowledge and care notes to help draft activities. You review how your contribution is represented before the educator publishes.</p>
           <p style="margin:0">Students will see you as: <strong>${esc(label(q, c))}</strong>.</p></div>
         <div class="card wash-peach"><div class="eyebrow coral">A shared responsibility</div>
-          <p class="hint-note" style="margin:0">The quest can’t be published without your sign-off. (Demo: the partner is simulated.)</p></div>
+          <p class="hint-note" style="margin:0">You approve your contribution and its representation. The educator manages the learning activity and publication.</p>
+          <details class="partner-disclosure"><summary>About this demo</summary><p class="hint-note">The partner is simulated. No venue partnership is confirmed.</p></details></div>
       </div></div>`;
   }
 
@@ -80,8 +82,9 @@ const Partner = (() => {
     const c = rec.content;
     if (item.startsWith('track:')) {
       const m = c.missions[item.slice(6)] || {}, opts = c.peerTeaching.checkOptions[item.slice(6)] || [];
-      return `<dl class="p-dl">${[['Where', m.gallery], ['The question it asks', m.narrative], ['What students do', m.observe], ['Discussion', m.discuss], ['What they teach their team', m.teachHeadline], ['The summary marked correct', (opts.find((o) => o.correct) || {}).text]]
-        .filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
+      const rows = (fields) => fields.filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('');
+      return `<dl class="p-dl">${rows([['Where', m.gallery], ['Main question', m.narrative], ['What students do', m.observe]])}</dl>
+        <details class="partner-disclosure"><summary>View discussion and learning details</summary><dl class="p-dl">${rows([['Discussion question', m.discuss], ['What students explain to their team', m.teachHeadline], ['Expected summary', (opts.find((o) => o.correct) || {}).text]])}</dl></details>`;
     }
     if (item === 'story') return `<p style="margin:0">${esc(c.subtitle ? c.subtitle + ' — ' : '')}${esc(c.story.opening || 'No story written yet.')}</p>`;
     return `<p style="margin:0 0 6px"><strong>${esc(c.finale.title)}</strong>${c.finale.intro ? ` — ${esc(c.finale.intro)}` : ''}</p>
@@ -103,9 +106,10 @@ const Partner = (() => {
       </div>`;
     }).join('');
     const ready = p.contributed && p.reviewed === p.items.length && !p.open;
-    return `<p class="hint-note" style="margin:-4px 0 0">Mark each part “Looks right” or suggest a change. The educator replies, then you check again.</p>
+    return `<p class="hint-note" style="margin:-4px 0 0">Check that your knowledge and community are represented accurately. Open the details before marking a part "Looks right", or choose "Suggest a change".</p>
       ${cards}
-      <div class="card ${p.signedOff ? 'wash-mint' : ''}"><div class="spread"><h3 style="margin:0">Sign off</h3>${pipe(st, qid)}</div>
+      <div class="card ${p.signedOff ? 'wash-mint' : ''}"><div class="spread"><h3 style="margin:0">Approve your contribution and its representation</h3>${pipe(st, qid)}</div>
+        <p class="hint-note">Your approval lets the educator publish. The educator remains responsible for the learning activity and supervision.</p>
         <ul style="margin:10px 0;padding-left:20px"><li>Contribution written: <strong>${p.contributed ? 'yes' : 'not yet'}</strong></li><li>Parts reviewed: <strong>${p.reviewed}/${p.items.length}</strong></li><li>Suggestions waiting for the educator: <strong>${p.open}</strong></li></ul>
         ${p.signedOff ? `<p style="margin:0">${Art.icon('check', 16)} You’ve signed off — the educator can publish.</p>`
           : `<button class="btn btn-teal" data-a="approve-contrib" data-qid="${qid}" ${ready ? '' : 'disabled'}>${Art.icon('check', 16)} Sign off the quest</button>${ready ? '' : '<p class="hint-note" style="margin:6px 0 0">Finish the steps above first.</p>'}`}
@@ -117,8 +121,8 @@ const Partner = (() => {
     const tracks = SEED.topics.filter((t) => SEED.missions[t].needsFacilitator);
     if (!tracks.length) return '';
     const ps = SEED.participants.filter((p) => tracks.includes(p.topic) && st.evidence[p.id].answers && ['SUBMITTED', 'VERIFIED', 'NEEDS_REVISION'].includes(st.evidence[p.id].status));
-    return `<div class="card"><div class="eyebrow coral">Your words, as students recorded them</div><h3 style="margin:2px 0 6px">Check how students quoted you</h3>
-      <p class="hint-note">Students wrote down what you said. Flag anything that isn’t what you meant.</p>
+    return `<div class="card"><div class="eyebrow coral">After the conversation</div><h3 style="margin:2px 0 6px">How students understood your words</h3>
+      <p class="hint-note">Read their notes when you have time. If they misunderstood your meaning, flag it for the educator to follow up.</p>
       ${ps.length ? `<div class="stack" style="gap:10px">${ps.map((p) => { const ev = st.evidence[p.id], f = st.partnerFlags[p.id], m = SEED.missions[p.topic];
         return `<div class="queue-row" style="display:block"><div class="spread"><strong>${esc(nameOf(st, p))}${ev.simulated ? ' <span class="pill plain">simulated</span>' : ''}</strong>${f ? `<span class="pill ${f.open ? 'peach' : 'plain'}">${f.open ? 'flagged' : 'handled'}</span>` : ''}</div>
           <dl class="evidence-quote" style="margin:6px 0">${m.evidenceFields.map((x) => `<dt>${esc(x.label)}</dt><dd>${esc(ev.answers[x.key])}</dd>`).join('')}</dl>

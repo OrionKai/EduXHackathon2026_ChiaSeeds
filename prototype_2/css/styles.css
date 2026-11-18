@@ -702,6 +702,44 @@ a.brand { text-decoration: none; color: inherit; }
 @media (max-width: 700px) { .j-move { margin-left: 0; } .j-add { margin-left: 0; } }
 
 /* ---------- community partner ---------- */
+.role-collaborator .spotlight-dashboard .spotlight-poster { display: grid; gap: 24px; max-width: 860px; margin: 16px auto 0; padding: clamp(18px, 4vw, 36px); border: 1px solid var(--stroke); border-radius: var(--radius-card); background: var(--grad-hero); box-shadow: var(--shadow-card); overflow-wrap: anywhere; }
+.role-collaborator .spotlight-dashboard .spotlight-poster-hero { display: grid; grid-template-columns: 1.4fr 1fr; align-items: center; gap: 20px; }
+.role-collaborator .spotlight-dashboard .spotlight-poster-art { width: 100%; max-width: 240px; justify-self: center; }
+.role-collaborator .spotlight-dashboard .spotlight-poster-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.role-collaborator .spotlight-dashboard .spotlight-poster-stats > div { padding: 16px 10px; text-align: center; background: var(--white); border: 1px solid var(--stroke); border-radius: var(--radius-mini); }
+.role-collaborator .spotlight-dashboard .spotlight-poster-stats h2 { color: var(--violet-deep); }
+.role-collaborator .spotlight-dashboard .spotlight-poster-invite { display: grid; gap: 10px; padding: 18px; border-left: 4px solid var(--success); border-radius: var(--radius-mini); background: var(--white); }
+.role-collaborator .spotlight-dashboard .spotlight-poster-invite .pill { white-space: normal; overflow-wrap: anywhere; }
+.role-collaborator .spotlight-dashboard .spotlight-social-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+@media (max-width: 560px) {
+  .role-collaborator .spotlight-dashboard .spotlight-poster-hero { grid-template-columns: 1fr; }
+  .role-collaborator .spotlight-dashboard .spotlight-poster-art { max-width: 160px; }
+  .role-collaborator .spotlight-dashboard .spotlight-poster-stats { gap: 6px; }
+  .role-collaborator .spotlight-dashboard .spotlight-social-actions .btn { width: 100%; }
+}
+.role-collaborator .spotlight-dashboard figure svg { width: 100%; height: auto; display: block; font-family: inherit; }
+.role-collaborator .spotlight-dashboard .spotlight-bar { height: 14px; border-radius: 999px; background: var(--lavender); overflow: hidden; }
+.role-collaborator .spotlight-dashboard .spotlight-bar > span { display: block; height: 100%; border-radius: inherit; }
+.role-collaborator .spotlight-dashboard .spotlight-avatar { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--white); color: var(--violet-deep); font-weight: 700; }
+.role-collaborator .spotlight-dashboard .spotlight-event { display: flex; align-items: center; gap: 12px; }
+.role-collaborator .partner-disclosure { margin-top: 10px; }
+.role-collaborator .partner-disclosure > summary {
+  display: list-item;
+  list-style-position: inside;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-mini);
+  background: var(--lavender);
+  color: var(--violet-deep);
+  font-weight: 600;
+  cursor: pointer;
+}
+.role-collaborator .partner-disclosure > summary::marker { color: var(--violet-deep); }
+.role-collaborator .partner-disclosure > summary:hover,
+.role-collaborator .partner-disclosure > summary:focus-visible,
+.role-collaborator .partner-disclosure[open] > summary { border-color: var(--violet); }
+.role-collaborator .partner-disclosure > :not(summary) { margin-top: 10px; }
 .p-dl { display: grid; grid-template-columns: minmax(110px, 180px) 1fr; gap: 4px 12px; margin: 0; }
 .p-dl dt { color: var(--muted); font-size: 13px; }
 .p-dl dd { margin: 0; }
