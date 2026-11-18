@@ -79,7 +79,7 @@
   const DEFAULT_SCREEN = { student: 'adventure', teacher: 'dashboard', collaborator: 'overview' };
   const NAV = {
     student: [['adventure', 'sparkle', 'My adventure'], ['map', 'map', 'Quest map'], ['album', 'trophy', 'Class album']],
-    teacher: [['dashboard', 'map', 'My quests'], ['builder', 'pencil', 'Quest builder'], ['next', 'arrow', 'Journey'], ['teams', 'team', 'Teams'], ['live', 'eye', 'Live session'], ['album', 'trophy', 'Class album'], ['report', 'book', 'Report']],
+    teacher: [['dashboard', 'map', 'My quests'], '§class', ['next', 'arrow', 'Journey'], ['album', 'trophy', 'Class album'], '§run', ['teams', 'team', 'Teams'], ['live', 'eye', 'Live session'], ['report', 'book', 'Report']],
     collaborator: [['overview', 'map', 'Overview'], ['contribution', 'pencil', 'My contribution'], ['review', 'eye', 'Review the quest'], ['facilitate', 'voices', 'On the day'], ['work', 'book', 'Student work']],
   };
   const currentRole = () => ROUTES[location.hash.slice(1)] || null;
@@ -107,7 +107,9 @@
           <a class="brand" href="#" aria-label="WorldQuest home">${Art.logo(42)}<h1>WorldQuest</h1></a>
           <div class="side-label">${ROLE_LABEL[role]}</div>
           <nav class="side-nav" aria-label="${ROLE_LABEL[role]} screens">
-            ${(role === 'student' && !joinedHere(st) ? [['adventure', 'arrow', 'Join a quest']] : NAV[role]).map(([id, ic, lb]) => `<button data-a="screen" data-screen="${id}" aria-current="${screen === id}">${Art.icon(ic, 19)}${lb}${badge(id)}</button>`).join('')}
+            ${(role === 'student' && !joinedHere(st) ? [['adventure', 'arrow', 'Join a quest']] : NAV[role]).map((n) => typeof n === 'string'
+              ? `<div class="side-label side-sub">${n === '§class' ? `Your class · <span class="mono">${esc(sessionCode())}</span>` : `Running · ${esc(st.quest.title || 'Untitled quest')}`}</div>`
+              : `<button data-a="screen" data-screen="${n[0]}" aria-current="${screen === n[0] || (n[0] === 'dashboard' && screen === 'builder')}">${Art.icon(n[1], 19)}${n[2]}${badge(n[0])}</button>`).join('')}
           </nav>
           <div class="side-tip"><strong>${Art.icon('leaf', 16)} Look up, not down</strong>
           The best clues are in the real world.</div>
@@ -447,7 +449,7 @@
             <label class="fld" for="f-${f.key}">${esc(f.label)}</label>
             <textarea class="input" id="f-${f.key}" name="${f.key}" rows="2" placeholder="${esc(f.placeholder)}">${esc(ev.answers?.[f.key] || st.ui.drafts?.[me.id]?.[f.key] || '')}</textarea>
           </div>`).join('')}
-        ${(m.assess || {}).evidence && m.assess.evidence !== 'notes' ? `<div class="fld-group"><span class="fld">Photo of the object or a detail (never people)</span>
+        ${(m.assess || {}).evidence && m.assess.evidence !== 'notes' ? `<div class="fld-group"><span class="fld">${esc(m.assess.photoAsk || 'A photo of the object or a detail')}</span><span class="hint-note" style="margin:-4px 0 4px">No people in the photo, please.</span>
           ${st.ui.drafts?.[me.id]?.photo ? `<img class="ev-photo" src="${st.ui.drafts[me.id].photo}" alt="Your photo of the object">` : ''}
           <label class="btn btn-secondary btn-sm" for="ev-photo-in" style="align-self:flex-start">${Art.icon('eye', 16)} ${st.ui.drafts?.[me.id]?.photo ? 'Retake photo' : 'Take photo'}</label>
           <input id="ev-photo-in" type="file" accept="image/*" capture="environment" hidden></div>` : ''}
@@ -672,10 +674,16 @@
   /* ================= album (shared) ================= */
 
   function albumScreen(st, viewer) {
-    const n = sel.claimedCount();
-    if (!SEED.collectibles.length) return `${pageHead(esc(st.quest.title), 'Class album')}<div class="card"><p style="margin:0">This quest has no reward cards.</p></div>`;
+    const n = sel.claimedCount(), past = st.pastAlbums || [], keys = Object.keys(Art.collectibleArt);
+    const head = pageHead(`Your class · <span class="mono">${esc(sessionCode())}</span>`, 'Class album', past.length ? `<span class="pill plain">${past.length + 1} quests</span>` : '');
+    const earlier = past.length ? `<h3 class="album-sec">Earlier quests</h3>${past.map((p) => `<div class="card stack" style="gap:10px">
+        <div class="spread"><strong>${esc(p.title)}</strong><span class="pill mint">${p.cards.length} card${p.cards.length === 1 ? '' : 's'} found${p.master ? ' · ' + esc(p.master) : ''}</span></div>
+        ${p.cards.length ? `<div class="album-grid past">${p.cards.map((c) => `<div class="collect-card claimed" aria-label="${esc(c.title)}">${(Art.collectibleArt[c.id] || Art.collectibleArt[keys[Math.max(0, c.art) % keys.length]])()}<span class="holo"></span>
+          <span class="card-strip"><strong>${esc(c.title)}</strong><small>${c.scope === 'student' ? 'Badge' : 'Team card'} · ${c.got} of ${c.total}</small></span></div>`).join('')}</div>` : ''}</div>`).join('')}` : '';
+    if (!SEED.collectibles.length) return `${head}<h3 class="album-sec">Now · ${esc(st.quest.title)}</h3><div class="card"><p style="margin:0">This quest has no reward cards.</p></div>${earlier}`;
     return `
-      ${pageHead(esc(st.quest.title), 'Class album', `<span class="pill lavender">${n} / ${SEED.collectibles.length} found by the class</span>`)}
+      ${head}
+      <h3 class="album-sec">Now · ${esc(st.quest.title)} <small>${n} of ${SEED.collectibles.length} found</small></h3>
       <div class="album-grid">
         ${SEED.collectibles.map((c) => {
           const found = !!st.claims[c.id], justNow = lastReveal === c.id, scope = sel.cardScope(c), total = sel.holdersOf(c).length, got = sel.earnedBy(c);
@@ -698,7 +706,8 @@
         </div>
       </div>
       ${viewer === 'teacher' ? SEED.collectibles.filter((c) => c.kind === 'teacher').map((c) => { const left = SEED.homeGroups.filter((h) => !sel.hasCard(c, h)); return left.length ? `<div class="card row" style="gap:6px;padding:12px 16px"><strong style="margin-right:6px">Award “${esc(c.title)}” to:</strong>${left.map((h) => `<button class="btn btn-sun btn-sm" data-a="award-card" data-card="${c.id}" data-home="${h}">Team ${h}</button>`).join('')}</div>` : ''; }).join('') : ''}
-      ${viewer === 'student' ? `<p class="hint-note">Badges are yours; team cards belong to your team. They’re just for fun — they never block the quest.</p>` : ''}`;
+      ${viewer === 'student' ? `<p class="hint-note">Badges are yours; team cards belong to your team. They’re just for fun — they never block the quest.</p>` : ''}
+      ${earlier}`;
   }
 
   /* ================= teacher ================= */
@@ -749,12 +758,12 @@
           </form>`; })()}</div>` : ''}
         <div class="grid-3">
           ${quests.map(({ id, q, active }) => `<div class="card quest-card ${active ? 'is-active' : ''}">
-            <div class="spread"><span class="pill ${q.status === 'PUBLISHED' ? 'mint' : 'plain'}">${q.status === 'PUBLISHED' ? 'Published' : 'Draft'}</span>${active ? '<span class="pill lavender">This class</span>' : ''}</div>
+            <div class="spread"><span class="pill ${q.status === 'PUBLISHED' ? 'mint' : 'plain'}">${q.status === 'PUBLISHED' ? 'Published' : 'Draft'}</span>${active ? '<span class="pill lavender">Running now</span>' : ''}</div>
             <h3 style="margin:8px 0 2px">${esc(q.title || 'Untitled quest')}</h3>
             <p class="hint-note" style="margin:0 0 10px">${esc(q.venue || 'No venue yet')} · ${q.duration || 60} min · ${q.templateId === 'blank' ? 'written from scratch' : 'from an example'}</p>
             <div class="row" style="margin-top:auto">${active
-              ? `<button class="btn btn-secondary btn-sm" data-a="screen" data-screen="builder">${Art.icon('pencil', 15)} Open in builder</button>${q.status === 'PUBLISHED' ? `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="live">${Art.icon('eye', 15)} Live session</button>` : ''}`
-              : `<button class="btn btn-secondary btn-sm" data-a="open-quest" data-id="${id}" ${live ? 'disabled' : ''}>Use with this class</button><button class="btn btn-ghost btn-sm" data-a="del-quest" data-id="${id}">Delete</button>`}</div>
+              ? `<button class="btn btn-secondary btn-sm" data-a="screen" data-screen="builder">${Art.icon('pencil', 15)} Edit</button>${q.status === 'PUBLISHED' ? `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="live">${Art.icon('eye', 15)} Live session</button>` : ''}`
+              : `<button class="btn btn-secondary btn-sm" data-a="open-quest" data-id="${id}" ${live ? 'disabled' : ''}>Run with my class</button><button class="btn btn-ghost btn-sm" data-a="del-quest" data-id="${id}">Delete</button>`}</div>
           </div>`).join('')}
         </div>
         ${live ? `<p class="hint-note" style="margin:0">A live session is running. Return it to the lobby (Live session → Back) before switching quests.</p>` : ''}
@@ -785,7 +794,7 @@
     const body = step === 'trip' ? builderTrip(st, dis, locked) : step === 'sources' ? builderSources(st)
       : step === 'tracks' ? Partner.requestsCard(st) + Assistant.tracks() : step === 'finale' ? Assistant.finale() + Assistant.story() + Assistant.collectibles() : builderPublish(st, dis, locked);
     return `
-      ${pageHead(esc(q.title || 'Untitled quest'), 'Quest builder', `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="dashboard">${Art.icon('back', 15)} All quests</button>`)}
+      ${pageHead(esc(q.title || 'Untitled quest'), 'Quest builder', `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="dashboard">${Art.icon('back', 15)} My quests</button>`)}
       ${locked ? `<div class="card wash-mint" style="padding:12px 16px"><strong>${Art.icon('check', 16)} Published.</strong> This quest is frozen so a live session isn’t disrupted — create a new quest to change it.</div>` : ''}
       <nav aria-label="Builder steps"><ol class="b-steps">${BSTEPS.map(([k, l], j) => `<li><button data-a="bstep" data-step="${k}" aria-current="${k === step ? 'step' : 'false'}" class="${done[k] ? 'done' : ''}"><b>${done[k] ? '✓' : j + 1}</b><span>${l}</span></button></li>`).join('')}</ol></nav>
       <div class="b-layout">
@@ -1121,7 +1130,7 @@
         switch (a) {
           case 'role': location.hash = ROUTE_OF[el.dataset.role] || ''; return;
           case 'screen': return act('setScreen', { screen: el.dataset.screen });
-          case 'reset': if (confirmReset()) act('resetDemo'); return;
+          case 'reset': if (confirmReset()) { Assistant.forgetAll(); act('resetDemo'); } return;
           case 'mtab': S().ui.missionTab = el.dataset.tab; S().ui.screen = 'adventure'; render(); return;
           case 'hints': S().ui.hintsOpen = !S().ui.hintsOpen; S().ui.hintsShown = 1; render(); return;
           case 'hint-more': S().ui.hintsShown = (S().ui.hintsShown || 1) + 1; render(); return;

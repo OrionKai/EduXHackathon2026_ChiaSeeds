@@ -288,10 +288,19 @@ const Engine = (() => {
     s.quest.classSize = s.quest.classSize || 20;
     s.ui = s.ui || {};
     s.ui.drafts = s.ui.drafts || {};
+    s.pastAlbums = s.pastAlbums || [];
     return s;
   }
 
   /* ---------- quest library ---------- */
+  /* The class album outlives a quest: before the class switches, keep the cards it found. */
+  function archiveAlbum(s) {
+    const cards = SEED.collectibles.filter((c) => s.claims[c.id]).map((c) => ({ id: c.id, title: c.title, fact: c.fact || '', scope: cardScope(c), art: SEED.collectibles.indexOf(c),
+      got: holdersOf(c).filter((h) => s.earned[c.id + '@' + (h.id || h)]).length, total: holdersOf(c).length }));
+    if (!cards.length && !s.master) return;
+    s.pastAlbums = (s.pastAlbums || []).filter((x) => x.questId !== s.activeQuest);
+    s.pastAlbums.unshift({ questId: s.activeQuest, title: s.quest.title || 'Untitled quest', at: Date.now(), cards, master: s.master ? SEED.master.title : '' });
+  }
   function snapInto(s) { s.library = s.library || {}; s.library[s.activeQuest] = clone(Object.fromEntries(QUEST_KEYS.map((k) => [k, s[k]]))); }
   function resetPlay(s) {
     const f = freshState(); PLAY_KEYS.forEach((k) => { s[k] = f[k]; }); syncRoster(s);
@@ -843,6 +852,7 @@ const Engine = (() => {
       if (id === s.activeQuest) return { ok: true, silent: true };
       if (!s.library[id]) return { ok: false, msg: 'Quest not found.' };
       if (s.phase !== 'LOBBY') return { ok: false, msg: 'End the live session first (Live session → back to the lobby).' };
+      archiveAlbum(s);
       snapInto(s);
       loadQuest(s, id);
       audit('teacher', `Opened quest “${s.quest.title}” for this class.`);

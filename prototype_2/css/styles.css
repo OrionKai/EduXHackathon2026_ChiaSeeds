@@ -242,7 +242,7 @@ small { color: var(--muted); }
 
 /* ---------- forms ---------- */
 
-label.fld { display: block; font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+label.fld, span.fld { display: block; font-weight: 700; font-size: 14px; margin-bottom: 6px; }
 .input, textarea.input {
   width: 100%; border: 1.5px solid var(--stroke); border-radius: 14px; background: var(--white);
   padding: 12px 14px; font: 500 15px var(--font-body); color: var(--ink); resize: vertical;
@@ -648,8 +648,8 @@ a.brand { text-decoration: none; color: inherit; }
   .sidebar .brand { display: none; }
   .side-nav { flex: 1; justify-content: space-around; gap: 2px; }
   .side-nav button {
-    flex: 1 0 auto; min-width: 64px; min-height: 54px; flex-direction: column; justify-content: center; gap: 3px;
-    padding: 6px; border-radius: 12px; font-size: 11.5px; text-align: center; white-space: nowrap;
+    flex: 1 1 0; min-width: 0; min-height: 54px; flex-direction: column; justify-content: center; gap: 3px;
+    padding: 6px 2px; border-radius: 12px; font-size: 11px; line-height: 1.15; text-align: center; white-space: normal;
   }
   .main { padding-top: 12px; padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
   .topbar { margin-bottom: 12px; flex-wrap: nowrap; }
@@ -779,3 +779,10 @@ a.brand { text-decoration: none; color: inherit; }
 .team-dot.violet { background: #8B7CF6; } .team-dot.teal { background: #2BB3A0; } .team-dot.sun { background: #F2B53C; }
 .team-dot.coral { background: #F07B7B; } .team-dot.sky { background: #6BB3F0; } .team-dot.lime { background: #9CCB4E; }
 .visit-label { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-top: 8px; }
+
+/* sidebar: the class and the quest it runs */
+.side-label.side-sub { margin: 16px 10px 4px; font-size: 11px; letter-spacing: .1em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-label.side-sub .mono { letter-spacing: .04em; }
+.album-sec { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 6px 0 0; }
+.album-sec small { color: var(--muted); font-weight: 600; font-size: 13px; }
+.album-grid.past .collect-card { cursor: default; }

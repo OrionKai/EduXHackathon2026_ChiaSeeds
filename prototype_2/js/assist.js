@@ -11,12 +11,25 @@
 const Assistant = (() => {
   const GREETING = 'Hi! I draft only from the approved sources in your library. Add anything else I should use, then tell me what the quest is for.';
   /* One conversation per quest: switching quests switches the conversation (and closes any open editor). */
-  const convos = {};
+  const convos = {}, CHAT_KEY = 'wq-chat-';
+  /* Saved on this device only, per quest; the last messages are enough to pick up where you left off. */
+  function saveConvo() {
+    if (!convoOf) return;
+    try { localStorage.setItem(CHAT_KEY + convoOf, JSON.stringify({ msgs: msgs.filter((m) => !m.thinking).slice(-60), history: history.slice(-24) })); } catch {}
+  }
+  function clearConvo() {
+    if (!convoOf) return;
+    convos[convoOf] = { msgs: [{ who: 'ai', text: GREETING }], history: [] }; msgs = convos[convoOf].msgs; history = convos[convoOf].history;
+    try { localStorage.removeItem(CHAT_KEY + convoOf); } catch {}
+  }
+  function forgetAll() { Object.keys(convos).forEach((k) => delete convos[k]); convoOf = null;
+    try { Object.keys(localStorage).filter((k) => k.startsWith(CHAT_KEY)).forEach((k) => localStorage.removeItem(k)); } catch {} }
   let msgs = [], history = [], convoOf = null;
   function syncQuest() {
     const id = Engine.state.activeQuest;
     if (id === convoOf) return;
-    convos[id] = convos[id] || { msgs: [{ who: 'ai', text: GREETING }], history: [] };
+    if (!convos[id]) { let saved = null; try { saved = JSON.parse(localStorage.getItem(CHAT_KEY + id) || 'null'); } catch {}
+      convos[id] = saved && Array.isArray(saved.msgs) && saved.msgs.length ? { msgs: saved.msgs, history: Array.isArray(saved.history) ? saved.history : [] } : { msgs: [{ who: 'ai', text: GREETING }], history: [] }; }
     msgs = convos[id].msgs; history = convos[id].history; convoOf = id;
     editing = null; refDraft = null; quizOpen = false; confirmGen = false; lastNotice = '';
   }
@@ -42,7 +55,7 @@ const Assistant = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const lines = (v) => String(v || '').split('\n').map((x) => x.trim()).filter(Boolean);
 
-  const SRC = () => Engine.state.sources.map((s) => (s.kind === 'partner' ? { ...s, fact: [Engine.state.contributor.text, Engine.state.contributor.avoid ? 'Handle with care: ' + Engine.state.contributor.avoid : '', (Engine.state.contributor.prompts || []).length ? 'Questions the partner will ask students: ' + Engine.state.contributor.prompts.join(' / ') : ''].filter(Boolean).join(' '), partner: true } : { ...s, fact: s.text }));
+  const SRC = () => Engine.state.sources.map((s) => (s.kind === 'partner' ? { ...s, fact: [Engine.state.contributor.text ? 'In the partner’s own words: “' + Engine.state.contributor.text + '”' : '', Engine.state.contributor.avoid ? '(Caution from the partner — respect it, but it is not a topic or title for the quest: ' + Engine.state.contributor.avoid + ')' : '', (Engine.state.contributor.prompts || []).length ? 'Questions the partner will ask students: ' + Engine.state.contributor.prompts.join(' / ') : ''].filter(Boolean).join(' '), partner: true } : { ...s, fact: s.text }));
   const srcFor = (t) => (Engine.state.sources.find((s) => s.url && s.url === SEED.missions[t].sourceUrl) || { id: '' }).id;
   const partnerSrc = () => (Engine.state.sources.find((s) => s.kind === 'partner') || { id: '' }).id;
   const isTemplate = () => (Engine.state.content.meta || {}).id === 'lost_museum';
@@ -107,7 +120,7 @@ const Assistant = (() => {
     return `
       <div class="card as-card">
         <div class="spread"><h3 style="margin:0">${Art.icon('sparkle', 18)} Quest assistant</h3>
-          <button type="button" class="pill ${mode === 'live' ? 'mint' : ''}" data-as-mode title="Switch between the real AI and the scripted demo">AI: ${mode === 'live' ? 'live (Claude)' : 'off · scripted'}</button></div>
+          <span class="row" style="gap:6px">${msgs.length > 1 ? '<button type="button" class="btn btn-ghost btn-sm" data-as-clear title="Start a fresh conversation for this quest">Clear chat</button>' : ''}<button type="button" class="pill ${mode === 'live' ? 'mint' : ''}" data-as-mode title="Switch between the real AI and the scripted demo">AI: ${mode === 'live' ? 'live' : 'off · scripted'}</button></span></div>
         ${mode !== 'live' ? `<div class="as-off"><span>Live AI is off — ${esc(offWhy || 'switched off')}. Suggestions below still work.</span><button type="button" class="btn btn-secondary btn-sm" data-as-mode>Turn live AI on</button></div>` : ''}
         ${lastNotice ? `<p class="hint-note" style="margin:0">${esc(lastNotice)}</p>` : ''}
         ${needPass && mode === 'live' ? `<form class="as-off" data-as-pass><span>${passBad ? 'That passcode didn’t work — check it and try again.' : 'Live AI on this site is protected by a demo passcode (the <span class="mono">DEMO_PASSCODE</span> set in Netlify). Enter it once on this device:'}</span>
@@ -287,7 +300,7 @@ const Assistant = (() => {
         ${ta('ed-narr', 'The big question they explore', f.narrative, 1, 'e.g. What can the object itself tell us?')}
         ${ta('ed-obs', 'What they do there (students read this)', f.observe, 3, 'e.g. Find the coffin set. Look closely at the shape, materials and decoration, then find its label.')}
         ${ta('ed-disc', 'A question to talk about with their group', f.discuss, 2, 'e.g. What can you see for yourself, and what are you guessing?')}
-        ${cb('a-partner', 'Students also talk with the community partner here', f.needsContributor, '', 'A short, supervised chat at this spot. Students see the partner’s question; the partner confirms the chat on their phone, and students can’t send their notes until they do.')}`, 'the place, the object, the task')}
+        ${cb('a-partner', 'Students also talk with the community partner here', f.needsContributor, '', 'The partner asks them one of the questions from the partner’s own list (you pick which in Live session). Students can send their notes once the partner confirms the chat on their phone.')}`, 'the place, the object, the task')}
       ${sec('2 · What students hand in', true, `
         <span class="fld">How students show they found it</span>
         <div class="opt-grid">${cb('a-photo', 'A photo of the object', on.photo, 'data-show="photo-box"', 'They photograph it on their phone.')}${cb('a-qr', 'Scan a QR card placed there', on.qr, '', 'You print the card from Live session.')}</div>
@@ -298,12 +311,15 @@ const Assistant = (() => {
           ${refDraft ? `<img class="ev-photo" src="${refDraft}" alt="Reference photo">` : '<span class="hint-note">Without one, the AI matches the photo against the object’s name.</span>'}
           <div class="row" style="gap:6px"><label class="btn btn-ghost btn-sm" for="as-ref">${refDraft ? 'Replace photo' : 'Add a photo'}</label><input id="as-ref" type="file" accept="image/*" hidden>
           ${refDraft ? '<button class="btn btn-ghost btn-sm" type="button" data-as-ref-clear>Remove photo</button>' : ''}</div></div>
-        <span class="fld">What they record</span>
-        <div class="opt-grid">${cb('a-notes', 'Written notes', on.notes)}${cb('a-evphoto', 'A photo as part of their notes', on.evphoto)}</div>
-        <span class="fld">Questions they answer in their notes</span>${help('Short prompts students fill in on site. Start with what they can see, then what it might mean, then what it can’t tell us.')}
-        ${listEd('ev', f.evidence, 'e.g. Something you can actually see', 'Add a question')}
-        <span class="fld">What a good answer includes</span>${help('Used to check answers and spot misunderstandings after the trip.')}
-        ${listEd('crit', f.criteria, 'e.g. Says what the object can’t tell us', 'Add a point')}
+        <span class="fld">What they hand in</span>
+        <div class="opt-grid">${cb('a-notes', 'Written answers', on.notes, 'data-show="notes-box"', 'They answer your questions on site.')}${cb('a-evphoto', 'A photo of a detail', on.evphoto, 'data-show="evp-box"', 'e.g. the symbol they want to explain.')}</div>
+        <div class="opt-sub" data-show-box="notes-box" ${on.notes ? '' : 'hidden'}>
+          <span class="fld">Questions they answer</span>${help('Start with what they can see, then what it might mean, then what it can’t tell us.')}
+          ${listEd('ev', f.evidence, 'e.g. Something you can actually see', 'Add a question')}
+          <span class="fld">What a good answer includes</span>${help('You check answers against this, and the Report uses it to spot misunderstandings.')}
+          ${listEd('crit', f.criteria, 'e.g. Says what the object can’t tell us', 'Add a point')}</div>
+        <div class="opt-sub" data-show-box="evp-box" ${on.evphoto ? '' : 'hidden'}>
+          ${inp('ed-photoask', 'What the photo should show', a.photoAsk || '', 'e.g. A close-up of one symbol on the lid')}${help('Students see this above the camera button. You see the photo when you check their work.')}</div>
         ${cb('a-quiz', 'Add a multiple-choice check', on.quiz, 'data-show="qz-box"', 'Students must pass it before they can send their notes. It doesn’t replace your check.')}
         <div class="stack qz-box" data-show-box="qz-box" style="gap:8px" ${on.quiz ? '' : 'hidden'}>
           <div class="stack" style="gap:8px" data-qz>${(quiz.length ? quiz : [null]).map(qzCard).join('')}</div>
@@ -327,7 +343,7 @@ const Assistant = (() => {
     const quiz = ck('a-quiz') ? readQuiz(f) : [], photo = ck('a-photo'), qr = ck('a-qr'), notes = ck('a-notes'), evphoto = ck('a-evphoto');
     const pv = Number((f.querySelector('#as-pass') || {}).value) || 1, v = val('a-verify') || 'teacher';
     return { checkin: photo ? (val('a-pcheck') === 'photo_ai' ? 'photo_ai' : 'photo_teacher') : qr ? 'qr' : 'none', qr: photo && qr,
-      evidence: notes && evphoto ? 'notes_photo' : evphoto ? 'photo' : 'notes', quiz, pass: quiz.length ? Math.max(1, Math.min(pv, quiz.length)) : 0,
+      evidence: notes && evphoto ? 'notes_photo' : evphoto ? 'photo' : 'notes', photoAsk: ((f.querySelector('#ed-photoask') || {}).value || '').trim(), quiz, pass: quiz.length ? Math.max(1, Math.min(pv, quiz.length)) : 0,
       verify: v === 'partner' ? 'partner' : 'teacher' };
   }
 
@@ -371,11 +387,10 @@ const Assistant = (() => {
         <p class="hint-note" style="margin:2px 0 0">${esc(s.fact)} ${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">open</a>` : ''}</p></div></div>`).join('') || '<p class="hint-note" style="margin:0">No sources yet. Add the pages or notes you trust below.</p>'}
         ${SRC().filter((s) => s.partner).map((s) => { const c = st.contributor; return `<div class="as-src as-partner-src" id="as-src-${s.id}"><span class="as-cite">${s.id}</span>
           <div style="min-width:0"><div class="spread"><strong>From your community partner</strong><span class="pill ${c.status === 'APPROVED' ? 'mint' : 'plain'}">${c.status === 'APPROVED' ? 'signed off' : c.text ? 'written · not signed off yet' : 'not written yet'}</span></div>
-          <p class="hint-note" style="margin:2px 0 0">Your partner writes this themselves, in their own view. The assistant can use it like any other source.</p>
-          ${c.text ? `<p style="margin:4px 0 0">“${esc(c.text)}”</p>` : ''}
-          ${c.avoid ? `<p style="margin:4px 0 0"><strong>Handle with care:</strong> ${esc(c.avoid)}</p>` : ''}
-          ${(c.prompts || []).length ? `<p style="margin:4px 0 0"><strong>Questions they’ll ask students:</strong> ${c.prompts.map(esc).join(' · ')}</p>` : ''}
-          ${c.availability ? `<p class="hint-note" style="margin:4px 0 0">Available on the day: ${esc(c.availability)}</p>` : ''}</div></div>`; }).join('')}</div>
+          <p class="hint-note" style="margin:2px 0 0">${c.text ? `“${esc(c.text)}”` : 'Your partner hasn’t written anything yet.'}</p>
+          ${c.avoid ? `<p class="hint-note" style="margin:2px 0 0"><strong>Please avoid:</strong> ${esc(c.avoid)}</p>` : ''}
+          ${(c.prompts || []).length ? `<p class="hint-note" style="margin:2px 0 0"><strong>Questions they’ll ask students:</strong> ${c.prompts.map(esc).join(' · ')}</p>` : ''}
+          ${c.availability ? `<p class="hint-note" style="margin:2px 0 0"><strong>Available on the day:</strong> ${esc(c.availability)}</p>` : ''}</div></div>`; }).join('')}</div>
       ${locked ? '' : `<details style="margin-top:10px" ${st.sources.length < 2 ? 'open' : ''}><summary class="as-chip" style="display:inline-flex">${Art.icon('plus', 14)} Add a source</summary>
         <form class="stack" style="gap:6px;margin-top:10px" data-as-src>
           <label class="fld" for="src-title">Title</label><input class="input" id="src-title" placeholder="e.g. Venue learning team notes">
@@ -390,7 +405,7 @@ const Assistant = (() => {
     const box = document.getElementById('as-msgs');
     if (!box) return;
     box.innerHTML = msgs.map(msgHTML).join('');
-    box.scrollTop = box.scrollHeight; chatPinned = true;
+    box.scrollTop = box.scrollHeight; chatPinned = true; saveConvo();
   }
   async function say(text, cites, parts, changes) {
     const m = { who: 'ai', text: '', thinking: true };
@@ -562,7 +577,7 @@ const Assistant = (() => {
     const changes = (data.edits || []).map((e) => ({ text: String((e.input || {}).summary || '').trim() || 'Changed ' + ((partTarget(e) || {}).label || 'the quest') + '.', part: partTarget(e) }));
     await say(data.reply, cites, [], changes);
     // remember what was actually changed, not only what was said — so it doesn't redo or duplicate it next time
-    history.push({ role: 'user', content: text }, { role: 'assistant', content: data.reply + (changes.length ? '\n[Changes I made: ' + changes.map((c) => c.text).join(' ') + ']' : '') });
+    history.push({ role: 'user', content: text }, { role: 'assistant', content: data.reply + (changes.length ? '\n[Changes I made: ' + changes.map((c) => c.text).join(' ') + ']' : '') }); saveConvo();
     for (const e of data.edits || []) applyEdit(e);
     busy = false;
     lastNotice = data.edits && data.edits.some((e) => ['revise_track', 'set_track_list', 'set_assessment', 'set_teachback_check', 'add_hint'].includes(e.tool)) ? 'Changed tracks need your approval again before students see them.' : '';
@@ -637,7 +652,7 @@ const Assistant = (() => {
     await say(r.ok
       ? `Drafted “${content.title}”: ${P.tracks.map((t) => t.name).join(', ')}, a final team challenge that needs every track, ${content.collectibles.length} reward cards and ${content.reflection.length} reflection questions.${failed.length ? ` I couldn’t finish ${failed.join(', ')} — fill those in by hand.` : ''} Review and approve each track below.`
       : 'The draft came back incomplete. Try again, or fill the quest in by hand.', ctx.sources.map((s) => s.id));
-    history.push({ role: 'user', content: prompt }, { role: 'assistant', content: `Drafted ${content.title}.` });
+    history.push({ role: 'user', content: prompt }, { role: 'assistant', content: `Drafted ${content.title}.` }); saveConvo();
     busy = false;
     window.WQ.render();
     document.getElementById('as-content')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -708,6 +723,7 @@ const Assistant = (() => {
       Engine.state.ui.bStep = 'sources'; openEditor(null); window.WQ.render();
       setTimeout(() => go(document.getElementById('as-src-' + id)), 30);
     });
+    on('[data-as-clear]', 'click', () => { if (busy) return; clearConvo(); window.WQ.render(); });
     on('[data-as-mode]', 'click', () => { mode = mode === 'live' ? 'simulated' : 'live'; offWhy = mode === 'live' ? '' : 'you switched it off on this device'; lastNotice = ''; try { localStorage.setItem('wq-ai-mode', mode); } catch {} window.WQ.render(); });
     on('[data-as-edit]', 'click', (b) => { editing = editing === b.dataset.asEdit ? null : b.dataset.asEdit; refDraft = editing && SEED.missions[editing] ? SEED.missions[editing].refPhoto || null : null; window.WQ.render(); });
     on('[data-as-ref-clear]', 'click', () => { refDraft = null; window.WQ.render(); });
@@ -769,5 +785,5 @@ const Assistant = (() => {
     }).catch(() => { if (mode === 'live') { mode = 'simulated'; offWhy = 'there’s no internet connection'; window.WQ && window.WQ.render(); } });
   } catch {}
   const openEditor = (k) => { syncQuest(); editing = k || null; quizOpen = false; refDraft = k && SEED.missions[k] ? SEED.missions[k].refPhoto || null : null; };
-  return { getMode: () => mode, checkPass, chat, board, bind, openEditor, sources: () => (syncQuest(), sourcesCard()), tracks: () => (syncQuest(), tracksSection(Engine.state)), finale: () => (syncQuest(), finaleSection(Engine.state)), collectibles: () => (syncQuest(), collectiblesSection(Engine.state)), story: () => (syncQuest(), storySection(Engine.state)), generate, listEd, readList, setSpeed: (v) => { speed = v; }, setMode: (m) => { mode = m; } };
+  return { forgetAll, getMode: () => mode, checkPass, chat, board, bind, openEditor, sources: () => (syncQuest(), sourcesCard()), tracks: () => (syncQuest(), tracksSection(Engine.state)), finale: () => (syncQuest(), finaleSection(Engine.state)), collectibles: () => (syncQuest(), collectiblesSection(Engine.state)), story: () => (syncQuest(), storySection(Engine.state)), generate, listEd, readList, setSpeed: (v) => { speed = v; }, setMode: (m) => { mode = m; } };
 })();
