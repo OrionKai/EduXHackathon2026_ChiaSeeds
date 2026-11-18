@@ -62,7 +62,7 @@
   }
   const joinedList = () => { try { return JSON.parse(localStorage.getItem('wq-joined') || '[]'); } catch { return []; } };
   const who = (p) => (S().seats && S().seats[p.id] ? S().seats[p.id].nick : p.name);
-  const collArt = (c) => { const keys = Object.keys(Art.collectibleArt); const i = Math.max(0, SEED.collectibles.findIndex((x) => x.id === c.id)); return (Art.collectibleArt[c.id] || Art.collectibleArt[keys[i % keys.length]])(); };
+  const collArt = (c) => Art.cardArt(c, SEED.collectibles.findIndex((x) => x.id === c.id));
   /* One page header for every screen in every role: context eyebrow, the screen's name, actions on the right. */
   const pageHead = (eyebrow, title, actions = '', tone = '') =>
     `<div class="spread page-head"><div><div class="eyebrow ${tone}">${eyebrow}</div><h2 style="margin:2px 0 0">${title}</h2></div>${actions ? `<div class="row" style="gap:8px">${actions}</div>` : ''}</div>`;
@@ -674,11 +674,11 @@
   /* ================= album (shared) ================= */
 
   function albumScreen(st, viewer) {
-    const n = sel.claimedCount(), past = st.pastAlbums || [], keys = Object.keys(Art.collectibleArt);
+    const n = sel.claimedCount(), past = st.pastAlbums || [];
     const head = pageHead(`Your class · <span class="mono">${esc(sessionCode())}</span>`, 'Class album', past.length ? `<span class="pill plain">${past.length + 1} quests</span>` : '');
     const earlier = past.length ? `<h3 class="album-sec">Earlier quests</h3>${past.map((p) => `<div class="card stack" style="gap:10px">
         <div class="spread"><strong>${esc(p.title)}</strong><span class="pill mint">${p.cards.length} card${p.cards.length === 1 ? '' : 's'} found${p.master ? ' · ' + esc(p.master) : ''}</span></div>
-        ${p.cards.length ? `<div class="album-grid past">${p.cards.map((c) => `<div class="collect-card claimed" aria-label="${esc(c.title)}">${(Art.collectibleArt[c.id] || Art.collectibleArt[keys[Math.max(0, c.art) % keys.length]])()}<span class="holo"></span>
+        ${p.cards.length ? `<div class="album-grid past">${p.cards.map((c) => `<div class="collect-card claimed" aria-label="${esc(c.title)}">${Art.cardArt({ id: c.id, art: c.artKey, image: c.image }, c.art)}<span class="holo"></span>
           <span class="card-strip"><strong>${esc(c.title)}</strong><small>${c.scope === 'student' ? 'Badge' : 'Team card'} · ${c.got} of ${c.total}</small></span></div>`).join('')}</div>` : ''}</div>`).join('')}` : '';
     if (!SEED.collectibles.length) return `${head}<h3 class="album-sec">Now · ${esc(st.quest.title)}</h3><div class="card"><p style="margin:0">This quest has no reward cards.</p></div>${earlier}`;
     return `

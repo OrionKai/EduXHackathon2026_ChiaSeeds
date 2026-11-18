@@ -295,7 +295,7 @@ const Engine = (() => {
   /* ---------- quest library ---------- */
   /* The class album outlives a quest: before the class switches, keep the cards it found. */
   function archiveAlbum(s) {
-    const cards = SEED.collectibles.filter((c) => s.claims[c.id]).map((c) => ({ id: c.id, title: c.title, fact: c.fact || '', scope: cardScope(c), art: SEED.collectibles.indexOf(c),
+    const cards = SEED.collectibles.filter((c) => s.claims[c.id]).map((c) => ({ id: c.id, title: c.title, fact: c.fact || '', scope: cardScope(c), art: SEED.collectibles.indexOf(c), artKey: c.art || '', image: c.image || null,
       got: holdersOf(c).filter((h) => s.earned[c.id + '@' + (h.id || h)]).length, total: holdersOf(c).length }));
     if (!cards.length && !s.master) return;
     s.pastAlbums = (s.pastAlbums || []).filter((x) => x.questId !== s.activeQuest);
@@ -1080,6 +1080,9 @@ const Engine = (() => {
       if (SEED.topics.includes(f.track) || f.track === 'any') c.track = f.track;
       if (typeof f.hidden === 'boolean') c.hidden = f.hidden;
       if (typeof f.evolves === 'boolean') c.evolves = f.evolves;
+      if (typeof f.art === 'string' && /^[a-z_]{0,40}$/.test(f.art)) c.art = f.art;
+      if (f.image === null) delete c.image;
+      else if (typeof f.image === 'string' && f.image.length < 150000 && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(f.image)) c.image = f.image;
       audit('teacher', `Edited collectible “${c.title || c.id}”.`);
       return { ok: true, msg: 'Collectible saved.' };
     },

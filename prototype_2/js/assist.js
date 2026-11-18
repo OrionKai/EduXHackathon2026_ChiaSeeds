@@ -222,8 +222,8 @@ const Assistant = (() => {
     return `<section class="card" id="as-collectibles">
       <div class="spread"><h3 style="margin:0">${Art.icon('trophy', 18)} Reward cards</h3><span class="pill plain">optional · just for fun</span></div>
       <p class="hint-note" style="margin:6px 0 10px">Fun extras for the class album. A <strong>badge</strong> is personal — e.g. every student who finishes their track gets one. A <strong>team card</strong> can be earned by every team — e.g. for solving the finale. They never block the quest.${cards.length ? ` When the class has every card, it unlocks “${esc(SEED.master.title)}”.` : ''}</p>
-      ${cards.length ? `<div class="coll-grid">${cards.map((c) => editing === 'c:' + c.id && !locked ? collEditor(c) : `<div class="coll-item">
-        <div class="row" style="gap:10px;flex-wrap:nowrap"><div class="collect-card claimed" style="width:64px;min-width:64px;cursor:default">${Art.collectibleArt[c.id] ? Art.collectibleArt[c.id]() : Art.lockedArt()}</div>
+      ${cards.length ? `<div class="coll-grid">${cards.map((c, ci) => editing === 'c:' + c.id && !locked ? collEditor(c, ci) : `<div class="coll-item">
+        <div class="row" style="gap:10px;flex-wrap:nowrap"><div class="collect-card claimed" style="width:64px;min-width:64px;cursor:default">${Art.cardArt(c, ci)}</div>
           <div style="min-width:0"><strong>${esc(c.title || 'Untitled card')}</strong><br><small class="hint-note">${c.kind === 'track' || c.kind === 'egg' ? 'Badge · one per student' : 'Team card · one per team'}</small></div></div>
         <p class="hint-note" style="margin:6px 0 4px">${rule(c)}</p>
         ${c.kind === 'bonus' && c.activity ? `<p class="hint-note" style="margin:0 0 4px">Activity: ${esc(c.activity)}</p>` : ''}
@@ -232,9 +232,17 @@ const Assistant = (() => {
       ${locked ? '' : `<button class="btn btn-secondary btn-sm" type="button" data-as-addcard style="margin-top:8px">${Art.icon('plus', 14)} Add a card</button>`}
     </section>`;
   }
-  function collEditor(c) {
+  let cardImg = null; // the photo being chosen for the card that's open
+  function collEditor(c, i) {
+    const cur = cardImg ? 'photo' : Art.artKey(c, i);
     return `<form class="coll-item stack as-editor" style="gap:6px" data-as-collform="${c.id}">
       ${inp('ce-t', 'Card name', c.title, 'e.g. Golden Scarab')}
+      <span class="fld">Picture</span>
+      <div class="art-pick" role="radiogroup" aria-label="Card picture">${Object.keys(Art.collectibleArt).map((k) => `<label class="art-opt" title="${esc(Art.ART_NAMES[k] || k)}"><input type="radio" name="ce-art" value="${k}" ${cur === k ? 'checked' : ''}><span class="art-thumb">${Art.collectibleArt[k]()}</span><span class="sr-only">${esc(Art.ART_NAMES[k] || k)}</span></label>`).join('')}
+        <label class="art-opt" title="Your picture"><input type="radio" name="ce-art" value="photo" ${cur === 'photo' ? 'checked' : ''} ${cardImg ? '' : 'disabled'}><span class="art-thumb" data-ce-photo>${cardImg ? `<img src="${cardImg}" alt="">` : '<span class="none">Your picture</span>'}</span><span class="sr-only">Your own picture</span></label></div>
+      <div class="row" style="gap:6px"><label class="btn btn-ghost btn-sm" for="ce-img">${Art.icon('plus', 14)} Upload a picture</label><input id="ce-img" type="file" accept="image/*" hidden>
+        <button type="button" class="btn btn-ghost btn-sm" data-ce-img-rm ${cardImg ? '' : 'hidden'}>Remove picture</button></div>
+      <p class="hint-note" style="margin:0">Your picture is made small and shared with the class. Use one you’re allowed to share, without people’s faces.</p>
       <label class="fld" for="ce-k">Earned when</label><select class="input" id="ce-k">${Object.entries(SEED.EARN_TEXT).map(([k, l]) => `<option value="${k}" ${c.kind === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
       <label class="fld" for="ce-tr">Which track (if earned by finishing a track)</label><select class="input" id="ce-tr"><option value="any" ${!c.track || c.track === 'any' ? 'selected' : ''}>Any track</option>${SEED.topics.map((t) => `<option value="${t}" ${c.track === t ? 'selected' : ''}>${t} · ${esc(SEED.missions[t].name || 'Track ' + t)}</option>`).join('')}</select>
       ${inp('ce-a', 'Bonus activity (if earned by a bonus activity)', c.activity, 'e.g. Find a symbol that appears in two galleries')}
@@ -725,7 +733,7 @@ const Assistant = (() => {
     });
     on('[data-as-clear]', 'click', () => { if (busy) return; clearConvo(); window.WQ.render(); });
     on('[data-as-mode]', 'click', () => { mode = mode === 'live' ? 'simulated' : 'live'; offWhy = mode === 'live' ? '' : 'you switched it off on this device'; lastNotice = ''; try { localStorage.setItem('wq-ai-mode', mode); } catch {} window.WQ.render(); });
-    on('[data-as-edit]', 'click', (b) => { editing = editing === b.dataset.asEdit ? null : b.dataset.asEdit; refDraft = editing && SEED.missions[editing] ? SEED.missions[editing].refPhoto || null : null; window.WQ.render(); });
+    on('[data-as-edit]', 'click', (b) => { editing = editing === b.dataset.asEdit ? null : b.dataset.asEdit; cardImg = editing && editing.startsWith('c:') ? (Engine.state.content.collectibles.find((k) => 'c:' + k.id === editing) || {}).image || null : null; refDraft = editing && SEED.missions[editing] ? SEED.missions[editing].refPhoto || null : null; window.WQ.render(); });
     on('[data-as-ref-clear]', 'click', () => { refDraft = null; window.WQ.render(); });
     on('#as-ref', 'change', (input) => {
       const file = input.files[0]; if (!file) return;
@@ -736,7 +744,23 @@ const Assistant = (() => {
       img.src = URL.createObjectURL(file);
     });
     on('[data-as-edit-cancel]', 'click', () => { editing = null; quizOpen = false; window.WQ.render(); });
-    on('[data-as-addcard]', 'click', () => { const r = window.WQ.act('addCollectible'); if (r.ok) { editing = 'c:' + r.id; window.WQ.render(); } });
+    on('[data-as-addcard]', 'click', () => { const r = window.WQ.act('addCollectible'); if (r.ok) { editing = 'c:' + r.id; cardImg = null; window.WQ.render(); } });
+    /* Picture upload: shrink on the device, then show it in the picker without redrawing the form (keeps what's typed). */
+    on('#ce-img', 'change', (inp) => {
+      const file = inp.files && inp.files[0]; if (!file) return;
+      const img = new Image();
+      img.onload = () => { const k = Math.min(1, 320 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        cardImg = cv.toDataURL('image/jpeg', 0.7); URL.revokeObjectURL(img.src);
+        const form = inp.closest('form'), r = form.querySelector('input[name="ce-art"][value="photo"]');
+        form.querySelector('[data-ce-photo]').innerHTML = `<img src="${cardImg}" alt="">`; r.disabled = false; r.checked = true; form.querySelector('[data-ce-img-rm]').hidden = false; };
+      img.src = URL.createObjectURL(file);
+    });
+    on('[data-ce-img-rm]', 'click', (b) => {
+      cardImg = null; const form = b.closest('form'), r = form.querySelector('input[name="ce-art"][value="photo"]');
+      if (r.checked) form.querySelector('input[name="ce-art"]').checked = true;
+      r.checked = false; r.disabled = true; form.querySelector('[data-ce-photo]').innerHTML = '<span class="none">Your picture</span>'; b.hidden = true;
+    });
     on('[data-as-rmcard]', 'click', (b) => { if (confirm('Remove this card?')) window.WQ.act('removeCollectible', { collectibleId: b.dataset.asRmcard }); });
     on('[data-as-addtrack]', 'click', () => { const s = SEED.structure, t = (Engine.state.quest.structure.tracks === 0 ? 0 : s.tracks) + 1, n = Math.max(s.classSize, t); const r = window.WQ.act('setStructure', { tracks: t, classSize: n, expertGroup: Math.min(s.expertGroup, Math.ceil(n / t)) }); if (r.ok) setTimeout(() => document.getElementById('as-track-' + SEED.topics[SEED.topics.length - 1])?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 30); });
     on('[data-as-rmtrack]', 'click', (b) => { const t = b.dataset.asRmtrack; if (confirm(`Remove track ${t} (${SEED.missions[t].name || 'untitled'})? Its content will be deleted.`)) { if (editing === t) editing = null; window.WQ.act('removeTrack', { topic: t }); } });
@@ -745,7 +769,7 @@ const Assistant = (() => {
       e.preventDefault();
       const v = (id) => f.querySelector('#' + id).value;
       editing = null;
-      window.WQ.act('editCollectible', { collectibleId: f.dataset.asCollform, fields: { title: v('ce-t'), kind: v('ce-k'), track: v('ce-tr'), activity: v('ce-a'), fact: v('ce-f'), hidden: f.querySelector('#ce-h').checked, evolves: f.querySelector('#ce-e').checked } });
+      window.WQ.act('editCollectible', { collectibleId: f.dataset.asCollform, fields: { title: v('ce-t'), kind: v('ce-k'), track: v('ce-tr'), activity: v('ce-a'), fact: v('ce-f'), hidden: f.querySelector('#ce-h').checked, evolves: f.querySelector('#ce-e').checked, ...(() => { const pick = (f.querySelector('input[name="ce-art"]:checked') || {}).value || ''; return pick === 'photo' && cardImg ? { image: cardImg } : { art: pick, image: null }; })() } }); cardImg = null;
     });
     on('[data-as-trackform]', 'submit', (f, e) => {
       e.preventDefault();

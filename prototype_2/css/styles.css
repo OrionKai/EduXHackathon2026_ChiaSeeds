@@ -292,7 +292,7 @@ label.fld, span.fld { display: block; font-weight: 700; font-size: 14px; margin-
 /* ---------- collectible cards ---------- */
 
 .album-grid {
-  display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap: 16px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px;
 }
 .collect-card {
   border-radius: 18px; border: 1.5px solid var(--stroke); overflow: hidden; background: var(--white);
@@ -467,7 +467,7 @@ label.fld, span.fld { display: block; font-weight: 700; font-size: 14px; margin-
   .hero { grid-template-columns: 1fr; }
   .hero-art { order: -1; }
   .hero-art svg { width: 150px; height: 150px; }
-  .album-grid { grid-template-columns: repeat(2, 1fr); }
+  .album-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .match-board { grid-template-columns: 1fr; }
   .jigsaw-grid { grid-template-columns: 1fr; }
   .role-tabs { width: 100%; justify-content: center; }
@@ -786,3 +786,16 @@ a.brand { text-decoration: none; color: inherit; }
 .album-sec { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 6px 0 0; }
 .album-sec small { color: var(--muted); font-weight: 600; font-size: 13px; }
 .album-grid.past .collect-card { cursor: default; }
+
+/* card pictures */
+.collect-card .card-photo { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; display: block; }
+.art-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 8px; }
+.art-opt { position: relative; cursor: pointer; }
+.art-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.art-thumb { display: block; aspect-ratio: 3 / 4; border-radius: 10px; overflow: hidden; border: 2px solid var(--stroke); background: var(--paper); transition: border-color .12s, box-shadow .12s; }
+.art-thumb svg, .art-thumb img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.art-thumb .none { display: grid; place-items: center; height: 100%; padding: 4px; font-size: 10.5px; line-height: 1.2; color: var(--muted); text-align: center; }
+.art-opt input:checked + .art-thumb { border-color: var(--violet); box-shadow: 0 0 0 3px #CFC5FA; }
+.art-opt input:focus-visible + .art-thumb { outline: 2px solid var(--violet); outline-offset: 2px; }
+.art-opt input:disabled + .art-thumb { cursor: default; opacity: .7; }
+.album-grid.past { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }

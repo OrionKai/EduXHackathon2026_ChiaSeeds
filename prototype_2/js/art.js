@@ -215,5 +215,32 @@ const Art = (() => {
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="icon ${cls}" aria-hidden="true">${paths[name] || paths.sparkle}</svg>`;
   }
 
-  return { logo, arch, sticker, collectibleArt, masterArt, lockedArt, icon };
+  Object.assign(collectibleArt, {
+    scroll: () => frame(`<g stroke="${INK}" stroke-width="7" stroke-linejoin="round">
+        <rect x="102" y="120" width="96" height="150" fill="#FFF6E0"/>
+        <rect x="88" y="104" width="124" height="26" rx="13" fill="#FFD98E"/>
+        <rect x="88" y="260" width="124" height="26" rx="13" fill="#FFD98E"/></g>
+      <path d="M122 158 h56 M122 180 h56 M122 202 h40 M122 224 h50" stroke="#C9963B" stroke-width="5" stroke-linecap="round"/>
+      <path d="M226 118 l3 8.4 8.4 3 -8.4 3 -3 8.4 -3 -8.4 -8.4 -3 8.4 -3 Z" fill="#6B5CE7" stroke="${INK}" stroke-width="3"/>`, '#FFE9C2', '#FFF8EA'),
+    key: () => frame(`<g stroke="${INK}" stroke-width="7" stroke-linejoin="round" stroke-linecap="round">
+        <circle cx="150" cy="140" r="38" fill="#BFF2E8"/>
+        <circle cx="150" cy="140" r="14" fill="#FFFFFF" stroke-width="5"/>
+        <path d="M150 178 v94 M150 236 h26 M150 260 h18" stroke-width="10"/></g>
+      <path d="M150 182 v86" stroke="#20BDA9" stroke-width="4" stroke-linecap="round"/>
+      <circle cx="226" cy="122" r="6" fill="#FFB547" stroke="${INK}" stroke-width="3"/>`, '#C3EFE6', '#EAFBF6'),
+    medal: () => frame(`<g stroke="${INK}" stroke-width="7" stroke-linejoin="round">
+        <path d="M116 96 l24 72 h20 l24 -72 Z" fill="#F87587"/>
+        <circle cx="150" cy="212" r="56" fill="#FFD98E"/>
+        <circle cx="150" cy="212" r="38" fill="#FFF3D6" stroke-width="5"/></g>
+      <path d="M150 188 l7 15 16 2 -12 11 3 16 -14 -8 -14 8 3 -16 -12 -11 16 -2 Z" fill="#FFB547" stroke="${INK}" stroke-width="4" stroke-linejoin="round"/>`, '#FFD9D0', '#FFF0EB'),
+  });
+  const ART_NAMES = { detail_lens: 'Magnifying glass', memory_stone: 'Carved stone', twin_tokens: 'Two coins', listening_shell: 'Shell', curator_lantern: 'Lantern', scroll: 'Scroll', key: 'Key', medal: 'Medal' };
+  const PHOTO_OK = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+  /* A card's picture: the teacher's own photo, the picture they chose, or one picked by the card's position. */
+  const artKey = (c, i = 0) => { const keys = Object.keys(collectibleArt); return c && collectibleArt[c.art] ? c.art : c && collectibleArt[c.id] ? c.id : keys[Math.max(0, i) % keys.length]; };
+  function cardArt(c, i = 0) {
+    if (c && typeof c.image === 'string' && PHOTO_OK.test(c.image)) return `<img class="card-photo" src="${c.image}" alt="">`;
+    return collectibleArt[artKey(c, i)]();
+  }
+  return { logo, arch, sticker, collectibleArt, ART_NAMES, artKey, cardArt, PHOTO_OK, masterArt, lockedArt, icon };
 })();
