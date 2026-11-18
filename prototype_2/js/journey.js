@@ -44,7 +44,7 @@ const Journey = (() => {
         ${x.type === 'experience' && s.state !== 'done' && Object.keys(x.checkins).length ? `<p style="margin:6px 0 0"><strong>${Object.keys(x.checkins).length}</strong> checked in</p>` : ''}
         <div class="row j-actions">
           <button class="btn btn-secondary btn-sm" data-j="toggle" data-id="${x.id}" aria-expanded="${expanded}">${expanded ? 'Close' : x.type === 'experience' ? 'Details & booking' : 'Details'}</button>
-          ${x.type === 'quest' ? (isActive ? `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="builder">${Art.icon('pencil', 14)} Edit quest</button>`
+          ${x.type === 'quest' ? (isActive ? `<button class="btn btn-ghost btn-sm" data-a="edit-quest" data-id="${esc(x.questId)}">${Art.icon('pencil', 14)} Edit quest</button>`
             : `<button class="btn btn-ghost btn-sm" data-j="use" data-id="${x.id}" ${live ? 'disabled title="End the live session first"' : ''}>Run with my class</button>`) : ''}
           ${s.state === 'locked' || s.state === 'waiting' ? `<button class="btn btn-ghost btn-sm" data-j="open-ask" data-id="${x.id}">Open now</button>` : ''}
           ${s.state === 'done' ? `<button class="btn btn-ghost btn-sm" data-j="undone" data-id="${x.id}">Mark not done</button>` : s.state === 'open' ? `<button class="btn btn-ghost btn-sm" data-j="done" data-id="${x.id}">${Art.icon('check', 14)} Mark done</button>` : ''}
@@ -59,7 +59,7 @@ const Journey = (() => {
   function details(st, x, i) {
     const when = SEED.splitWhen(x);
     const inp = (id, label, v, ph = '', type = 'text') => `<div class="fld-group"><label class="fld" for="${id}">${label}</label><input class="input" id="${id}" type="${type}" value="${esc(v)}" placeholder="${esc(ph)}"></div>`;
-    const quests = Object.entries(st.library).map(([id, r]) => [id, (id === st.activeQuest ? st.quest : r.quest).title || 'Untitled quest']);
+    const S2 = Engine.studioState, quests = Object.entries(S2.library).map(([id, r]) => [id, (id === S2.activeQuest ? S2.quest : r.quest).title || 'Untitled quest']);
     return `<form class="stack j-form" data-jform="${x.id}" style="gap:6px;margin-top:12px">
       ${x.type === 'quest' ? `<div class="fld-group"><label class="fld" for="j-q">Quest</label><select class="input" id="j-q">${quests.map(([id, t]) => `<option value="${id}" ${id === x.questId ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`
         : inp('j-title', x.type === 'experience' ? 'Activity' : 'Session title', x.type === 'experience' ? x.exp.activity : x.title, x.type === 'experience' ? 'e.g. Still-life drawing class' : 'e.g. Debrief and exit ticket')}
@@ -127,11 +127,11 @@ const Journey = (() => {
 
   /* ---------------- summaries elsewhere ---------------- */
   function builderCard(st) {
-    const list = steps(), mine = list.findIndex((x) => x.type === 'quest' && x.questId === st.activeQuest);
+    const list = Engine.classState.journey.steps, mine = list.findIndex((x) => x.type === 'quest' && x.questId === st.activeQuest);
     return `<section class="card" id="sec-next"><div class="spread"><h3 style="margin:0">${Art.icon('arrow', 18)} Where this quest fits</h3>
         <button class="btn btn-ghost btn-sm" data-a="screen" data-screen="next">Edit the journey</button></div>
       <ol class="j-flow">${list.map((x, i) => { const [ic, tl] = TYPE[x.type], me = i === mine;
-        return `<li class="j-f ${me ? 'me' : ''}"><span class="j-f-ic">${Art.icon(ic, 16)}</span><span><small>Step ${i + 1} · ${me ? 'this quest' : tl}</small><strong>${esc(Engine.sel.stepTitle(x))}</strong>${x.when ? `<small>${esc(x.when)}</small>` : ''}</span></li>`; }).join('')}</ol>
+        return `<li class="j-f ${me ? 'me' : ''}"><span class="j-f-ic">${Art.icon(ic, 16)}</span><span><small>Step ${i + 1} · ${me ? 'this quest' : tl}</small><strong>${esc(Engine.inSpace('class', () => Engine.sel.stepTitle(x)))}</strong>${x.when ? `<small>${esc(x.when)}</small>` : ''}</span></li>`; }).join('')}</ol>
       ${mine < 0 ? `<div class="row" style="margin-top:10px;gap:8px"><span class="hint-note" style="margin:0">This quest isn’t in the class journey yet.</span><button class="btn btn-secondary btn-sm" data-j="add-me">${Art.icon('plus', 14)} Add it as the next step</button></div>` : ''}</section>`;
   }
   function liveCard(st) {
@@ -175,10 +175,10 @@ const Journey = (() => {
       switch (el.dataset.j) {
         case 'add-open': S.ui.jAdd = Number(el.dataset.i); return render();
         case 'add-close': S.ui.jAdd = null; return render();
-        case 'add-me': act('addStep', { type: 'quest', at: S.journey.steps.length }); return render();
+        case 'add-me': act('addStep', { type: 'quest', at: Engine.classState.journey.steps.length, questId: Engine.studioState.activeQuest }); return render();
         case 'add': { const r = act('addStep', { type: el.dataset.type, at: Number(el.dataset.i) }); S.ui.jAdd = null; if (r.ok) S.ui.jOpen = r.id; return render(); }
         case 'toggle': S.ui.jOpen = S.ui.jOpen === id ? null : id; return render();
-        case 'use': { const x = S.journey.steps.find((y) => y.id === id); if (x) act('openQuest', { id: x.questId }); return; }
+        case 'use': { const x = S.journey.steps.find((y) => y.id === id); if (x) window.WQ.runQuest(x.questId); return; }
         case 'open-ask': S.ui.jOpenNow = S.ui.jOpenNow === id ? null : id; return render();
         case 'open': { const r = act('openStep', { id, reason: (document.getElementById('j-reason') || {}).value || '' }); if (r.ok) S.ui.jOpenNow = null; return render(); }
         case 'done': return act('markStepDone', { id, done: true });

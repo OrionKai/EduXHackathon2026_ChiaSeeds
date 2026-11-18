@@ -76,6 +76,14 @@
       const list = classList().filter((c) => c.code !== me.code); list.unshift(me); localStorage.setItem('wq-classes', JSON.stringify(list.slice(0, 20))); } catch {}
   }
   const className = (st) => st.className || 'Class ' + sessionCode();
+  /* Run a quest from My quests in this class: the class gets its own copy. */
+  function runQuest(id) {
+    const snapshot = Engine.questSnapshot(id);
+    if (!snapshot) return toast('Quest not found.', 'error');
+    const r = act('runQuest', { id, snapshot });
+    if (r.ok) toast(r.msg, 'success');
+    return r;
+  }
   function goToClass(code) {
     const u = new URL(location.href); u.searchParams.set('session', code); u.hash = 'educator';
     try { sessionStorage.setItem('wq-open-class', '1'); } catch {}
@@ -104,8 +112,12 @@
     catch { return /[?&](demo|fast)=/.test(location.search); }
   };
 
+  /* Quest writing screens read the studio; everything about a class reads the class. */
+  const STUDIO_SCREENS = { teacher: ['dashboard', 'builder'], collaborator: ['overview', 'contribution', 'review'] };
   function render() {
     const y = window.scrollY;
+    { const r = currentRole(), ui = Engine.classState.ui, scr = ui.role === r ? ui.screen || DEFAULT_SCREEN[r] : DEFAULT_SCREEN[r];
+      Engine.useSpace(r && (STUDIO_SCREENS[r] || []).includes(scr) ? 'studio' : 'class'); }
     const st = S();
     if (!SEED.byId[st.ui.student]) st.ui.student = SEED.participants[0].id;
     const role = currentRole();
@@ -114,7 +126,7 @@
     } else {
       if (st.ui.role !== role) { st.ui.role = role; st.ui.screen = null; st.ui.lookUp = false; }
       const screen = role === 'student' && !joinedHere(st) ? 'adventure' : st.ui.screen || DEFAULT_SCREEN[role];
-      const pp = role === 'collaborator' ? sel.partnerProgress() : null;
+      const pp = role === 'collaborator' ? Engine.inSpace('studio', () => sel.partnerProgress(partnerQuestId(Engine.studioState))) : null;
       const badge = (id) => (id === 'review' && pp && !pp.signedOff && pp.contributed && pp.reviewed < pp.items.length ? ` <span class="pill peach">${pp.items.length - pp.reviewed}</span>` : id === 'facilitate' && sel.pendingInteractions().length ? ` <span class="pill peach">${sel.pendingInteractions().length}</span>` : id === 'work' && partnerToCheck().length ? ` <span class="pill peach">${partnerToCheck().length}</span>` : id === 'classes' && st.help.some((h) => h.open) ? ` <span class="pill peach">help</span>` : '');
       root.innerHTML = `
       <div class="shell role-${role}${demoOn() ? ' demo-on' : ''}">
@@ -132,7 +144,7 @@
         <main class="main" id="main">
           <a class="skip-link" href="#main-content">Skip to content</a>
           <div class="topbar">
-            <a class="brand-mini" href="#" aria-label="WorldQuest home">${Art.logo(30)}</a><span class="crumb">${esc(st.quest.title)} · ${ROLE_LABEL[role]}</span>
+            <a class="brand-mini" href="#" aria-label="WorldQuest home">${Art.logo(30)}</a><span class="crumb">${esc(role !== 'teacher' || screen === 'builder' ? st.quest.title : CLASS_TABS.some(([k]) => k === screen) ? className(st) : 'Educator studio')}${role === 'teacher' && screen !== 'builder' ? '' : ' · ' + ROLE_LABEL[role]}</span>
             <span class="row" style="gap:8px">${syncPill()}<button class="demo-fab" data-a="demo-toggle" aria-expanded="${!!st.ui.demoOpen}">${Art.icon('sparkle', 15)} Demo</button></span>
           </div>
           <div id="main-content">
@@ -740,7 +752,7 @@
 
   function classPage(st, tab) {
     const live = st.phase !== 'LOBBY', pend = sel.pendingEvidence().length + sel.pendingFinales().length + sel.pendingBonus().length;
-    const quests = Object.entries(st.library).map(([id, r]) => [id, (id === st.activeQuest ? st.quest : r.quest).title || 'Untitled quest']);
+    const S2 = Engine.studioState, quests = Object.entries(S2.library).map(([id, r]) => [id, (id === S2.activeQuest ? S2.quest : r.quest).title || 'Untitled quest']), outdated = Engine.runOutdated();
     inClassPage = true;
     let inner = '';
     try {
@@ -755,6 +767,7 @@
         <span class="class-stat"><strong>${pend}</strong> to review</span>
         <span class="pill ${live ? 'mint' : 'plain'}">${live ? 'Session live' : 'In the lobby'}</span>
       </div>
+      ${outdated ? `<div class="card row wash-lavender" style="gap:8px;padding:12px 16px"><span style="flex:1">${Art.icon('pencil', 15)} “${esc(st.quest.title)}” has changed in My quests since this class got it.</span>${live ? '<span class="hint-note" style="margin:0">You can update it after the session.</span>' : `<button class="btn btn-primary btn-sm" data-a="run-quest" data-id="${esc(st.activeQuest)}">Use the new version</button>`}</div>` : ''}
       ${st.ui.pickRun && !live ? `<div class="card row" style="gap:8px;padding:12px 16px"><label class="fld" for="run-q" style="margin:0">Run this quest</label>
         <select class="input" id="run-q" style="width:auto;min-width:220px">${quests.map(([id, t]) => `<option value="${id}" ${id === st.activeQuest ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
         <button class="btn btn-primary btn-sm" data-a="run-q">Run it</button><button class="btn btn-ghost btn-sm" data-a="pick-run-x">Cancel</button></div>` : ''}
@@ -793,14 +806,14 @@
 
   function teacherDashboard(st) {
     const pend = sel.pendingEvidence().length + sel.pendingFinales().length + sel.pendingBonus().length;
-    const quests = Object.entries(st.library).map(([id, r]) => ({ id, q: id === st.activeQuest ? st.quest : r.quest, active: id === st.activeQuest }))
+    const C = Engine.classState, running = C.activeQuest, live = C.phase !== 'LOBBY';
+    const quests = Object.entries(st.library).map(([id, r]) => ({ id, q: id === st.activeQuest ? st.quest : r.quest, active: id === running }))
       .sort((x, y) => (y.active - x.active) || String(y.id).localeCompare(String(x.id)));
-    const live = st.phase !== 'LOBBY';
     const code = typeof Sync !== 'undefined' ? Sync.state.session : 'FITZ-DEMO';
     return `
       <div class="stack">
-        ${pageHead('Educator studio', 'My quests', `<button class="btn btn-primary" data-a="new-quest" ${live ? 'disabled title="End the live session first"' : ''}>${Art.icon('plus', 16)} New quest</button>`)}
-        ${st.ui.newQuest && !live ? `<div class="card new-quest">
+        ${pageHead('Educator studio', 'My quests', `<button class="btn btn-primary" data-a="new-quest">${Art.icon('plus', 16)} New quest</button>`)}
+        ${st.ui.newQuest ? `<div class="card new-quest">
           <div class="spread"><h3 style="margin:0">Start a new quest</h3><button class="btn btn-ghost btn-sm" data-a="new-quest-x">Cancel</button></div>
           <label class="fld" for="nq-title">Working title (optional)</label><input class="input" id="nq-title" placeholder="e.g. Pollinator Patrol at the community garden" value="${esc(st.ui.nqTitle || '')}">
           ${!st.ui.nqTpl ? `<p class="hint-note" style="margin:10px 0 6px">Step 1 of 2 · How do you want to start?</p>
@@ -823,15 +836,14 @@
           </form>`; })()}</div>` : ''}
         <div class="grid-3">
           ${quests.map(({ id, q, active }) => `<div class="card quest-card ${active ? 'is-active' : ''}">
-            <div class="spread"><span class="pill ${q.status === 'PUBLISHED' ? 'mint' : 'plain'}">${q.status === 'PUBLISHED' ? 'Published' : 'Draft'}</span>${active ? `<span class="pill lavender">Running in ${esc(className(st))}</span>` : ''}</div>
+            <div class="spread"><span class="pill ${q.status === 'PUBLISHED' ? 'mint' : 'plain'}">${q.status === 'PUBLISHED' ? 'Published' : 'Draft'}</span>${active ? `<span class="pill lavender">Running in ${esc(className(C))}</span>` : ''}</div>
             <h3 style="margin:8px 0 2px">${esc(q.title || 'Untitled quest')}</h3>
             <p class="hint-note" style="margin:0 0 10px">${esc(q.venue || 'No venue yet')} · ${q.duration || 60} min${q.partner && q.partner.name ? ' · with ' + esc(q.partner.name) : ''}</p>
-            <div class="row" style="margin-top:auto">${active
-              ? `<button class="btn btn-secondary btn-sm" data-a="screen" data-screen="builder">${Art.icon('pencil', 15)} Edit</button>${q.status === 'PUBLISHED' ? `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="live">${Art.icon('eye', 15)} Live session</button>` : ''}`
-              : `<button class="btn btn-secondary btn-sm" data-a="edit-quest" data-id="${id}" ${live ? 'disabled title="End the live session first"' : ''}>${Art.icon('pencil', 15)} Edit</button><button class="btn btn-ghost btn-sm" data-a="open-quest" data-id="${id}" ${live ? 'disabled' : ''}>Run with ${esc(className(st))}</button><button class="btn btn-ghost btn-sm" data-a="del-quest" data-id="${id}">Delete</button>`}</div>
+            <div class="row" style="margin-top:auto"><button class="btn btn-secondary btn-sm" data-a="edit-quest" data-id="${id}">${Art.icon('pencil', 15)} Edit</button>${active
+              ? (Engine.runOutdated() ? `<button class="btn btn-ghost btn-sm" data-a="run-quest" data-id="${id}" ${live ? 'disabled title="After the live session"' : ''}>Update ${esc(className(C))}</button>` : '')
+              : `<button class="btn btn-ghost btn-sm" data-a="run-quest" data-id="${id}" ${live ? 'disabled title="End the live session first"' : ''}>Run with ${esc(className(C))}</button><button class="btn btn-ghost btn-sm" data-a="del-quest" data-id="${id}">Delete</button>`}</div>
           </div>`).join('')}
         </div>
-        ${live ? `<p class="hint-note" style="margin:0">A live session is running. Return it to the lobby (Live session → Back) before switching quests.</p>` : ''}
       </div>`;
   }
 
@@ -855,7 +867,7 @@
       : step === 'tracks' ? Partner.requestsCard(st) + Assistant.tracks() : step === 'finale' ? Assistant.finale() + Assistant.story() + Assistant.collectibles() : builderPublish(st, dis, locked);
     return `
       ${pageHead(esc(q.title || 'Untitled quest'), 'Quest builder', `<button class="btn btn-ghost btn-sm" data-a="screen" data-screen="dashboard">${Art.icon('back', 15)} My quests</button>`)}
-      ${locked ? `<div class="card wash-mint" style="padding:12px 16px"><strong>${Art.icon('check', 16)} Published.</strong> This quest is frozen so a live session isn’t disrupted — create a new quest to change it.</div>` : ''}
+      ${locked ? `<div class="card wash-mint" style="padding:12px 16px"><strong>${Art.icon('check', 16)} Published.</strong> It’s locked so students play what your partner signed off. To change it, start a new quest.</div>` : ''}
       <nav aria-label="Builder steps"><ol class="b-steps">${BSTEPS.map(([k, l], j) => `<li><button data-a="bstep" data-step="${k}" aria-current="${k === step ? 'step' : 'false'}" class="${done[k] ? 'done' : ''}"><b>${done[k] ? '✓' : j + 1}</b><span>${l}</span></button></li>`).join('')}</ol></nav>
       <div class="b-layout">
         <div class="stack b-body">
@@ -1078,12 +1090,16 @@
 
   /* ================= collaborator ================= */
 
+  function partnerQuestId(s) {
+    const has = (id) => id && (id === s.activeQuest || (s.library && s.library[id]));
+    return has(s.ui.pq) ? s.ui.pq : has(Engine.classState.activeQuest) ? Engine.classState.activeQuest : s.activeQuest;
+  }
   function collaboratorView(st) {
     const TITLES = { overview: 'Overview', contribution: 'My contribution', review: 'Review the quest', facilitate: 'On the day', work: 'Student work', spotlight: 'Community Spotlight' };
     const screen = TITLES[st.ui.screen] ? st.ui.screen : 'overview';
     if (screen === 'spotlight') return `<div class="stack">${pageHead('Community partner · Concept preview', TITLES[screen], '', 'coral')}${CommunitySpotlight.render()}</div>`;
     const questLevel = ['overview', 'contribution', 'review'].includes(screen);
-    const pqId = questLevel && st.ui.pq && st.library[st.ui.pq] ? st.ui.pq : st.activeQuest;
+    const pqId = questLevel ? partnerQuestId(st) : st.activeQuest;
     const pq = pqId === st.activeQuest ? st.quest : st.library[pqId].quest;
     const picker = questLevel && Object.keys(st.library).length > 1 ? `<label class="sr-only" for="pq-sel">Quest</label><select class="input" id="pq-sel" data-a="pq-sel" style="width:auto;min-width:200px">${Object.entries(st.library).map(([id, r]) => `<option value="${id}" ${id === pqId ? 'selected' : ''}>${esc((id === st.activeQuest ? st.quest : r.quest).title)}${id === st.activeQuest ? ' (this class)' : ''}</option>`).join('')}</select>` : '';
     return `
@@ -1223,16 +1239,13 @@
           case 'safety': return act('updateQuest', { field: 'safety', value: el.checked }), render();
           case 'pick-run': S().ui.pickRun = true; return render();
           case 'pick-run-x': S().ui.pickRun = false; return render();
-          case 'run-q': { const id = (document.getElementById('run-q') || {}).value; S().ui.pickRun = false; if (id && id !== S().activeQuest) act('openQuest', { id }); return render(); }
+          case 'run-q': { const id = (document.getElementById('run-q') || {}).value; S().ui.pickRun = false; if (id && id !== Engine.classState.activeQuest) runQuest(id); return render(); }
+          case 'run-quest': return runQuest(el.dataset.id);
           case 'new-class': S().ui.newClass = true; return render();
           case 'new-class-x': S().ui.newClass = false; return render();
           case 'rename-class': S().ui.renameClass = true; return render();
           case 'go-class': return goToClass(el.dataset.code);
-          case 'edit-quest': {
-            const id = el.dataset.id, t = (S().library[id] || { quest: {} }).quest.title || 'this quest';
-            if (!confirm(`Editing “${t}” also makes it the quest ${className(S())} runs. You can switch back from the class page. Continue?`)) return;
-            const r = act('openQuest', { id }); if (r.ok) { S().ui.screen = 'builder'; S().ui.bStep = 'trip'; render(); } return;
-          }
+          case 'edit-quest': { const r = act('openQuest', { id: el.dataset.id }); if (r.ok) { S().ui.screen = 'builder'; S().ui.bStep = 'trip'; render(); } return; }
           case 'copy-link': { const t = el.dataset.link; try { navigator.clipboard.writeText(t); toast('Partner link copied — send it to your partner.', 'success'); } catch { prompt('Copy this link:', t); } return; }
           case 'tamper': return typeof Sync !== 'undefined' && Sync.tamperTest().then((r) => toast(r.msg, r.ok ? 'success' : 'error'));
           case 'scan-station': {
@@ -1282,7 +1295,6 @@
             if (tpl === 'ai') { toast('Add your sources and the quest settings, then press “Generate the whole quest”.', 'success'); document.getElementById('as-sources')?.scrollIntoView({ behavior: 'smooth' }); }
             return;
           }
-          case 'open-quest': return act('openQuest', { id: el.dataset.id });
           case 'del-quest': return act('deleteQuest', { id: el.dataset.id });
           case 'leave-class': { const code = sessionCode(); delete S().ui.joinedIn[code]; render(); return; }
           case 'verify-int': return act('verifyInteraction', { participantId: el.dataset.pid });
@@ -1445,10 +1457,11 @@
       const d = Engine.dispatch;
       d('resetDemo');
       d('updateQuest', { field: 'safety', value: true });
-      sel.partnerItems().forEach((item) => d('reviewItem', { item }));
+      Engine.inSpace('studio', () => sel.partnerItems()).forEach((item) => d('reviewItem', { item }));
       d('approveContribution');
       SEED.topics.forEach((t) => d('approveTrack', { topic: t }));
       d('publishQuest');
+      d('runQuest', { id: Engine.studioState.activeQuest, snapshot: Engine.questSnapshot(Engine.studioState.activeQuest) });
       const j = d('joinClass', { nick: 'Demo explorer' });
       if (j && j.pid) { markJoined(j.pid, 'Demo explorer'); d('setStudent', { id: j.pid }); }
       d('advancePhase'); // BRIEFING
@@ -1497,7 +1510,7 @@
     }
     render();
   });
-  window.WQ = { act, toast, render, pageHead };
+  window.WQ = { act, toast, render, pageHead, runQuest };
   addEventListener('hashchange', () => { window.scrollTo(0, 0); render(); });
   let tiltArmed = false, upSince = 0;
   function armTilt() {

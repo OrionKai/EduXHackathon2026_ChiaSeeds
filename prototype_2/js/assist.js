@@ -26,7 +26,7 @@ const Assistant = (() => {
     try { Object.keys(localStorage).filter((k) => k.startsWith(CHAT_KEY)).forEach((k) => localStorage.removeItem(k)); } catch {} }
   let msgs = [], history = [], convoOf = null;
   function syncQuest() {
-    const id = Engine.state.activeQuest;
+    const id = Engine.studioState.activeQuest;
     if (id === convoOf) return;
     if (!convos[id]) { let saved = null; try { saved = JSON.parse(localStorage.getItem(CHAT_KEY + id) || 'null'); } catch {}
       convos[id] = saved && Array.isArray(saved.msgs) && saved.msgs.length ? { msgs: saved.msgs, history: Array.isArray(saved.history) ? saved.history : [] } : { msgs: [{ who: 'ai', text: GREETING }], history: [] }; }
@@ -55,10 +55,10 @@ const Assistant = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const lines = (v) => String(v || '').split('\n').map((x) => x.trim()).filter(Boolean);
 
-  const SRC = () => Engine.state.sources.map((s) => (s.kind === 'partner' ? { ...s, fact: [Engine.state.contributor.text ? 'In the partner’s own words: “' + Engine.state.contributor.text + '”' : '', Engine.state.contributor.avoid ? '(Caution from the partner — respect it, but it is not a topic or title for the quest: ' + Engine.state.contributor.avoid + ')' : '', (Engine.state.contributor.prompts || []).length ? 'Questions the partner will ask students: ' + Engine.state.contributor.prompts.join(' / ') : ''].filter(Boolean).join(' '), partner: true } : { ...s, fact: s.text }));
-  const srcFor = (t) => (Engine.state.sources.find((s) => s.url && s.url === SEED.missions[t].sourceUrl) || { id: '' }).id;
-  const partnerSrc = () => (Engine.state.sources.find((s) => s.kind === 'partner') || { id: '' }).id;
-  const isTemplate = () => (Engine.state.content.meta || {}).id === 'lost_museum';
+  const SRC = () => Engine.studioState.sources.map((s) => (s.kind === 'partner' ? { ...s, fact: [Engine.studioState.contributor.text ? 'In the partner’s own words: “' + Engine.studioState.contributor.text + '”' : '', Engine.studioState.contributor.avoid ? '(Caution from the partner — respect it, but it is not a topic or title for the quest: ' + Engine.studioState.contributor.avoid + ')' : '', (Engine.studioState.contributor.prompts || []).length ? 'Questions the partner will ask students: ' + Engine.studioState.contributor.prompts.join(' / ') : ''].filter(Boolean).join(' '), partner: true } : { ...s, fact: s.text }));
+  const srcFor = (t) => (Engine.studioState.sources.find((s) => s.url && s.url === SEED.missions[t].sourceUrl) || { id: '' }).id;
+  const partnerSrc = () => (Engine.studioState.sources.find((s) => s.kind === 'partner') || { id: '' }).id;
+  const isTemplate = () => (Engine.studioState.content.meta || {}).id === 'lost_museum';
   const isEmpty = () => SEED.topics.every((t) => !SEED.missions[t].name);
 
   /* Scripted revisions exist only for the Lost Museum template (they are written for its content). */
@@ -99,7 +99,7 @@ const Assistant = (() => {
   const DRAFT = { id: 'draft', chip: 'Draft the example quest (Fitzwilliam Museum)', prompt: (q) => `Draft the example ${q.duration || 60}-minute Jigsaw quest at the Fitzwilliam Museum for ${SEED.participants.length} students.` };
   /* Suggestions are scripted and repeatable (for demos); anything typed goes to the live AI. */
   const chips = () => {
-    const st = Engine.state;
+    const st = Engine.studioState;
     if (st.quest.status === 'PUBLISHED') return [];
     if (isEmpty()) return SEED.topics.length === 4 && (/fitzwilliam/i.test(st.quest.venue || '') || !st.quest.venue) ? [DRAFT] : [];
     return isTemplate() ? REVS.filter((r) => SEED.topics.includes(r.topic) && !st.revisions[r.topic]) : [];
@@ -116,7 +116,7 @@ const Assistant = (() => {
 
   function chat() {
     syncQuest();
-    const st = Engine.state, cs = chips(), locked = st.quest.status === 'PUBLISHED';
+    const st = Engine.studioState, cs = chips(), locked = st.quest.status === 'PUBLISHED';
     return `
       <div class="card as-card">
         <div class="spread"><h3 style="margin:0">${Art.icon('sparkle', 18)} Quest assistant</h3>
@@ -138,7 +138,7 @@ const Assistant = (() => {
   }
   function board() {
     syncQuest();
-    const st = Engine.state;
+    const st = Engine.studioState;
     return `${sourcesCard()}${tracksSection(st)}${finaleSection(st)}${collectiblesSection(st)}${storySection(st)}`;
   }
 
@@ -300,7 +300,7 @@ const Assistant = (() => {
   const cb = (id, label, on, extra = '', note = '') => `<label class="opt"><input type="checkbox" id="${id}" ${on ? 'checked' : ''} ${extra}><span class="opt-box" aria-hidden="true"></span><span class="opt-text">${label}${note ? `<small>${note}</small>` : ''}</span></label>`;
   const rd = (name, v, label, on, note = '') => `<label class="opt"><input type="radio" name="${name}" value="${v}" ${on ? 'checked' : ''}><span class="opt-box round" aria-hidden="true"></span><span class="opt-text">${label}${note ? `<small>${note}</small>` : ''}</span></label>`;
   function trackEditor(t) {
-    const f = SEED.trackFields(Engine.state.content, t), a = f.assess, quiz = a.quiz || [], m = SEED.missions[t], on = assessOn(m);
+    const f = SEED.trackFields(Engine.studioState.content, t), a = f.assess, quiz = a.quiz || [], m = SEED.missions[t], on = assessOn(m);
     return `<form class="stack as-editor" style="gap:10px;margin-top:10px" data-as-trackform="${t}">
       ${sec('1 · Where and what', true, `
         ${inp('ed-name', 'Name of this track', f.name, 'e.g. Evidence Detectives')}
@@ -385,7 +385,7 @@ const Assistant = (() => {
   }
 
   function sourcesCard() {
-    const st = Engine.state, locked = st.quest.status === 'PUBLISHED';
+    const st = Engine.studioState, locked = st.quest.status === 'PUBLISHED';
     return `<div class="card as-sources" id="as-sources">
       <div class="spread"><h3 style="margin:0">${Art.icon('book', 18)} Approved sources</h3><span class="pill lavender">${st.sources.length} in library</span></div>
       <p class="hint-note" style="margin:6px 0 10px">The only pages and notes the assistant may use. Add what you trust; remove what you don’t.</p>
@@ -449,10 +449,10 @@ const Assistant = (() => {
   async function scriptedDraft() {
     if (busy) return;
     busy = true;
-    const q = Engine.state.quest, prompt = DRAFT.prompt(q);
+    const q = Engine.studioState.quest, prompt = DRAFT.prompt(q);
     await typeInto(prompt);
     msgs.push({ who: 'you', text: prompt }); paintMsgs();
-    const have = new Set(Engine.state.sources.map((s) => s.url));
+    const have = new Set(Engine.studioState.sources.map((s) => s.url));
     SEED.topics.forEach((t) => { const m = TEMPLATES.lost_museum.missions[t]; if (!have.has(m.sourceUrl)) Engine.dispatch('addSource', { title: m.gallery + ' · official page', url: m.sourceUrl, text: m.sourceFact }); });
     await say('Reading your sources: four Fitzwilliam gallery pages and your partner’s notes. Planning the perspectives: Evidence, Power & Memory, Multiple Lives, Connections & Voices…');
     const content = JSON.parse(JSON.stringify(TEMPLATES.lost_museum));
@@ -460,14 +460,14 @@ const Assistant = (() => {
     Engine.dispatch('setContent', { content });
     if (!q.venue) Engine.dispatch('updateQuest', { field: 'venue', value: 'The Fitzwilliam Museum, Cambridge' });
     if (!q.objective) Engine.dispatch('updateQuest', { field: 'objective', value: 'Interpret evidence from multiple perspectives' });
-    await say(`Drafted ${SEED.topics.length} expert tracks (Galleries 19, 20, 21 and 24${SEED.topics.length > 4 ? ', plus empty tracks for you to fill' : ''}), a locked finale that needs every perspective, ${SEED.collectibles.length} collectibles and ${SEED.reflection.length} reflection questions. Review and approve each track below — nothing reaches students until you do.`, Engine.state.sources.map((s) => s.id));
+    await say(`Drafted ${SEED.topics.length} expert tracks (Galleries 19, 20, 21 and 24${SEED.topics.length > 4 ? ', plus empty tracks for you to fill' : ''}), a locked finale that needs every perspective, ${SEED.collectibles.length} collectibles and ${SEED.reflection.length} reflection questions. Review and approve each track below — nothing reaches students until you do.`, Engine.studioState.sources.map((s) => s.id));
     busy = false;
     window.WQ.render();
     document.getElementById('as-content')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   async function freeText(text) {
-    const st = Engine.state;
+    const st = Engine.studioState;
     if (mode === 'live' && st.quest.status !== 'PUBLISHED') return liveTurn(text);
     const t = text.toLowerCase();
     if (isTemplate()) {
@@ -495,15 +495,15 @@ const Assistant = (() => {
     else { mode = 'simulated'; offWhy = status === 503 ? 'the AI isn’t set up on this site yet' : 'it didn’t answer just now'; lastNotice = ''; }
   }
   function questBrief() {
-    const q = Engine.state.quest;
+    const q = Engine.studioState.quest;
     const au = q.audience || SEED.defaultAudience();
     return { title: q.title, objective: q.objective, venue: q.venue, minutes: q.duration, students: SEED.participants.length, tracks: SEED.topics.length, teams: SEED.homeGroups.length, audience: SEED.AUDIENCES[au.kind], ages: au.ages };
   }
   function liveContext() {
     const tracks = {};
-    SEED.topics.forEach((t) => { const { refPhoto, backupCode, evidenceKeys, ...f } = SEED.trackFields(Engine.state.content, t); tracks[t] = { ...f, status: Engine.state.tracks[t] }; });
-    const c = Engine.state.content, fin = SEED.finaleFields(c);
-    const extras = { groups: { tracks: Engine.state.quest.structure.tracks, class_size: SEED.structure.classSize, teams: SEED.homeGroups },
+    SEED.topics.forEach((t) => { const { refPhoto, backupCode, evidenceKeys, ...f } = SEED.trackFields(Engine.studioState.content, t); tracks[t] = { ...f, status: Engine.studioState.tracks[t] }; });
+    const c = Engine.studioState.content, fin = SEED.finaleFields(c);
+    const extras = { groups: { tracks: Engine.studioState.quest.structure.tracks, class_size: SEED.structure.classSize, teams: SEED.homeGroups },
       finale: fin,
       cards: c.collectibles.map((k) => ({ id: k.id, title: k.title, earned_when: k.kind, track: k.track, activity: k.activity, fact: k.fact })), story: c.story.opening, reflection: c.reflection };
     return { extras, quest: questBrief(), tracks, sources: SRC().filter((s) => s.fact).map((s) => ({ id: s.id, title: s.title, text: s.fact, url: s.url || '' })) };
@@ -520,7 +520,7 @@ const Assistant = (() => {
     if (e.tool === 'add_source') return D('addSource', { title: i.title, url: i.url || '', text: i.text });
     if (e.tool === 'remove_card') return D('removeCollectible', { collectibleId: i.card_id });
     if (e.tool === 'set_card') {
-      let id = i.card_id; if (!id || id === 'new' || !Engine.state.content.collectibles.some((k) => k.id === id)) { const r = D('addCollectible'); if (!r.ok) return r; id = r.id; }
+      let id = i.card_id; if (!id || id === 'new' || !Engine.studioState.content.collectibles.some((k) => k.id === id)) { const r = D('addCollectible'); if (!r.ok) return r; id = r.id; }
       const f = {}; ['title', 'activity', 'fact'].forEach((k) => { if (i[k]) f[k] = i[k]; }); if (i.earned_when) f.kind = i.earned_when; if (i.track) f.track = i.track; if (i.team) f.home = i.team;
       return D('editCollectible', { collectibleId: id, fields: f });
     }
@@ -537,7 +537,7 @@ const Assistant = (() => {
       return;
     }
     if (!SEED.topics.includes(i.topic)) return;
-    const f = SEED.trackFields(Engine.state.content, i.topic);
+    const f = SEED.trackFields(Engine.studioState.content, i.topic);
     if (e.tool === 'revise_track' && i.field in f) f[i.field] = String(i.new_text || '');
     else if (e.tool === 'add_hint') f.hints = [...f.hints, String(i.hint || '')];
     else if (e.tool === 'set_track_list') { const k = { evidence_prompts: 'evidence', hints: 'hints', success_criteria: 'criteria' }[i.field]; if (!k) return; f[k] = (i.items || []).map(String).filter((x) => x.trim()); }
@@ -586,7 +586,7 @@ const Assistant = (() => {
     await say(data.reply, cites, [], changes);
     // remember what was actually changed, not only what was said — so it doesn't redo or duplicate it next time
     history.push({ role: 'user', content: text }, { role: 'assistant', content: data.reply + (changes.length ? '\n[Changes I made: ' + changes.map((c) => c.text).join(' ') + ']' : '') }); saveConvo();
-    for (const e of data.edits || []) applyEdit(e);
+    Engine.inSpace('studio', () => { for (const e of data.edits || []) applyEdit(e); });
     busy = false;
     lastNotice = data.edits && data.edits.some((e) => ['revise_track', 'set_track_list', 'set_assessment', 'set_teachback_check', 'add_hint'].includes(e.tool)) ? 'Changed tracks need your approval again before students see them.' : '';
     window.WQ.render();
@@ -599,7 +599,7 @@ const Assistant = (() => {
     const ctx = liveContext();
     if (!ctx.sources.length) { lastNotice = 'Add at least one approved source first — the assistant only writes from your sources.'; return window.WQ.render(); }
     // students need at least 2 tracks to teach each other; a quest with fewer gets 2
-    const st0 = Engine.state.quest.structure;
+    const st0 = Engine.studioState.quest.structure;
     if (!st0.tracks || st0.tracks < 2) { const n = Math.max(2, SEED.structure.classSize); Engine.dispatch('setStructure', { tracks: 2, classSize: n, expertGroup: Math.min(SEED.structure.expertGroup, Math.ceil(n / 2)) }); ctx.quest = questBrief(); }
     busy = true; confirmGen = false; window.WQ.render();
     const prompt = `Plan a ${ctx.quest.minutes}-minute Jigsaw quest for ${ctx.quest.students} students${ctx.quest.venue ? ' at ' + ctx.quest.venue : ''}. Goal: ${ctx.quest.objective || 'decide from the sources'}.`;
@@ -618,9 +618,10 @@ const Assistant = (() => {
       call({ mode: 'finale', plan: P, quest: ctx.quest, sources: ctx.sources }),
       call({ mode: 'extras', plan: P, quest: ctx.quest, sources: ctx.sources }),
     ]);
+    const built = Engine.inSpace('studio', () => {
     const content = JSON.parse(JSON.stringify(TEMPLATES.blank));
     SEED.ensureContentShape(content);
-    content.title = P.title || Engine.state.quest.title;
+    content.title = P.title || Engine.studioState.quest.title;
     content.story = { ...content.story, opening: P.story_opening || '' };
     const failed = [];
     SEED.topics.forEach((t, i) => {
@@ -657,6 +658,9 @@ const Assistant = (() => {
     } else failed.push('collectibles and reflection');
     msgs.pop();
     const r = Engine.dispatch('setContent', { content });
+    return { r, content, failed };
+    });
+    const { r, content, failed } = built;
     await say(r.ok
       ? `Drafted “${content.title}”: ${P.tracks.map((t) => t.name).join(', ')}, a final team challenge that needs every track, ${content.collectibles.length} reward cards and ${content.reflection.length} reflection questions.${failed.length ? ` I couldn’t finish ${failed.join(', ')} — fill those in by hand.` : ''} Review and approve each track below.`
       : 'The draft came back incomplete. Try again, or fill the quest in by hand.', ctx.sources.map((s) => s.id));
@@ -717,9 +721,9 @@ const Assistant = (() => {
     on('[data-as-jump]', 'click', (b) => {
       const [step, sel] = b.dataset.asJump.split('|');
       const go = (r) => { if (!r) return; r.classList.add('flash'); r.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => r.classList.remove('flash'), 1400); };
-      const here = Engine.state.ui.bStep === step && document.querySelector(sel);
+      const here = Engine.studioState.ui.bStep === step && document.querySelector(sel);
       if (here && !editing) return go(here);
-      Engine.state.ui.bStep = step; openEditor(null); window.WQ.render();
+      Engine.studioState.ui.bStep = step; openEditor(null); window.WQ.render();
       setTimeout(() => go(document.querySelector(sel)), 30);
     });
     on('[data-as-cite]', 'click', (b) => {
@@ -728,12 +732,12 @@ const Assistant = (() => {
       const row = document.getElementById('as-src-' + id);
       if (row) return go(row);
       // The source list lives on the "Sources" builder step; switch to it first so the row is in the DOM, then jump to it.
-      Engine.state.ui.bStep = 'sources'; openEditor(null); window.WQ.render();
+      Engine.studioState.ui.bStep = 'sources'; openEditor(null); window.WQ.render();
       setTimeout(() => go(document.getElementById('as-src-' + id)), 30);
     });
     on('[data-as-clear]', 'click', () => { if (busy) return; clearConvo(); window.WQ.render(); });
     on('[data-as-mode]', 'click', () => { mode = mode === 'live' ? 'simulated' : 'live'; offWhy = mode === 'live' ? '' : 'you switched it off on this device'; lastNotice = ''; try { localStorage.setItem('wq-ai-mode', mode); } catch {} window.WQ.render(); });
-    on('[data-as-edit]', 'click', (b) => { editing = editing === b.dataset.asEdit ? null : b.dataset.asEdit; cardImg = editing && editing.startsWith('c:') ? (Engine.state.content.collectibles.find((k) => 'c:' + k.id === editing) || {}).image || null : null; refDraft = editing && SEED.missions[editing] ? SEED.missions[editing].refPhoto || null : null; window.WQ.render(); });
+    on('[data-as-edit]', 'click', (b) => { editing = editing === b.dataset.asEdit ? null : b.dataset.asEdit; cardImg = editing && editing.startsWith('c:') ? (Engine.studioState.content.collectibles.find((k) => 'c:' + k.id === editing) || {}).image || null : null; refDraft = editing && SEED.missions[editing] ? SEED.missions[editing].refPhoto || null : null; window.WQ.render(); });
     on('[data-as-ref-clear]', 'click', () => { refDraft = null; window.WQ.render(); });
     on('#as-ref', 'change', (input) => {
       const file = input.files[0]; if (!file) return;
@@ -762,7 +766,7 @@ const Assistant = (() => {
       r.checked = false; r.disabled = true; form.querySelector('[data-ce-photo]').innerHTML = '<span class="none">Your picture</span>'; b.hidden = true;
     });
     on('[data-as-rmcard]', 'click', (b) => { if (confirm('Remove this card?')) window.WQ.act('removeCollectible', { collectibleId: b.dataset.asRmcard }); });
-    on('[data-as-addtrack]', 'click', () => { const s = SEED.structure, t = (Engine.state.quest.structure.tracks === 0 ? 0 : s.tracks) + 1, n = Math.max(s.classSize, t); const r = window.WQ.act('setStructure', { tracks: t, classSize: n, expertGroup: Math.min(s.expertGroup, Math.ceil(n / t)) }); if (r.ok) setTimeout(() => document.getElementById('as-track-' + SEED.topics[SEED.topics.length - 1])?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 30); });
+    on('[data-as-addtrack]', 'click', () => { const s = SEED.structure, t = (Engine.studioState.quest.structure.tracks === 0 ? 0 : s.tracks) + 1, n = Math.max(s.classSize, t); const r = window.WQ.act('setStructure', { tracks: t, classSize: n, expertGroup: Math.min(s.expertGroup, Math.ceil(n / t)) }); if (r.ok) setTimeout(() => document.getElementById('as-track-' + SEED.topics[SEED.topics.length - 1])?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 30); });
     on('[data-as-rmtrack]', 'click', (b) => { const t = b.dataset.asRmtrack; if (confirm(`Remove track ${t} (${SEED.missions[t].name || 'untitled'})? Its content will be deleted.`)) { if (editing === t) editing = null; window.WQ.act('removeTrack', { topic: t }); } });
     on('[data-as-quiz]', 'click', (b) => { editing = b.dataset.asQuiz; quizOpen = true; refDraft = SEED.missions[editing].refPhoto || null; window.WQ.render(); setTimeout(() => document.querySelector('[data-qz]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 30); });
     on('[data-as-collform]', 'submit', (f, e) => {
@@ -773,7 +777,7 @@ const Assistant = (() => {
     });
     on('[data-as-trackform]', 'submit', (f, e) => {
       e.preventDefault();
-      const v = (id) => f.querySelector('#' + id).value.trim(), tk = f.dataset.asTrackform, old = SEED.trackFields(Engine.state.content, tk);
+      const v = (id) => f.querySelector('#' + id).value.trim(), tk = f.dataset.asTrackform, old = SEED.trackFields(Engine.studioState.content, tk);
       const fields = { name: v('ed-name'), location: v('ed-loc'), keyObject: v('ed-key'), narrative: v('ed-narr'), observe: v('ed-obs'), discuss: v('ed-disc'),
         evidence: readList(f, 'ev'), evidenceKeys: old.evidenceKeys, criteria: readList(f, 'crit'), hints: readList(f, 'hints'), fallback: v('ed-fb'), teachHeadline: v('ed-teach'), checks: readCheckList(f, 'chk'),
         needsContributor: f.querySelector('#a-partner').checked, sourceFact: old.sourceFact, sourceUrl: old.sourceUrl, assess: readAssess(f), refPhoto: refDraft, backupCode: v('ed-code') };
@@ -809,5 +813,5 @@ const Assistant = (() => {
     }).catch(() => { if (mode === 'live') { mode = 'simulated'; offWhy = 'there’s no internet connection'; window.WQ && window.WQ.render(); } });
   } catch {}
   const openEditor = (k) => { syncQuest(); editing = k || null; quizOpen = false; refDraft = k && SEED.missions[k] ? SEED.missions[k].refPhoto || null : null; };
-  return { forgetAll, getMode: () => mode, checkPass, chat, board, bind, openEditor, sources: () => (syncQuest(), sourcesCard()), tracks: () => (syncQuest(), tracksSection(Engine.state)), finale: () => (syncQuest(), finaleSection(Engine.state)), collectibles: () => (syncQuest(), collectiblesSection(Engine.state)), story: () => (syncQuest(), storySection(Engine.state)), generate, listEd, readList, setSpeed: (v) => { speed = v; }, setMode: (m) => { mode = m; } };
+  return { forgetAll, getMode: () => mode, checkPass, chat, board, bind, openEditor, sources: () => (syncQuest(), sourcesCard()), tracks: () => (syncQuest(), tracksSection(Engine.studioState)), finale: () => (syncQuest(), finaleSection(Engine.studioState)), collectibles: () => (syncQuest(), collectiblesSection(Engine.studioState)), story: () => (syncQuest(), storySection(Engine.studioState)), generate, listEd, readList, setSpeed: (v) => { speed = v; }, setMode: (m) => { mode = m; } };
 })();

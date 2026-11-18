@@ -19,6 +19,7 @@ const Engine = (() => {
   const QUEST_KEYS = ['quest', 'content', 'tracks', 'revisions', 'sources', 'contributor'];
   const PLAY_KEYS = ['phase', 'evidence', 'peerTeach', 'finale', 'bonus', 'claims', 'master', 'reflections', 'seats', 'checkins', 'checkinPhotos', 'help', 'partnerFeedback', 'interactions', 'experience', 'evolved', 'misses', 'analysis', 'partnerFlags', 'earned'];
   const clone = (o) => JSON.parse(JSON.stringify(o));
+  let classState = null, studioState = null, state = null, space = 'class'; // set up below
 
   /* ---------- initial state ---------- */
 
@@ -54,7 +55,7 @@ const Engine = (() => {
   const todayISO = () => new Date().toISOString().slice(0, 10);
   function stepTitle(s, st) {
     if (!st) return '';
-    if (st.type === 'quest') { const r = st.questId === s.activeQuest ? s.quest : s.library[st.questId] && s.library[st.questId].quest; return r ? r.title || 'Untitled quest' : 'Choose a quest'; }
+    if (st.type === 'quest') { const lib = (x) => x && (st.questId === x.activeQuest ? x.quest : x.library && x.library[st.questId] && x.library[st.questId].quest); const r = lib(s) || (studioState && lib(studioState)); return r ? r.title || 'Untitled quest' : 'Choose a quest'; }
     if (st.type === 'experience') return st.title || st.exp.activity || 'Real experience';
     return st.title || 'Classroom session';
   }
@@ -222,8 +223,45 @@ const Engine = (() => {
 
   /* ---------- persistence ---------- */
 
-  let state = load();
+  /* Two workspaces. The class (this class code) runs a copy of one quest; the studio is the teacher's quest
+     library, shared by all their classes, where quests are written and edited. Editing never touches a class
+     until the teacher runs (or updates) the quest there. */
+  classState = load();
+  SEED.useStructure(classState.quest.structure); SEED.useContent(classState.content);
+  studioState = loadStudio(classState);
+  studioState.ui = classState.ui; // one set of screen settings for the device
+  state = classState; space = 'class';
   SEED.useStructure(state.quest.structure); SEED.useContent(state.content);
+  function useSpace(sp) {
+    space = sp === 'studio' ? 'studio' : 'class';
+    state = space === 'studio' ? studioState : classState;
+    SEED.useStructure(state.quest.structure); SEED.useContent(state.content);
+  }
+  function inSpace(sp, fn) { const back = space; useSpace(sp); try { return fn(); } finally { useSpace(back); } }
+  function studioKey(c) { return 'worldquest-studio-v1:' + ((c && c.studio) || 'DEMO'); }
+  function loadStudio(c) {
+    try { const raw = localStorage.getItem(studioKey(c)); if (raw) { const p = JSON.parse(raw); if (p && p.v === 1) { SEED.useStructure(p.quest.structure); SEED.useContent(p.content); const u = upgrade(p); SEED.useStructure(c.quest.structure); SEED.useContent(c.content); return u; } } } catch (e) { console.warn('[studio] could not load the saved quests:', e); }
+    return studioFrom(c);
+  }
+  /* First time on this device: the studio starts from the quests this class already has. */
+  function studioFrom(c) {
+    const s = clone({ ...c, ui: {} }); snapInto(s);
+    const f = freshState(); PLAY_KEYS.forEach((k) => { if (f[k] !== undefined) s[k] = clone(f[k]); }); syncRoster(s);
+    s.phase = 'LOBBY';
+    return s;
+  }
+  /* A copy of one quest from the studio, as a class runs it. */
+  function questSnapshot(id) {
+    const s = studioState;
+    if (id === s.activeQuest) return clone(Object.fromEntries(QUEST_KEYS.map((k) => [k, s[k]])));
+    return s.library[id] ? clone(s.library[id]) : null;
+  }
+  /* Has the studio's version of the quest this class runs changed since the class got its copy? */
+  function runOutdated() {
+    const snap = questSnapshot(classState.activeQuest);
+    if (!snap) return false;
+    return ['quest', 'content', 'tracks', 'sources'].some((k) => JSON.stringify(snap[k]) !== JSON.stringify(classState[k]));
+  }
   const listeners = new Set();
 
   function load() {
@@ -297,6 +335,7 @@ const Engine = (() => {
     s.ui.drafts = s.ui.drafts || {};
     s.pastAlbums = s.pastAlbums || [];
     s.className = typeof s.className === 'string' ? s.className : '';
+    s.studio = typeof s.studio === 'string' && s.studio ? s.studio : 'DEMO';
     return s;
   }
 
@@ -326,7 +365,8 @@ const Engine = (() => {
 
   function persist() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(classState));
+      localStorage.setItem(studioKey(classState), JSON.stringify(studioState));
     } catch (e) {
       /* private mode: demo continues in memory */
     }
@@ -434,6 +474,18 @@ const Engine = (() => {
       return { ok: true };
     },
 
+    runQuest(s, { id, snapshot }) {
+      if (!snapshot || !snapshot.quest || !snapshot.content) return { ok: false, msg: 'Quest not found.' };
+      if (s.phase !== 'LOBBY') return { ok: false, msg: 'End the live session first (Live session → back to the lobby).' };
+      const same = id === s.activeQuest && JSON.stringify(snapshot.quest.structure) === JSON.stringify(s.quest.structure);
+      const seats = same ? clone(s.seats) : null;
+      if (!same) archiveAlbum(s);
+      s.library = s.library || {}; s.library[id] = clone(snapshot);
+      loadQuest(s, id);
+      if (seats) { s.seats = seats; }
+      audit('teacher', same ? `Updated the class to the latest “${s.quest.title}”.` : `This class now runs “${s.quest.title}”.`);
+      return { ok: true, msg: same ? 'Updated to the latest version.' : `This class now runs “${s.quest.title || 'Untitled quest'}”.` };
+    },
     renameClass(s, { name }) {
       const n = String(name || '').trim().slice(0, 60);
       if (!n) return { ok: false, msg: 'Give the class a name.' };
@@ -441,9 +493,11 @@ const Engine = (() => {
       return { ok: true, msg: 'Class renamed.' };
     },
     resetDemo() {
-      state = freshDemo();
+      const ui = classState.ui;
+      classState = freshDemo(); classState.ui = ui; snapInto(classState);
+      studioState = studioFrom(classState); studioState.ui = ui;
+      state = space === 'studio' ? studioState : classState;
       SEED.useStructure(state.quest.structure); SEED.useContent(state.content);
-      snapInto(state);
       audit('system', 'Demo reset to seeded state.');
       return { ok: true, msg: 'Demo reset.' };
     },
@@ -865,15 +919,12 @@ const Engine = (() => {
     openQuest(s, { id }) {
       if (id === s.activeQuest) return { ok: true, silent: true };
       if (!s.library[id]) return { ok: false, msg: 'Quest not found.' };
-      if (s.phase !== 'LOBBY') return { ok: false, msg: 'End the live session first (Live session → back to the lobby).' };
-      archiveAlbum(s);
       snapInto(s);
       loadQuest(s, id);
-      audit('teacher', `Opened quest “${s.quest.title}” for this class.`);
-      return { ok: true, msg: `This class is now set to “${s.quest.title}”.` };
+      return { ok: true, silent: true };
     },
     deleteQuest(s, { id }) {
-      if (id === s.activeQuest) return { ok: false, msg: 'Open another quest before deleting this one.' };
+      if (id === s.activeQuest) { const other = Object.keys(s.library).find((k) => k !== id); if (!other) return { ok: false, msg: 'Keep at least one quest.' }; snapInto(s); loadQuest(s, other); }
       if (!s.library[id]) return { ok: false };
       const t = s.library[id].quest.title;
       delete s.library[id];
@@ -1124,7 +1175,8 @@ const Engine = (() => {
     addStep(s, { type, at }) {
       if (!STEP_TYPES.includes(type)) return { ok: false };
       const st = newStep(s, type);
-      if (type === 'quest') { const used = new Set(s.journey.steps.filter((x) => x.type === 'quest').map((x) => x.questId)); const free = Object.keys(s.library).find((k) => !used.has(k)); st.questId = free || s.activeQuest; }
+      if (type === 'quest' && arguments[1].questId) st.questId = String(arguments[1].questId);
+      else if (type === 'quest') { const used = new Set(s.journey.steps.filter((x) => x.type === 'quest').map((x) => x.questId)); const free = Object.keys(s.library).find((k) => !used.has(k)); st.questId = free || s.activeQuest; }
       const i = Math.max(0, Math.min(Number.isInteger(at) ? at : s.journey.steps.length, s.journey.steps.length));
       s.journey.steps.splice(i, 0, st);
       if (i === 0 && s.journey.steps[1] && s.journey.steps[1].opens === 'start') s.journey.steps[1].opens = 'after';
@@ -1383,37 +1435,52 @@ const Engine = (() => {
   const UI_ACTIONS = new Set(['setRole', 'setStudent', 'setScreen', 'setLookUp', 'markMasterSeen', 'setAnalysis']);
   let commitHook = null; // set by sync.js: called after a shared action succeeds locally
 
+  /* Actions that write quests happen in the studio; everything else happens in the class. */
+  const STUDIO_ACTIONS = new Set(['updateQuest', 'generateDraft', 'publishQuest', 'saveContribution', 'reviewItem', 'requestChange', 'answerRequest', 'approveContribution',
+    'reviseTrack', 'approveTrack', 'createQuest', 'openQuest', 'deleteQuest', 'setPartner', 'removeTrack', 'setStructure', 'setContent', 'editTrack', 'editFinale', 'editExtras',
+    'addSource', 'removeSource', 'addCollectible', 'removeCollectible', 'editCollectible', 'setAssess', 'setNext']);
+  const spaceOf = (type) => (UI_ACTIONS.has(type) ? space : STUDIO_ACTIONS.has(type) ? 'studio' : 'class');
   function dispatch(type, payload = {}, opts = {}) {
     const action = actions[type];
     if (!action) return { ok: false, msg: 'Unknown action: ' + type };
-    const result = action(state, payload) || { ok: true };
-    if (result.ok || result.commit) {
-      if (!UI_ACTIONS.has(type)) autoRules(state);
-      if (!UI_ACTIONS.has(type) && state.library) snapInto(state);
-      emit({ type, payload, result });
-      if (commitHook && !opts.replay && !UI_ACTIONS.has(type)) commitHook(type, payload, result);
-    }
-    return result;
+    const target = spaceOf(type), back = space;
+    useSpace(target);
+    try {
+      const result = action(state, payload) || { ok: true };
+      if (result.ok || result.commit) {
+        if (!UI_ACTIONS.has(type)) autoRules(state);
+        if (!UI_ACTIONS.has(type) && state.library) snapInto(state);
+        persist();
+        if (commitHook && !opts.replay && !UI_ACTIONS.has(type)) commitHook(type, payload, result, target);
+        useSpace(back);
+        emit({ type, payload, result });
+      }
+      return result;
+    } finally { if (space !== back) useSpace(back); }
   }
 
   /* ---------- shared-state hooks for live sync (sync.js) ---------- */
   /* A new class: same quests (copied), nothing played yet, an empty journey after the current quest. */
   function prepareClass(code, name) {
-    const s = clone(state); snapInto(s);
+    const s = clone(classState); snapInto(s);
+    s.library = { [s.activeQuest]: s.library[s.activeQuest] };
     const f = freshState();
     const n = { ...f, ...Object.fromEntries(QUEST_KEYS.map((k) => [k, clone(s[k])])), library: clone(s.library), activeQuest: s.activeQuest,
-      className: String(name || '').trim().slice(0, 60), pastAlbums: [], ui: { drafts: {}, screen: 'next' } };
+      className: String(name || '').trim().slice(0, 60), studio: classState.studio || 'DEMO', pastAlbums: [], ui: { drafts: {}, screen: 'next' } };
     PLAY_KEYS.forEach((k) => { if (f[k] === undefined) delete n[k]; else n[k] = clone(f[k]); }); syncRoster(n); // missing keys are filled in on load
     n.journey = defaultJourney(n);
     try { localStorage.setItem(NEW_CLASS_KEY(code), JSON.stringify(n)); return true; } catch { return false; }
   }
-  function sharedState() {
-    const { ui, ...rest } = state;
+  function sharedState(sp = 'class') {
+    const { ui, ...rest } = sp === 'studio' ? studioState : classState;
     return JSON.parse(JSON.stringify(rest));
   }
-  function applyShared(shared) {
-    const ui = state.ui;
-    state = upgrade({ ...JSON.parse(JSON.stringify(shared)), ui });
+  function applyShared(shared, sp = 'class') {
+    const ui = classState.ui;
+    if (shared && shared.quest) { SEED.useStructure(shared.quest.structure); SEED.useContent(shared.content); }
+    const next = upgrade({ ...JSON.parse(JSON.stringify(shared)), ui });
+    if (sp === 'studio') studioState = next; else classState = next;
+    state = space === 'studio' ? studioState : classState;
     emit({ type: 'remote' });
   }
   function freshShared() {
@@ -1432,6 +1499,13 @@ const Engine = (() => {
     sharedState,
     applyShared,
     prepareClass,
+    useSpace,
+    inSpace,
+    questSnapshot,
+    runOutdated,
+    get space() { return space; },
+    get classState() { return classState; },
+    get studioState() { return studioState; },
     freshShared,
     onCommit: (fn) => { commitHook = fn; },
     sel,
