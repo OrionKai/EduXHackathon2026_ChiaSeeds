@@ -256,7 +256,7 @@
     switch (st.phase) {
       case 'LOBBY':
         title = 'You’re in — wait for your teacher to start';
-        body = `<p>You are the <strong>${track}</strong> expert in home team <strong>${me.home}</strong>. Find your home team and stay together. Your teacher will start the briefing soon.</p>`;
+        body = `<p>Your track: <strong>${track}</strong>. Your home team: <strong>${me.home}</strong>. Find your home team and stay together. Your teacher will start the briefing soon.</p>`;
         break;
       case 'BRIEFING':
         title = 'Read your briefing';
@@ -283,7 +283,7 @@
       case 'PEER_TEACH': {
         const mine = SEED.topicsFor(me.home), taught = mine.filter((t) => st.peerTeach[me.home][t].shared).length;
         title = 'Teach your home team';
-        body = `<p>Go back to home team <strong>${me.home}</strong>. Explain what you found as the ${track} expert, then listen to the others. A teammate answers a quick check after each one. <strong>${taught}/${mine.length}</strong> taught so far.</p>`;
+        body = `<p>Go back to home team <strong>${me.home}</strong>. Explain what you found on your track (${track}), then listen to the others. A teammate answers a quick check after each one. <strong>${taught}/${mine.length}</strong> taught so far.</p>`;
         break;
       }
       case 'FINALE':
@@ -402,7 +402,7 @@
       return `
         <div class="card wash-mint burst">
           <div class="eyebrow teal">Evidence verified</div>
-          <h2>You’re the ${esc(m.name)} expert! ✦</h2>
+          <h2>Your expert track: ${esc(m.name)} ✦</h2>
           <p>Your notes from ${esc(m.gallery)} are confirmed. Back in team ${me.home}, teach them in your own words: what you saw, what you think it means, and what it can’t tell us.</p>
           <dl class="evidence-quote" style="margin:0 0 10px">${m.evidenceFields.map((x) => `<dt>${esc(x.label)}</dt><dd>${esc((ev.answers || {})[x.key] || '')}</dd>`).join('')}</dl>
           <p class="hint-note" style="margin:0">Your teacher starts the teaching part next.</p>
@@ -451,7 +451,7 @@
     if (c) return `<div class="card wash-mint" style="padding:12px 16px"><strong>${Art.icon('check', 16)} Checked in at ${esc(m.gallery)}</strong> <small>${via[c.via] || ''}</small></div>`;
     if (a.checkin === 'qr') return `<div class="card checkin-card">
       <h4 style="margin:0 0 6px">${Art.icon('map', 18)} ${locked ? 'Field notes unlock at your station' : 'Find your station'}</h4>
-      <p style="margin:0 0 10px">Go to <strong>${esc(m.gallery)}</strong> and scan the <strong>${esc(m.name)}</strong> clue card.</p>
+      <p style="margin:0 0 10px">Go to <strong>${esc(m.gallery)}</strong> and scan the clue card for <strong>${esc(m.name)}</strong>.</p>
       <button class="btn btn-primary" data-a="scan-station">${Art.icon('eye', 17)} Scan clue card</button></div>`;
     const pending = st.checkinPhotos[me.id];
     return `<div class="card checkin-card">
@@ -1340,7 +1340,7 @@
           case 'tamper': return typeof Sync !== 'undefined' && Sync.tamperTest().then((r) => toast(r.msg, r.ok ? 'success' : 'error'));
           case 'scan-station': {
             const me = SEED.byId[S().ui.student], m = SEED.missions[me.topic];
-            return Scanner.open({ title: `Scan the ${m.name} clue card`, hint: `It’s at ${m.gallery}. Your teacher can read you the backup code if the camera won’t work.`,
+            return Scanner.open({ title: `Scan the clue card: ${m.name}`, hint: `It’s at ${m.gallery}. Your teacher can read you the backup code if the camera won’t work.`,
               onCode: (code) => act('checkIn', { participantId: me.id, code }).ok });
           }
           case 'lookup': return act('setLookUp', { on: true });

@@ -1145,7 +1145,7 @@ const Engine = (() => {
       if (m.assess && m.assess.checkin === 'none') return { ok: true, silent: true };
       const c = String(code || '').trim().toUpperCase();
       const via = c === m.stationCode ? 'QR' : c === m.backupCode ? 'CODE' : null;
-      if (!via) return { ok: false, msg: `That code isn’t for ${m.gallery}. Find the ${m.name} clue card.` };
+      if (!via) return { ok: false, msg: `That code isn’t for ${m.gallery}. Find the clue card for “${m.name}”.` };
       s.checkins[participantId] = { at: Date.now(), via };
       audit('student', `${p.name} checked in at ${m.gallery} (${via === 'QR' ? 'QR clue card' : 'facilitator code'}).`);
       return { ok: true, msg: `Checked in at ${m.gallery}. Phone away — observe first.` };
