@@ -55,8 +55,31 @@
 
   const sessionCode = () => (typeof Sync !== 'undefined' ? Sync.state.session : 'FITZ-DEMO');
   const joinedHere = (st) => { const pid = st.ui.joinedIn && st.ui.joinedIn[sessionCode()]; return !!(pid && SEED.byId[pid] && (st.seats[pid] || st.ui.demoPlay === pid)); };
+  /* A device's seat is whatever seat the shared class holds for its nickname. If two students joined at the same
+     moment, the server re-ran one join and gave it the next free seat — follow that, never a stale local guess.
+     If the seat never reached the class (joined before the connection was ready), join again once. */
+  let rejoinTried = false, rejoinTimer = null;
+  function reconcileSeat(st) {
+    const code = sessionCode(), nick = st.ui.joinedNick && st.ui.joinedNick[code];
+    if (!nick) return;
+    const pid = Object.keys(st.seats).find((id) => String(st.seats[id].nick || '').toLowerCase() === nick.toLowerCase());
+    if (pid) { st.ui.joinedIn = st.ui.joinedIn || {}; st.ui.joinedIn[code] = pid; st.ui.student = pid; return; }
+    // wait a moment: a clash is resolved by the server replaying this join, which puts the seat back by itself
+    if (!rejoinTried && !rejoinTimer && typeof Sync !== 'undefined' && Sync.state.status === 'live') {
+      rejoinTimer = setTimeout(() => {
+        rejoinTimer = null;
+        const s2 = S();
+        if (Object.values(s2.seats).some((x) => String(x.nick || '').toLowerCase() === nick.toLowerCase())) return render();
+        rejoinTried = true;
+        const r = Engine.dispatch('joinClass', { nick });
+        if (r.ok) { s2.ui.joinedIn[code] = r.pid; s2.ui.student = r.pid; }
+        render();
+      }, 2500);
+    }
+  }
   function markJoined(pid, nick) {
     const u = S().ui; u.joinedIn = u.joinedIn || {}; u.joinedIn[sessionCode()] = pid;
+    if (nick) { u.joinedNick = u.joinedNick || {}; u.joinedNick[sessionCode()] = String(nick).trim().replace(/\s+/g, ' '); }
     try { const k = 'wq-joined', list = JSON.parse(localStorage.getItem(k) || '[]').filter((x) => x.code !== sessionCode());
       list.unshift({ code: sessionCode(), title: S().quest.title, nick: nick || '' }); localStorage.setItem(k, JSON.stringify(list.slice(0, 8))); } catch {}
   }
@@ -123,6 +146,7 @@
     { const r = currentRole(), ui = Engine.classState.ui, scr = ui.role === r ? ui.screen || DEFAULT_SCREEN[r] : DEFAULT_SCREEN[r];
       Engine.useSpace(r && (STUDIO_SCREENS[r] || []).includes(scr) ? 'studio' : 'class'); }
     const st = S();
+    if (currentRole() === 'student') reconcileSeat(st);
     if (!SEED.byId[st.ui.student]) st.ui.student = SEED.participants[0].id;
     const role = currentRole();
     if (!role) {
@@ -151,6 +175,7 @@
             <a class="brand-mini" href="#" aria-label="WorldQuest home">${Art.logo(30)}</a><span class="crumb">${role === 'teacher' ? ROLE_LABEL[role] : esc(st.quest.title) + ' · ' + ROLE_LABEL[role]}</span>
             <span class="row" style="gap:8px">${syncPill()}<button class="demo-fab" data-a="demo-toggle" aria-expanded="${!!st.ui.demoOpen}">${Art.icon('sparkle', 15)} Demo</button></span>
           </div>
+          ${role === 'student' && typeof Sync !== 'undefined' && ['offline', 'error'].includes(Sync.state.status) && !/[?&]offline=1/.test(location.search) ? `<div class="card wash-peach" role="alert" style="padding:12px 16px;margin-bottom:12px"><strong>${Art.icon('alert', 15)} Not connected to your class.</strong> Check your internet, then reload this page. Until then, what you do here won’t reach your teacher.</div>` : ''}
           <div id="main-content">
             ${role === 'student' ? studentView(st) : role === 'teacher' ? teacherView(st) : collaboratorView(st)}
           </div>
@@ -1493,6 +1518,10 @@
             return;
           }
           armTilt();
+          if (typeof Sync !== 'undefined' && Sync.state.status === 'connecting') {
+            try { localStorage.setItem('wq-pending-join', JSON.stringify({ code, nick })); } catch {}
+            return toast('Connecting to your class — you’ll join as soon as it’s ready.', 'success');
+          }
           const r = act('joinClass', { nick });
           if (r.ok) { markJoined(r.pid, nick); act('setStudent', { id: r.pid }); }
           return;
